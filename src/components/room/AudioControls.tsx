@@ -6,6 +6,8 @@ import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 interface AudioControlsProps {
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
+  isMonitoring: boolean;
+  toggleMonitor: () => void;
   inputDevices: AudioDevice[];
   outputDevices: AudioDevice[];
   selectedInputId: string;
@@ -19,6 +21,8 @@ interface AudioControlsProps {
 export function AudioControls({
   isMicEnabled,
   toggleMic,
+  isMonitoring,
+  toggleMonitor,
   inputDevices,
   outputDevices,
   selectedInputId,
@@ -122,17 +126,41 @@ export function AudioControls({
             Raw
           </button>
         </div>
+
+        {/* Monitor toggle */}
+        {isMicEnabled && (
+          <button
+            onClick={toggleMonitor}
+            className="cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-200 hover:scale-105"
+            style={{
+              borderColor: isMonitoring
+                ? "var(--color-neon-yellow)"
+                : "var(--color-dark-border)",
+              background: isMonitoring
+                ? "rgba(255, 225, 86, 0.15)"
+                : "var(--color-dark-card)",
+              color: isMonitoring
+                ? "var(--color-neon-yellow)"
+                : "var(--color-text-secondary)",
+            }}
+            title="Hear your own mic (for testing)"
+          >
+            🎧 {isMonitoring ? "Monitor ON" : "Monitor"}
+          </button>
+        )}
       </div>
 
       <p
         className="mt-3 text-xs"
         style={{ color: "var(--color-text-secondary)" }}
       >
-        {isMicEnabled
-          ? micMode === "voice"
-            ? "Voice mode: echo cancellation + noise suppression on. Best for talking."
-            : "Raw mode: no audio processing. Best for singing — use headphones!"
-          : "Your mic is muted. Click to start talking."}
+        {isMonitoring
+          ? "⚠ You're hearing your own mic. Use headphones to avoid feedback!"
+          : isMicEnabled
+            ? micMode === "voice"
+              ? "Voice mode: echo cancellation + noise suppression on. Best for talking."
+              : "Raw mode: no audio processing. Best for singing — use headphones!"
+            : "Your mic is muted. Click to start talking."}
       </p>
 
       {/* Settings panel */}

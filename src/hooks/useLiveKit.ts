@@ -30,6 +30,8 @@ interface UseLiveKitReturn {
   error: string | null;
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
+  isMonitoring: boolean;
+  toggleMonitor: () => void;
   isSharing: boolean;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
@@ -52,9 +54,12 @@ export function useLiveKit({
   const [sharingError, setSharingError] = useState<string | null>(null);
   const [remoteParticipantCount, setRemoteParticipantCount] = useState(0);
 
+  const [isMonitoring, setIsMonitoring] = useState(false);
+
   const roomRef = useRef<Room | null>(null);
   const systemAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const systemAudioPubRef = useRef<LocalTrackPublication | null>(null);
+  const monitorAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- Connect to LiveKit room ---
 
@@ -220,6 +225,52 @@ export function useLiveKit({
     });
   }, [selectedOutputDeviceId, isConnected]);
 
+  // --- Mic monitor (loopback to hear yourself) ---
+
+  const toggleMonitor = useCallback(() => {
+    setIsMonitoring((prev) => !prev);
+  }, []);
+
+  // Effect: attach/detach local mic to a hidden <audio> for monitoring
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!isMonitoring || !isMicEnabled || !room) {
+      // Stop monitoring
+      if (monitorAudioRef.current) {
+        monitorAudioRef.current.srcObject = null;
+        monitorAudioRef.current.remove();
+        monitorAudioRef.current = null;
+        console.log("[LiveKit] Mic monitor OFF");
+      }
+      return;
+    }
+
+    // Find the local mic track
+    const micPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    const mediaTrack = micPub?.track?.mediaStreamTrack;
+    if (!mediaTrack) {
+      console.log("[LiveKit] No mic track to monitor");
+      return;
+    }
+
+    // Create a hidden audio element playing the local mic
+    const audio = document.createElement("audio");
+    audio.id = "lk-mic-monitor";
+    audio.style.display = "none";
+    audio.srcObject = new MediaStream([mediaTrack]);
+    audio.volume = 1.0;
+    document.body.appendChild(audio);
+    void audio.play().catch((err) => console.warn("[LiveKit] Monitor autoplay blocked:", err));
+    monitorAudioRef.current = audio;
+    console.log("[LiveKit] Mic monitor ON");
+
+    return () => {
+      audio.srcObject = null;
+      audio.remove();
+      monitorAudioRef.current = null;
+    };
+  }, [isMonitoring, isMicEnabled]);
+
   // --- Microphone ---
 
   const toggleMic = useCallback(async () => {
@@ -336,6 +387,8 @@ export function useLiveKit({
     error,
     isMicEnabled,
     toggleMic,
+    isMonitoring,
+    toggleMonitor,
     isSharing,
     startSharing,
     stopSharing,
