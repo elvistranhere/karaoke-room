@@ -1,0 +1,7 @@
+node_modules
+.next
+generated
+.env
+.env.local
+.vercel
+.partykit/state

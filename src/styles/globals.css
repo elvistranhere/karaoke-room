@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Righteous", cursive;
+  --font-body: "DM Sans", sans-serif;
+
+  --color-neon-pink: #ff2d78;
+  --color-neon-cyan: #00f0ff;
+  --color-neon-purple: #b84dff;
+  --color-neon-yellow: #ffe156;
+  --color-dark-bg: #0a0a12;
+  --color-dark-surface: #13131f;
+  --color-dark-card: #1a1a2e;
+  --color-dark-border: #2a2a40;
+  --color-text-primary: #e8e8f0;
+  --color-text-secondary: #8888a0;
+}
+
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-rotate {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+body {
+  background-color: var(--color-dark-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  min-height: 100dvh;
+}

@@ -1,0 +1,45 @@
+{
+  "name": "karaoke-room",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --turbo",
+    "dev:party": "npx partykit dev --port 1999",
+    "dev:all": "npx partykit dev --port 1999 & next dev --turbo",
+    "deploy:party": "npx partykit deploy",
+    "preview": "next build && next start",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@t3-oss/env-nextjs": "^0.12.0",
+    "@tanstack/react-query": "^5.69.0",
+    "@trpc/client": "^11.0.0",
+    "@trpc/react-query": "^11.0.0",
+    "@trpc/server": "^11.0.0",
+    "nanoid": "^5.1.7",
+    "next": "^15.2.3",
+    "partysocket": "^1.1.16",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
+    "superjson": "^2.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.15",
+    "@types/node": "^20.14.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "partykit": "^0.0.115",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.0.15",
+    "typescript": "^5.8.2"
+  },
+  "ct3aMetadata": {
+    "initVersion": "7.40.0"
+  },
+  "packageManager": "npm@11.7.0"
+}
