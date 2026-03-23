@@ -32,6 +32,8 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
     selectedOutputId,
     setSelectedInputId,
     setSelectedOutputId,
+    micMode,
+    setMicMode,
   } = useAudioDevices();
 
   const {
@@ -49,6 +51,7 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
     isMyTurn,
     selectedInputDeviceId: selectedInputId,
     selectedOutputDeviceId: selectedOutputId,
+    micMode,
   });
 
   const isConnected = isPartyConnected && isLiveKitConnected;
@@ -148,6 +151,8 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
             selectedOutputId={selectedOutputId}
             onInputChange={setSelectedInputId}
             onOutputChange={setSelectedOutputId}
+            micMode={micMode}
+            onMicModeChange={setMicMode}
           />
         </div>
 

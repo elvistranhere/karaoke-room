@@ -14,12 +14,15 @@ import {
   AudioPresets,
 } from "livekit-client";
 
+import type { MicMode } from "./useAudioDevices";
+
 interface UseLiveKitParams {
   roomCode: string;
   playerName: string;
   isMyTurn: boolean;
   selectedInputDeviceId: string;
   selectedOutputDeviceId: string;
+  micMode: MicMode;
 }
 
 interface UseLiveKitReturn {
@@ -40,6 +43,7 @@ export function useLiveKit({
   isMyTurn,
   selectedInputDeviceId,
   selectedOutputDeviceId,
+  micMode,
 }: UseLiveKitParams): UseLiveKitReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,12 +63,15 @@ export function useLiveKit({
 
     let cancelled = false;
 
+    const isRawMode = micMode === "raw";
     const room = new Room({
       audioCaptureDefaults: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        echoCancellation: !isRawMode,
+        noiseSuppression: !isRawMode,
+        autoGainControl: !isRawMode,
         deviceId: selectedInputDeviceId || undefined,
+        channelCount: isRawMode ? 2 : 1, // stereo for singing, mono for talking
+        sampleRate: isRawMode ? 48000 : undefined,
       },
       audioOutput: {
         deviceId: selectedOutputDeviceId || undefined,
@@ -72,8 +79,10 @@ export function useLiveKit({
       adaptiveStream: true,
       dynacast: true,
       publishDefaults: {
-        audioPreset: AudioPresets.musicHighQualityStereo,
-        dtx: false, // disable discontinuous transmission for music quality
+        audioPreset: isRawMode
+          ? AudioPresets.musicHighQualityStereo
+          : AudioPresets.music,
+        dtx: !isRawMode, // DTX saves bandwidth for voice, disable for music
         red: true, // redundant encoding for packet loss resilience
       },
     });
@@ -181,10 +190,11 @@ export function useLiveKit({
       setIsMicEnabled(false);
       setIsSharing(false);
     };
-    // Note: we intentionally don't include selectedInputDeviceId/selectedOutputDeviceId
-    // in deps — changing devices is handled by separate effects below, not by reconnecting.
+    // micMode is included because changing audio processing requires reconnecting
+    // (getUserMedia constraints can't be changed on an active track).
+    // selectedInputDeviceId/selectedOutputDeviceId are NOT included — handled by separate effects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, playerName]);
+  }, [roomCode, playerName, micMode]);
 
   // --- Switch input device without reconnecting ---
 

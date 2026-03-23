@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AudioDevice } from "~/hooks/useAudioDevices";
+import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 
 interface AudioControlsProps {
   isMicEnabled: boolean;
@@ -12,6 +12,8 @@ interface AudioControlsProps {
   selectedOutputId: string;
   onInputChange: (id: string) => void;
   onOutputChange: (id: string) => void;
+  micMode: MicMode;
+  onMicModeChange: (mode: MicMode) => void;
 }
 
 export function AudioControls({
@@ -23,6 +25,8 @@ export function AudioControls({
   selectedOutputId,
   onInputChange,
   onOutputChange,
+  micMode,
+  onMicModeChange,
 }: AudioControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
 
@@ -59,7 +63,7 @@ export function AudioControls({
         </button>
       </div>
 
-      {/* Mic toggle */}
+      {/* Mic toggle + mode */}
       <div className="flex items-center gap-3">
         <button
           onClick={toggleMic}
@@ -79,6 +83,45 @@ export function AudioControls({
           {isMicEnabled ? <MicIcon /> : <MicOffIcon />}
           {isMicEnabled ? "Mute" : "Unmute"}
         </button>
+
+        {/* Mic mode toggle */}
+        <div
+          className="flex overflow-hidden rounded-lg border"
+          style={{ borderColor: "var(--color-dark-border)" }}
+        >
+          <button
+            onClick={() => onMicModeChange("voice")}
+            className="cursor-pointer px-3 py-2 text-xs font-medium transition-all duration-200"
+            style={{
+              background:
+                micMode === "voice"
+                  ? "rgba(0, 240, 255, 0.15)"
+                  : "var(--color-dark-card)",
+              color:
+                micMode === "voice"
+                  ? "var(--color-neon-cyan)"
+                  : "var(--color-text-secondary)",
+            }}
+          >
+            Voice
+          </button>
+          <button
+            onClick={() => onMicModeChange("raw")}
+            className="cursor-pointer px-3 py-2 text-xs font-medium transition-all duration-200"
+            style={{
+              background:
+                micMode === "raw"
+                  ? "rgba(255, 45, 120, 0.15)"
+                  : "var(--color-dark-card)",
+              color:
+                micMode === "raw"
+                  ? "var(--color-neon-pink)"
+                  : "var(--color-text-secondary)",
+            }}
+          >
+            Raw
+          </button>
+        </div>
       </div>
 
       <p
@@ -86,7 +129,9 @@ export function AudioControls({
         style={{ color: "var(--color-text-secondary)" }}
       >
         {isMicEnabled
-          ? "Your mic is on. Others can hear you talking."
+          ? micMode === "voice"
+            ? "Voice mode: echo cancellation + noise suppression on. Best for talking."
+            : "Raw mode: no audio processing. Best for singing — use headphones!"
           : "Your mic is muted. Click to start talking."}
       </p>
 
@@ -100,6 +145,33 @@ export function AudioControls({
             animation: "float-up 0.2s ease-out",
           }}
         >
+          {/* Mic mode explanation */}
+          <div
+            className="rounded-lg p-3"
+            style={{ background: "var(--color-dark-bg)" }}
+          >
+            <p
+              className="mb-2 text-xs font-bold uppercase tracking-widest"
+              style={{
+                fontFamily: "var(--font-display)",
+                color: "var(--color-neon-yellow)",
+                fontSize: "0.6rem",
+              }}
+            >
+              Mic Mode
+            </p>
+            <div className="space-y-1.5 text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              <p>
+                <span style={{ color: "var(--color-neon-cyan)" }}>Voice</span> — Echo
+                cancellation, noise suppression, auto gain. Great for chatting.
+              </p>
+              <p>
+                <span style={{ color: "var(--color-neon-pink)" }}>Raw</span> — No
+                processing, stereo 48kHz. Preserves your singing voice. Wear headphones to avoid echo.
+              </p>
+            </div>
+          </div>
+
           {/* Mic input selector */}
           <div>
             <label
@@ -166,14 +238,54 @@ export function AudioControls({
             </select>
           </div>
 
-          <p
-            className="text-xs"
-            style={{ color: "var(--color-text-secondary)", opacity: 0.7 }}
+          {/* Current audio settings summary */}
+          <div
+            className="rounded-lg border p-3"
+            style={{
+              borderColor: "var(--color-dark-border)",
+              background: "var(--color-dark-bg)",
+            }}
           >
-            Audio is streamed in high-quality stereo (48kHz Opus).
-          </p>
+            <p
+              className="mb-2 text-xs font-bold uppercase tracking-widest"
+              style={{
+                fontFamily: "var(--font-display)",
+                color: "var(--color-text-secondary)",
+                fontSize: "0.6rem",
+              }}
+            >
+              Active Processing
+            </p>
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <ProcessingRow label="Echo Cancel" active={micMode === "voice"} />
+              <ProcessingRow label="Noise Suppress" active={micMode === "voice"} />
+              <ProcessingRow label="Auto Gain" active={micMode === "voice"} />
+              <ProcessingRow
+                label="Stereo"
+                active={micMode === "raw"}
+              />
+              <ProcessingRow label="48kHz" active={micMode === "raw"} />
+              <ProcessingRow label="High Bitrate" active={micMode === "raw"} />
+            </div>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ProcessingRow({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div
+        className="h-1.5 w-1.5 rounded-full"
+        style={{
+          background: active ? "var(--color-neon-cyan)" : "var(--color-dark-border)",
+        }}
+      />
+      <span style={{ color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)", opacity: active ? 1 : 0.5 }}>
+        {label}
+      </span>
     </div>
   );
 }
