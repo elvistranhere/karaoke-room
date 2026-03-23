@@ -47,6 +47,7 @@ export function useMicrophone(): UseMicrophoneReturn {
       setMicStream(stream);
       setIsMuted(false);
       setError(null);
+      console.log("[Microphone] Mic stream acquired, tracks:", stream.getAudioTracks().map(t => `${t.id}:${t.readyState}`));
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to access microphone";

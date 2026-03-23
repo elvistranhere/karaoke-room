@@ -44,6 +44,7 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
   }>({ handleServerMessage: () => {} });
 
   const onRawMessage = useCallback((msg: ServerMessage) => {
+    console.log("[RoomView] onRawMessage forwarding:", msg.type, "to WebRTC handler");
     webrtcRef.current.handleServerMessage(msg);
   }, []);
 
@@ -66,8 +67,11 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
     isMyTurn,
   });
 
-  // Keep the ref up to date
+  // Keep the ref up to date — MUST happen synchronously during render too
+  // to avoid missing messages between render and effect
+  webrtcRef.current.handleServerMessage = handleServerMessage;
   useEffect(() => {
+    console.log("[RoomView] handleServerMessage ref updated");
     webrtcRef.current.handleServerMessage = handleServerMessage;
   }, [handleServerMessage]);
 
@@ -180,12 +184,17 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
     const audio = audioRef.current;
     if (!audio) return;
 
+    const tracks = stream.getTracks();
+    console.log("[RemoteAudio] Setting stream with", tracks.length, "tracks:", tracks.map(t => `${t.kind}:${t.id}:${t.readyState}`));
+
     audio.srcObject = stream;
     // Force play to handle autoplay policy
     const playPromise = audio.play();
     if (playPromise) {
-      playPromise.catch((err) => {
-        console.warn("Autoplay blocked for remote audio, retrying on user interaction:", err);
+      playPromise.then(() => {
+        console.log("[RemoteAudio] Playing successfully");
+      }).catch((err) => {
+        console.warn("[RemoteAudio] Autoplay blocked, retrying on user interaction:", err);
         // Retry on next user click
         const retry = () => {
           audio.play().catch(() => {});

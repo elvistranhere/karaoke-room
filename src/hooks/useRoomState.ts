@@ -42,6 +42,7 @@ export function useRoomState({
   }, [onRawMessage]);
 
   const onMessage = useCallback((msg: ServerMessage) => {
+    console.log("[RoomState] Received message:", msg.type);
     // Forward all messages to the raw handler (for useWebRTC)
     onRawMessageRef.current?.(msg);
 
@@ -50,10 +51,11 @@ export function useRoomState({
         setRoomState(msg.state);
         break;
       case "you-joined":
+        console.log("[RoomState] My peer ID:", msg.peerId);
         setMyPeerId(msg.peerId);
         break;
       case "error":
-        console.error("Server error:", msg.message);
+        console.error("[RoomState] Server error:", msg.message);
         break;
       // peer-joined, peer-left, signal are forwarded via onRawMessage
       default:

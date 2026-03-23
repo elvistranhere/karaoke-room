@@ -19,6 +19,7 @@ export function useSystemAudio(): UseSystemAudioReturn {
 
   const stopSharing = useCallback(() => {
     if (trackRef.current) {
+      console.log("[SystemAudio] Stopping system audio sharing");
       trackRef.current.stop();
       trackRef.current = null;
       setSystemAudioTrack(null);
@@ -70,6 +71,7 @@ export function useSystemAudio(): UseSystemAudioReturn {
       setSystemAudioTrack(audioTrack);
       setIsSharing(true);
       setError(null);
+      console.log("[SystemAudio] Captured system audio track:", audioTrack.id, audioTrack.readyState);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to capture system audio";
