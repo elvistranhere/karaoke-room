@@ -11,12 +11,15 @@ import {
   ConnectionState,
   type RoomOptions,
   type LocalTrackPublication,
+  AudioPresets,
 } from "livekit-client";
 
 interface UseLiveKitParams {
   roomCode: string;
   playerName: string;
   isMyTurn: boolean;
+  selectedInputDeviceId: string;
+  selectedOutputDeviceId: string;
 }
 
 interface UseLiveKitReturn {
@@ -35,6 +38,8 @@ export function useLiveKit({
   roomCode,
   playerName,
   isMyTurn,
+  selectedInputDeviceId,
+  selectedOutputDeviceId,
 }: UseLiveKitParams): UseLiveKitReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +64,18 @@ export function useLiveKit({
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        deviceId: selectedInputDeviceId || undefined,
+      },
+      audioOutput: {
+        deviceId: selectedOutputDeviceId || undefined,
       },
       adaptiveStream: true,
       dynacast: true,
+      publishDefaults: {
+        audioPreset: AudioPresets.musicHighQualityStereo,
+        dtx: false, // disable discontinuous transmission for music quality
+        red: true, // redundant encoding for packet loss resilience
+      },
     });
 
     roomRef.current = room;
@@ -156,7 +170,6 @@ export function useLiveKit({
 
     return () => {
       cancelled = true;
-      // Stop system audio
       if (systemAudioTrackRef.current) {
         systemAudioTrackRef.current.stop();
         systemAudioTrackRef.current = null;
@@ -168,7 +181,34 @@ export function useLiveKit({
       setIsMicEnabled(false);
       setIsSharing(false);
     };
+    // Note: we intentionally don't include selectedInputDeviceId/selectedOutputDeviceId
+    // in deps — changing devices is handled by separate effects below, not by reconnecting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, playerName]);
+
+  // --- Switch input device without reconnecting ---
+
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room || !isConnected || !selectedInputDeviceId) return;
+
+    console.log("[LiveKit] Switching mic input to device:", selectedInputDeviceId);
+    void room.switchActiveDevice("audioinput", selectedInputDeviceId).catch((err) => {
+      console.error("[LiveKit] Error switching input device:", err);
+    });
+  }, [selectedInputDeviceId, isConnected]);
+
+  // --- Switch output device without reconnecting ---
+
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room || !isConnected || !selectedOutputDeviceId) return;
+
+    console.log("[LiveKit] Switching audio output to device:", selectedOutputDeviceId);
+    void room.switchActiveDevice("audiooutput", selectedOutputDeviceId).catch((err) => {
+      console.error("[LiveKit] Error switching output device:", err);
+    });
+  }, [selectedOutputDeviceId, isConnected]);
 
   // --- Microphone ---
 
@@ -219,10 +259,12 @@ export function useLiveKit({
 
       console.log("[LiveKit] Got system audio track, publishing...");
 
-      // Publish to LiveKit
       const pub = await room.localParticipant.publishTrack(audioTrack, {
         source: Track.Source.ScreenShareAudio,
         name: "karaoke-audio",
+        audioPreset: AudioPresets.musicHighQualityStereo,
+        dtx: false,
+        red: true,
       });
 
       console.log("[LiveKit] System audio published!", pub.trackSid);
@@ -232,10 +274,8 @@ export function useLiveKit({
       setIsSharing(true);
       setSharingError(null);
 
-      // Handle user stopping share via browser UI
       audioTrack.onended = () => {
         console.log("[LiveKit] System audio ended by user");
-        // Unpublish from LiveKit
         if (roomRef.current?.localParticipant && pub.track) {
           void roomRef.current.localParticipant.unpublishTrack(pub.track);
         }
@@ -245,7 +285,7 @@ export function useLiveKit({
       };
     } catch (err) {
       if (err instanceof Error && err.name === "NotAllowedError") {
-        setSharingError(null); // User cancelled the dialog
+        setSharingError(null);
       } else {
         const msg = err instanceof Error ? err.message : "Failed to share audio";
         console.error("[LiveKit] Share error:", err);
@@ -265,9 +305,7 @@ export function useLiveKit({
       void room.localParticipant.unpublishTrack(pub.track);
     }
 
-    if (track) {
-      track.stop();
-    }
+    if (track) track.stop();
 
     systemAudioTrackRef.current = null;
     systemAudioPubRef.current = null;

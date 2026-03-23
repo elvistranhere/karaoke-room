@@ -16,7 +16,7 @@ export function QueuePanel({
   onLeaveQueue,
 }: QueuePanelProps) {
   const isInQueue = myPeerId ? roomState.queue.includes(myPeerId) : false;
-  const isSinging = roomState.currentSingerId === myPeerId;
+  const isSinging = myPeerId !== null && roomState.currentSingerId === myPeerId;
   const isInQueueOrSinging = isInQueue || isSinging;
 
   const queueWithNames = roomState.queue.map((id) => {

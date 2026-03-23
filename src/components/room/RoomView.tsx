@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useEffect } from "react";
 import { useRoomState } from "~/hooks/useRoomState";
 import { useLiveKit } from "~/hooks/useLiveKit";
-import type { ServerMessage } from "~/types/room";
+import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { QueuePanel } from "./QueuePanel";
 import { AudioControls } from "./AudioControls";
 import { ParticipantList } from "./ParticipantList";
@@ -27,6 +26,15 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
   } = useRoomState({ roomCode, playerName });
 
   const {
+    inputDevices,
+    outputDevices,
+    selectedInputId,
+    selectedOutputId,
+    setSelectedInputId,
+    setSelectedOutputId,
+  } = useAudioDevices();
+
+  const {
     isConnected: isLiveKitConnected,
     error: liveKitError,
     isMicEnabled,
@@ -35,7 +43,13 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
     startSharing,
     stopSharing,
     sharingError,
-  } = useLiveKit({ roomCode, playerName, isMyTurn });
+  } = useLiveKit({
+    roomCode,
+    playerName,
+    isMyTurn,
+    selectedInputDeviceId: selectedInputId,
+    selectedOutputDeviceId: selectedOutputId,
+  });
 
   const isConnected = isPartyConnected && isLiveKitConnected;
 
@@ -128,6 +142,12 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
           <AudioControls
             isMicEnabled={isMicEnabled}
             toggleMic={toggleMic}
+            inputDevices={inputDevices}
+            outputDevices={outputDevices}
+            selectedInputId={selectedInputId}
+            selectedOutputId={selectedOutputId}
+            onInputChange={setSelectedInputId}
+            onOutputChange={setSelectedOutputId}
           />
         </div>
 
