@@ -69,16 +69,25 @@ export function useRoomState({
     onRawMessageRef.current?.(msg);
 
     switch (msg.type) {
-      case "room-state":
-        setRoomState(msg.state);
-        setParticipantStatus(msg.state.participantStatus);
+      case "room-state": {
+        // Defensive defaults for fields that may be missing from older PartyKit servers
+        const state = {
+          ...msg.state,
+          chatMessages: msg.state.chatMessages ?? [],
+          participantStatus: msg.state.participantStatus ?? {},
+          queue: msg.state.queue ?? [],
+          participants: msg.state.participants ?? [],
+        };
+        setRoomState(state);
+        setParticipantStatus(state.participantStatus);
         // Only sync chat from room-state on first load (catch-up).
         // After that, chat arrives via individual "chat" events.
         if (!hasReceivedInitialStateRef.current) {
-          setChatMessages(msg.state.chatMessages);
+          setChatMessages(state.chatMessages);
           hasReceivedInitialStateRef.current = true;
         }
         break;
+      }
       case "participant-status":
         setParticipantStatus((prev) => ({
           ...prev,
