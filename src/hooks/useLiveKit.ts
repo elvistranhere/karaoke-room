@@ -63,6 +63,8 @@ export function useLiveKit({
   const systemAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const systemAudioPubRef = useRef<LocalTrackPublication | null>(null);
   const monitorAudioRef = useRef<HTMLAudioElement | null>(null);
+  const micModeRef = useRef<MicMode>(micMode);
+  micModeRef.current = micMode;
 
   // --- Connect to LiveKit room ---
 
@@ -71,7 +73,7 @@ export function useLiveKit({
 
     let cancelled = false;
 
-    const isRawMode = micMode === "raw";
+    const isRawMode = micModeRef.current === "raw";
     const room = new Room({
       audioCaptureDefaults: {
         echoCancellation: !isRawMode,
@@ -221,11 +223,10 @@ export function useLiveKit({
       setIsMicEnabled(false);
       setIsSharing(false);
     };
-    // micMode is included because changing audio processing requires reconnecting
-    // (getUserMedia constraints can't be changed on an active track).
+    // micMode is NOT included — handled by a separate effect that republishes the mic track.
     // selectedInputDeviceId/selectedOutputDeviceId are NOT included — handled by separate effects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, playerName, micMode]);
+  }, [roomCode, playerName]);
 
   // --- Switch input device without reconnecting ---
 
@@ -238,6 +239,41 @@ export function useLiveKit({
       console.error("[LiveKit] Error switching input device:", err);
     });
   }, [selectedInputDeviceId, isConnected]);
+
+  // --- Switch mic mode without reconnecting ---
+  // Republish the mic track with new audio processing constraints.
+
+  const prevMicModeRef = useRef<MicMode>(micMode);
+  useEffect(() => {
+    if (prevMicModeRef.current === micMode) return;
+    prevMicModeRef.current = micMode;
+
+    const room = roomRef.current;
+    if (!room || !isConnected || !isMicEnabled) return;
+
+    const isRaw = micMode === "raw";
+    console.log("[LiveKit] Switching mic mode to:", micMode);
+
+    // Unpublish current mic, then re-enable with new constraints
+    void (async () => {
+      try {
+        await room.localParticipant.setMicrophoneEnabled(false);
+        // Update room options for new mic capture
+        room.options.audioCaptureDefaults = {
+          ...room.options.audioCaptureDefaults,
+          echoCancellation: !isRaw,
+          noiseSuppression: !isRaw,
+          autoGainControl: !isRaw,
+          channelCount: isRaw ? 2 : 1,
+          sampleRate: isRaw ? 48000 : undefined,
+        };
+        await room.localParticipant.setMicrophoneEnabled(true);
+        console.log("[LiveKit] Mic mode switched to", micMode);
+      } catch (err) {
+        console.error("[LiveKit] Error switching mic mode:", err);
+      }
+    })();
+  }, [micMode, isConnected, isMicEnabled]);
 
   // --- Switch output device without reconnecting ---
 

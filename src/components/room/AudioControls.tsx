@@ -100,7 +100,7 @@ export function AudioControls({
         <div
           className="flex overflow-hidden rounded-lg border"
           style={{ borderColor: "var(--color-dark-border)" }}
-          title="Talking mode adds noise reduction. Singing mode preserves your voice."
+          title="Talking: echo cancellation + noise reduction on. Singing: all processing off for better audio quality."
         >
           <button
             onClick={() => onMicModeChange("voice")}
@@ -224,8 +224,8 @@ export function AudioControls({
           ? "⚠ Monitoring on — use headphones to avoid feedback!"
           : isMicEnabled
             ? micMode === "voice"
-              ? "Talking mode — noise reduction on, great for chatting between songs."
-              : "Singing mode — no processing, full quality. Use headphones!"
+              ? "Talking mode — echo cancellation + noise reduction on."
+              : "Singing mode — all processing off for best sound quality. Use headphones to avoid echo!"
             : "Mic is muted. Unmute to talk or sing."}
       </p>
 

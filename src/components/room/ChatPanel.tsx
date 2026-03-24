@@ -100,18 +100,18 @@ export function ChatPanel({ messages, onSend, myPeerId }: ChatPanelProps) {
             No messages yet. Say hi!
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {messages.map((msg, i) => {
               const isMe = msg.from === myPeerId;
               return (
-                <div key={`${msg.timestamp}-${i}`} className="flex items-start gap-2">
-                  <span
-                    className="shrink-0 text-xs"
-                    style={{ color: "var(--color-text-secondary)", marginTop: "2px" }}
-                  >
-                    {formatTime(msg.timestamp)}
-                  </span>
-                  <div className="min-w-0">
+                <div key={`${msg.timestamp}-${i}`} className="min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className="shrink-0 text-[10px] tabular-nums"
+                      style={{ color: "var(--color-text-secondary)" }}
+                    >
+                      {formatTime(msg.timestamp)}
+                    </span>
                     <span
                       className="text-xs font-semibold"
                       style={{ color: isMe ? "var(--color-neon-cyan)" : nameColor(msg.from) }}
@@ -126,13 +126,13 @@ export function ChatPanel({ messages, onSend, myPeerId }: ChatPanelProps) {
                         </span>
                       )}
                     </span>
-                    <p
-                      className="text-sm break-words"
-                      style={{ color: "var(--color-text-primary)" }}
-                    >
-                      {msg.text}
-                    </p>
                   </div>
+                  <p
+                    className="mt-0.5 text-sm break-words pl-[42px]"
+                    style={{ color: "var(--color-text-primary)" }}
+                  >
+                    {msg.text}
+                  </p>
                 </div>
               );
             })}
