@@ -522,12 +522,6 @@ export function useLiveKit({
     const room = roomRef.current;
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
 
-    // During sharing, mic is mixed into the single track — don't toggle LiveKit's managed mic
-    if (mixPubRef.current) {
-      console.log("[LiveKit] Sharing active — mic toggle ignored (mic is in the mix)");
-      return;
-    }
-
     isTogglingMicRef.current = true;
     try {
       const newState = !isMicEnabledRef.current;

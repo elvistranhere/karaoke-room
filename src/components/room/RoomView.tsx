@@ -122,6 +122,23 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
   }, []);
 
+  // Listen for manual song name from singer
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const name = (e as CustomEvent<string>).detail;
+      if (name) {
+        sendStatusUpdate({
+          isMuted: !isMicEnabled,
+          isSharingAudio: isSharing,
+          currentSong: name,
+          browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
+        });
+      }
+    };
+    window.addEventListener("karaoke-set-song", handler);
+    return () => window.removeEventListener("karaoke-set-song", handler);
+  }, [isMicEnabled, isSharing, browser, sendStatusUpdate]);
+
   // Play sound when new reactions arrive
   const prevReactionCountRef = useRef(0);
   useEffect(() => {

@@ -37,14 +37,13 @@ export function Toolbar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
+      className="flex items-center gap-2 rounded-xl border px-3 py-2.5"
       style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
     >
       {/* Mic toggle */}
       <button
         onClick={toggleMic}
-        disabled={isMixActive}
-        className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all duration-150 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all duration-150 hover:scale-105 active:scale-95"
         style={{
           fontFamily: "var(--font-display)",
           background: isMicEnabled ? "var(--color-primary-dim)" : "var(--color-primary)",
@@ -100,8 +99,8 @@ export function Toolbar({
         </button>
       )}
 
-      {/* Divider */}
-      <div className="mx-1 h-5 w-px" style={{ background: "var(--color-dark-border)" }} />
+      {/* Spacer pushes reactions right */}
+      <div className="flex-1" />
 
       {/* Reactions */}
       {REACTIONS.map((emoji) => (

@@ -169,6 +169,14 @@ export function StageBanner({
             </div>
           </div>
 
+          {/* Song name — editable if auto-detect failed */}
+          {!singerSongName && (
+            <SongNameInput onSet={(name) => {
+              // This sets it via a custom event that RoomView can listen to
+              window.dispatchEvent(new CustomEvent("karaoke-set-song", { detail: name }));
+            }} />
+          )}
+
           {/* Mix balance */}
           {onMixMicGain && onMixMusicGain && (
             <MixBalance onMicGain={onMixMicGain} onMusicGain={onMixMusicGain} />
@@ -191,6 +199,42 @@ export function StageBanner({
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function SongNameInput({ onSet }: { onSet: (name: string) => void }) {
+  const [value, setValue] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  if (submitted) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="What are you singing?"
+        maxLength={60}
+        className="flex-1 rounded-lg border px-3 py-1.5 text-xs outline-none transition-all focus:border-[var(--color-primary)]"
+        style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && value.trim()) {
+            onSet(value.trim());
+            setSubmitted(true);
+          }
+        }}
+      />
+      {value.trim() && (
+        <button
+          onClick={() => { onSet(value.trim()); setSubmitted(true); }}
+          className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all hover:brightness-110"
+          style={{ background: "var(--color-primary)", color: "#fff" }}
+        >
+          Set
+        </button>
       )}
     </div>
   );

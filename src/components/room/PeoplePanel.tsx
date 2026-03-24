@@ -27,6 +27,7 @@ export function PeoplePanel({
   onPersonVolumeChange,
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"people" | "queue">("people");
 
   const isInQueue = myPeerId ? roomState.queue.includes(myPeerId) : false;
   const isSinging = myPeerId !== null && roomState.currentSingerId === myPeerId;
@@ -40,23 +41,79 @@ export function PeoplePanel({
       className="flex flex-col rounded-xl border"
       style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <h3
-          className="text-xs font-semibold uppercase tracking-widest"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}
+      {/* Tab header */}
+      <div className="flex border-b" style={{ borderColor: "var(--color-dark-border)" }}>
+        <button
+          onClick={() => setTab("people")}
+          className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all"
+          style={{
+            fontFamily: "var(--font-display)",
+            color: tab === "people" ? "var(--color-primary)" : "var(--color-text-muted)",
+            borderBottom: tab === "people" ? "2px solid var(--color-primary)" : "2px solid transparent",
+          }}
         >
           People
-        </h3>
-        <span
-          className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-          style={{ background: "var(--color-dark-card)", color: "var(--color-text-muted)" }}
+          <span className="rounded-full px-1.5 py-0.5 text-[9px]" style={{ background: "var(--color-dark-card)" }}>
+            {roomState.participants.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setTab("queue")}
+          className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all"
+          style={{
+            fontFamily: "var(--font-display)",
+            color: tab === "queue" ? "var(--color-accent)" : "var(--color-text-muted)",
+            borderBottom: tab === "queue" ? "2px solid var(--color-accent)" : "2px solid transparent",
+          }}
         >
-          {roomState.participants.length}
-        </span>
+          Queue
+          <span className="rounded-full px-1.5 py-0.5 text-[9px]" style={{ background: "var(--color-dark-card)" }}>
+            {roomState.queue.length}
+          </span>
+        </button>
       </div>
 
-      {/* Participant list */}
+      {/* Queue tab */}
+      {tab === "queue" && (
+        <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+          {roomState.queue.length === 0 ? (
+            <p className="py-6 text-center text-xs" style={{ color: "var(--color-text-muted)" }}>
+              Queue is empty — be the first to sing!
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {roomState.queue.map((id, i) => {
+                const p = roomState.participants.find((p) => p.id === id);
+                const isMe = id === myPeerId;
+                return (
+                  <li
+                    key={id}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2"
+                    style={{
+                      background: isMe ? "var(--color-primary-dim)" : "var(--color-dark-card)",
+                      animation: `slide-in 0.2s ease-out ${i * 0.04}s both`,
+                    }}
+                  >
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold"
+                      style={{ background: "var(--color-accent-dim)", color: "var(--color-accent)", fontFamily: "var(--font-display)" }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-sm" style={{ color: isMe ? "var(--color-primary)" : "var(--color-text-primary)" }}>
+                      {p?.name ?? "Unknown"}
+                      {isMe && <span className="ml-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>(you)</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* People tab */}
+      {tab === "people" && (
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-2">
         {roomState.participants.map((p) => {
           const isMe = p.id === myPeerId;
@@ -183,6 +240,7 @@ export function PeoplePanel({
           );
         })}
       </ul>
+      )}
 
       {/* Queue action */}
       <div className="border-t px-3 py-3" style={{ borderColor: "var(--color-dark-border)" }}>
