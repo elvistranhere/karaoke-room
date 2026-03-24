@@ -66,6 +66,15 @@ export function useLiveKit({
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
 
+  // Web Audio bypass: when sharing tab audio, Chrome's system-level echo
+  // cancellation nerfs the mic even with echoCancellation:false. Routing
+  // the mic through an AudioContext → MediaStreamDestination bypasses this.
+  const bypassAudioCtxRef = useRef<AudioContext | null>(null);
+  const bypassSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const bypassDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const bypassRawStreamRef = useRef<MediaStream | null>(null);
+  const bypassPubRef = useRef<LocalTrackPublication | null>(null);
+
   // --- Connect to LiveKit room ---
 
   useEffect(() => {
@@ -228,6 +237,14 @@ export function useLiveKit({
         systemAudioTrackRef.current = null;
       }
       systemAudioPubRef.current = null;
+      // Clean up Web Audio bypass if active
+      bypassSourceRef.current?.disconnect();
+      bypassRawStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (bypassAudioCtxRef.current?.state !== "closed") {
+        void bypassAudioCtxRef.current?.close();
+      }
+      bypassAudioCtxRef.current = null;
+      bypassPubRef.current = null;
       room.disconnect();
       roomRef.current = null;
       setIsConnected(false);
@@ -364,60 +381,98 @@ export function useLiveKit({
 
   // --- System audio sharing ---
 
-  // Force mic to raw/singing mode: no echo cancellation, no noise suppression,
-  // no AGC, stereo 48kHz. This prevents the browser from nerfing the singer's
-  // voice when system audio is also being published.
-  const forceMicRaw = useCallback(async () => {
+  // Publish mic via Web Audio API bypass — routes mic through AudioContext
+  // so Chrome's system-level echo cancellation/AGC can't touch it.
+  // This is the only reliable way to prevent Chrome from nerfing the mic
+  // when getDisplayMedia audio is active (Chromium bug #40226380).
+  const publishBypassMic = useCallback(async () => {
     const room = roomRef.current;
-    if (!room || !isMicEnabled) return;
-    console.log("[LiveKit] Forcing mic to raw mode for sharing...");
-    try {
-      await room.localParticipant.setMicrophoneEnabled(false);
-      room.options.audioCaptureDefaults = {
-        ...room.options.audioCaptureDefaults,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 2,
-        sampleRate: 48000,
-      };
-      room.options.publishDefaults = {
-        ...room.options.publishDefaults,
-        audioPreset: AudioPresets.musicHighQualityStereo,
-        dtx: false, // never drop "silent" packets — singing has quiet moments
-      };
-      await room.localParticipant.setMicrophoneEnabled(true);
-      console.log("[LiveKit] Mic republished in raw mode");
-    } catch (err) {
-      console.error("[LiveKit] Error forcing mic to raw:", err);
-    }
-  }, [isMicEnabled]);
+    if (!room) return;
 
-  // Restore mic to its configured mode (based on micModeRef)
-  const restoreMicMode = useCallback(async () => {
-    const room = roomRef.current;
-    if (!room || !isMicEnabled) return;
-    const isRaw = micModeRef.current === "raw";
-    console.log("[LiveKit] Restoring mic to", micModeRef.current, "mode");
+    console.log("[LiveKit] Publishing mic via Web Audio bypass...");
     try {
-      await room.localParticipant.setMicrophoneEnabled(false);
-      room.options.audioCaptureDefaults = {
-        ...room.options.audioCaptureDefaults,
-        echoCancellation: !isRaw,
-        noiseSuppression: !isRaw,
-        autoGainControl: !isRaw,
-        channelCount: isRaw ? 2 : 1,
-        sampleRate: isRaw ? 48000 : undefined,
-      };
-      room.options.publishDefaults = {
-        ...room.options.publishDefaults,
-        audioPreset: isRaw ? AudioPresets.musicHighQualityStereo : AudioPresets.music,
-        dtx: !isRaw,
-      };
-      await room.localParticipant.setMicrophoneEnabled(true);
-      console.log("[LiveKit] Mic restored to", micModeRef.current);
+      // 1. Capture raw mic with all processing disabled
+      const rawStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 2,
+          sampleRate: 48000,
+        },
+      });
+      bypassRawStreamRef.current = rawStream;
+
+      // 2. Route through AudioContext → bypasses Chrome's system-level processing
+      const ctx = new AudioContext({ sampleRate: 48000 });
+      const source = ctx.createMediaStreamSource(rawStream);
+      const dest = ctx.createMediaStreamDestination();
+      source.connect(dest);
+
+      bypassAudioCtxRef.current = ctx;
+      bypassSourceRef.current = source;
+      bypassDestRef.current = dest;
+
+      // 3. Get the output track (this one is untouched by Chrome's processing)
+      const bypassTrack = dest.stream.getAudioTracks()[0];
+      if (!bypassTrack) throw new Error("No audio track from Web Audio bypass");
+
+      // 4. Mute LiveKit's managed mic to avoid duplicate audio
+      if (isMicEnabled) {
+        await room.localParticipant.setMicrophoneEnabled(false);
+      }
+
+      // 5. Publish the bypass track as a custom track
+      const pub = await room.localParticipant.publishTrack(bypassTrack, {
+        name: "bypass-mic",
+        source: Track.Source.Microphone,
+        audioPreset: AudioPresets.musicHighQualityStereo,
+        dtx: false,
+        red: true,
+      });
+      bypassPubRef.current = pub;
+
+      console.log("[LiveKit] Bypass mic published!", pub.trackSid);
     } catch (err) {
-      console.error("[LiveKit] Error restoring mic mode:", err);
+      console.error("[LiveKit] Error publishing bypass mic:", err);
+    }
+  }, [isMicEnabled, selectedInputDeviceId]);
+
+  // Tear down the Web Audio bypass and restore LiveKit's managed mic
+  const unpublishBypassMic = useCallback(async () => {
+    const room = roomRef.current;
+    console.log("[LiveKit] Tearing down Web Audio bypass mic...");
+
+    // Unpublish the bypass track
+    if (bypassPubRef.current?.track && room?.localParticipant) {
+      void room.localParticipant.unpublishTrack(bypassPubRef.current.track);
+    }
+    bypassPubRef.current = null;
+
+    // Disconnect Web Audio nodes
+    bypassSourceRef.current?.disconnect();
+    bypassSourceRef.current = null;
+    bypassDestRef.current = null;
+
+    // Close AudioContext
+    if (bypassAudioCtxRef.current?.state !== "closed") {
+      void bypassAudioCtxRef.current?.close();
+    }
+    bypassAudioCtxRef.current = null;
+
+    // Stop the raw mic stream
+    bypassRawStreamRef.current?.getTracks().forEach((t) => t.stop());
+    bypassRawStreamRef.current = null;
+
+    // Re-enable LiveKit's managed mic if it was on before
+    if (room && isMicEnabled) {
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        console.log("[LiveKit] Managed mic restored");
+      } catch (err) {
+        console.error("[LiveKit] Error restoring managed mic:", err);
+      }
     }
   }, [isMicEnabled]);
 
@@ -448,12 +503,11 @@ export function useLiveKit({
         return;
       }
 
-      // Force mic to raw mode BEFORE publishing system audio.
-      // This eliminates processing-induced latency between the two tracks
-      // and prevents echo cancellation from suppressing the singer's voice.
-      if (micModeRef.current !== "raw") {
-        await forceMicRaw();
-      }
+      // Switch mic to Web Audio bypass BEFORE publishing system audio.
+      // Chrome's system-level echo cancellation nerfs the mic when it detects
+      // audio output from getDisplayMedia — even with echoCancellation:false.
+      // Routing through AudioContext bypasses this entirely.
+      await publishBypassMic();
 
       // Detect song name from tab title in track label
       const trackLabel = audioTrack.label;
@@ -501,8 +555,8 @@ export function useLiveKit({
         systemAudioPubRef.current = null;
         setIsSharing(false);
         setCurrentSong(null);
-        // Restore mic to configured mode
-        void restoreMicMode();
+        // Restore normal mic
+        void unpublishBypassMic();
       };
     } catch (err) {
       if (err instanceof Error && err.name === "NotAllowedError") {
@@ -513,7 +567,7 @@ export function useLiveKit({
         setSharingError(msg);
       }
     }
-  }, [forceMicRaw, restoreMicMode]);
+  }, [publishBypassMic, unpublishBypassMic]);
 
   const stopSharing = useCallback(() => {
     const room = roomRef.current;
@@ -534,9 +588,9 @@ export function useLiveKit({
     setSharingError(null);
     setCurrentSong(null);
 
-    // Restore mic to configured mode after sharing ends
-    void restoreMicMode();
-  }, [restoreMicMode]);
+    // Restore normal mic
+    void unpublishBypassMic();
+  }, [unpublishBypassMic]);
 
   // Auto-stop sharing when not my turn
   useEffect(() => {
