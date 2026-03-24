@@ -421,18 +421,20 @@ export function useLiveKit({
     const room = roomRef.current;
     if (!room || !isConnected || !selectedOutputDeviceId) return;
 
+    // Only switch output if the browser supports it (setSinkId / speaker-selection)
+    const supportsOutput = typeof HTMLAudioElement.prototype.setSinkId === "function";
+    if (!supportsOutput) {
+      console.log("[LiveKit] Browser does not support audio output selection — skipping");
+      return;
+    }
+
     console.log("[LiveKit] Switching audio output to device:", selectedOutputDeviceId);
-    void room.switchActiveDevice("audiooutput", selectedOutputDeviceId).catch((err) => {
-      console.error("[LiveKit] Error switching output device:", err);
+    void room.switchActiveDevice("audiooutput", selectedOutputDeviceId).catch(() => {
+      // Silently ignore — some browsers don't support this
     });
 
-    // Also update our manually created <audio> elements (remote tracks)
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      if (typeof el.setSinkId === "function") {
-        void el.setSinkId(selectedOutputDeviceId).catch((err) => {
-          console.error("[LiveKit] Error setting sink on audio element:", err);
-        });
-      }
+      void el.setSinkId(selectedOutputDeviceId).catch(() => {});
     });
   }, [selectedOutputDeviceId, isConnected]);
 
