@@ -322,7 +322,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         </div>
 
         {/* Right: People panel */}
-        <div className="flex w-full flex-col lg:w-72">
+        <div className="flex max-h-64 w-full flex-col lg:max-h-none lg:w-72">
           <PeoplePanel
             roomState={roomState}
             myPeerId={myPeerId}

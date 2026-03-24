@@ -77,9 +77,21 @@ function playShimmer(ctx: AudioContext) {
   });
 }
 
+// Shared AudioContext for all reaction sounds — avoids Chrome's context limit
+let reactionCtx: AudioContext | null = null;
+function getReactionCtx(): AudioContext {
+  if (!reactionCtx || reactionCtx.state === "closed") {
+    reactionCtx = new AudioContext();
+  }
+  if (reactionCtx.state === "suspended") {
+    void reactionCtx.resume();
+  }
+  return reactionCtx;
+}
+
 export function playReactionSound(emoji: string) {
   try {
-    const ctx = new AudioContext();
+    const ctx = getReactionCtx();
     switch (emoji) {
       case "🔥":
         playChime(ctx, [440, 554, 659, 880]);
@@ -102,7 +114,7 @@ export function playReactionSound(emoji: string) {
       default:
         playPop(ctx, 880);
     }
-    setTimeout(() => ctx.close(), 500);
+    // Shared context stays open — no close needed
   } catch {
     // AudioContext may not be available
   }
@@ -115,16 +127,7 @@ interface ReactionBarProps {
 
 export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
   const cooldownRef = useRef(false);
-  const prevCountRef = useRef(0);
-
-  // Play sound when new reactions arrive
-  useEffect(() => {
-    if (reactions.length > prevCountRef.current && reactions.length > 0) {
-      const latest = reactions[reactions.length - 1]!;
-      playReactionSound(latest.emoji);
-    }
-    prevCountRef.current = reactions.length;
-  }, [reactions]);
+  // Sound playback is handled by RoomView — this component only renders UI
 
   const handleReact = useCallback(
     (emoji: string) => {

@@ -338,7 +338,7 @@ export function PeoplePanel({
                 className="flex-1 cursor-pointer rounded-lg py-2.5 text-xs font-bold transition-all hover:brightness-110"
                 style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
               >
-                {songIntent.trim() ? "Join Queue" : "Join Queue"}
+                Join Queue
               </button>
               <button
                 onClick={() => {

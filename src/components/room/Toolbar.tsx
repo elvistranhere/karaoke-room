@@ -37,7 +37,7 @@ export function Toolbar({
 
   return (
     <div
-      className="flex items-center gap-2 rounded-xl border px-3 py-2.5"
+      className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5"
       style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
     >
       {/* Mic toggle */}
