@@ -70,6 +70,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     remoteParticipantCount,
     currentSong,
     activeSpeakers,
+    setMixMicGain,
+    setMixMusicGain,
   } = useLiveKit({
     roomCode,
     playerName,
@@ -260,6 +262,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             }
             musicVolume={musicVolume}
             onMusicVolumeChange={handleMusicVolumeChange}
+            onMixMicGain={setMixMicGain}
+            onMixMusicGain={setMixMusicGain}
           />
 
           <ReactionBar

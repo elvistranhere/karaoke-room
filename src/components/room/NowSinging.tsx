@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { RoomState } from "~/types/room";
 
 interface NowSingingProps {
@@ -14,6 +15,8 @@ interface NowSingingProps {
   singerSongName: string | null;
   musicVolume: number;
   onMusicVolumeChange: (vol: number) => void;
+  onMixMicGain?: (val: number) => void;
+  onMixMusicGain?: (val: number) => void;
 }
 
 export function NowSinging({
@@ -28,6 +31,8 @@ export function NowSinging({
   singerSongName,
   musicVolume,
   onMusicVolumeChange,
+  onMixMicGain,
+  onMixMusicGain,
 }: NowSingingProps) {
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
@@ -193,7 +198,10 @@ export function NowSinging({
                 Sharing audio to room — everyone can hear the music
               </div>
 
-              <MusicVolumeSlider volume={musicVolume} onChange={onMusicVolumeChange} />
+              {/* Mix balance — singer controls music vs voice ratio */}
+              {onMixMicGain && onMixMusicGain && (
+                <MixBalanceSlider onMicGain={onMixMicGain} onMusicGain={onMixMusicGain} />
+              )}
 
               <div className="flex w-full gap-3">
                 <button
@@ -350,6 +358,33 @@ function StepRow({
           {hint}
         </p>
       </div>
+    </div>
+  );
+}
+
+function MixBalanceSlider({ onMicGain, onMusicGain }: { onMicGain: (v: number) => void; onMusicGain: (v: number) => void }) {
+  const [balance, setBalance] = useState(50); // 0=all voice, 100=all music
+
+  const handleChange = (val: number) => {
+    setBalance(val);
+    // At 50 both are 1.0. At 0 music=0 voice=1. At 100 music=1 voice=0.
+    // Use a curve so the center feels balanced
+    onMusicGain(val / 50); // 0→0, 50→1, 100→2
+    onMicGain((100 - val) / 50); // 100→0, 50→1, 0→2
+  };
+
+  return (
+    <div className="flex w-full max-w-md items-center gap-3">
+      <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Voice</span>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={balance}
+        onChange={(e) => handleChange(Number(e.target.value))}
+        className="volume-slider flex-1"
+      />
+      <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Music</span>
     </div>
   );
 }
