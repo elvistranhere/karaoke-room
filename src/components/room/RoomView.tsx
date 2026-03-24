@@ -318,6 +318,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             micCheckState={micCheckState}
             onMicCheck={startMicCheck}
             onReact={sendReaction}
+            isSharing={isSharing}
           />
 
           {/* Chat — gets the most space */}

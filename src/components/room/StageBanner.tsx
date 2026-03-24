@@ -234,7 +234,14 @@ function VoiceEffectSelector({ current, onChange, onWetDry }: {
   onChange: (effect: VoiceEffect) => void;
   onWetDry?: (wet: number) => void;
 }) {
-  const [wetDry, setWetDry] = useState(50); // 0-100
+  const [wetDry, setWetDry] = useState(70); // 0-100, default 70% wet for audible effect
+
+  // Apply initial wet/dry when effect changes
+  useEffect(() => {
+    if (current !== "none") {
+      onWetDry?.(wetDry / 100);
+    }
+  }, [current]);
 
   const handleWetDry = (val: number) => {
     setWetDry(val);

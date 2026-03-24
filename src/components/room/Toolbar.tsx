@@ -12,6 +12,7 @@ interface ToolbarProps {
   micCheckState: MicCheckState;
   onMicCheck: () => void;
   onReact: (emoji: string) => void;
+  isSharing?: boolean;
 }
 
 const REACTIONS = ["🔥", "👏", "😍", "🎵", "💯", "🙌"];
@@ -24,6 +25,7 @@ export function Toolbar({
   micCheckState,
   onMicCheck,
   onReact,
+  isSharing = false,
 }: ToolbarProps) {
   const cooldownRef = useRef(false);
   const handleReact = useCallback((emoji: string) => {
@@ -81,8 +83,8 @@ export function Toolbar({
         </button>
       </div>
 
-      {/* Mic check */}
-      {isMicEnabled && (
+      {/* Mic check — hidden during sharing (you're already live) */}
+      {isMicEnabled && !isSharing && (
         <button
           onClick={onMicCheck}
           disabled={micCheckState !== "idle"}

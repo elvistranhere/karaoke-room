@@ -53,11 +53,11 @@ function createHall(ctx: AudioContext): EffectChain {
   const wet = ctx.createGain();
   const merger = ctx.createGain();
 
-  dry.gain.value = 0.6;
-  wet.gain.value = 0.4;
+  dry.gain.value = 0.5;
+  wet.gain.value = 0.5;
 
   const convolver = ctx.createConvolver();
-  convolver.buffer = createImpulseResponse(ctx, 2.5, 2.0); // 2.5s decay
+  convolver.buffer = createImpulseResponse(ctx, 3.0, 1.5); // 3s decay, slower falloff = bigger hall
 
   // Input → dry → merger
   // Input → convolver → wet → merger
@@ -81,8 +81,8 @@ function createHall(ctx: AudioContext): EffectChain {
       merger.disconnect();
     },
     setWetDry: (w) => {
-      wet.gain.value = w * 0.6;
-      dry.gain.value = 1 - w * 0.4;
+      wet.gain.value = w;
+      dry.gain.value = 1 - w * 0.5;
     },
   };
 }
@@ -98,10 +98,10 @@ function createEcho(ctx: AudioContext): EffectChain {
   const delay = ctx.createDelay(1.0);
   const feedback = ctx.createGain();
 
-  dry.gain.value = 0.7;
-  wet.gain.value = 0.3;
-  delay.delayTime.value = 0.25; // 250ms delay
-  feedback.gain.value = 0.4; // 40% feedback
+  dry.gain.value = 0.6;
+  wet.gain.value = 0.5;
+  delay.delayTime.value = 0.3; // 300ms delay — more audible
+  feedback.gain.value = 0.5; // 50% feedback — more repeats
 
   // Dry path
   input.connect(dry);
@@ -126,8 +126,8 @@ function createEcho(ctx: AudioContext): EffectChain {
       merger.disconnect();
     },
     setWetDry: (w) => {
-      wet.gain.value = w * 0.5;
-      dry.gain.value = 1 - w * 0.3;
+      wet.gain.value = w * 0.8;
+      dry.gain.value = 1 - w * 0.4;
     },
   };
 }
