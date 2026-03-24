@@ -13,6 +13,8 @@ interface StageBannerProps {
   audioError: string | null;
   singerSongName: string | null;
   canSing: boolean;
+  musicVolume?: number;
+  onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
 }
@@ -27,6 +29,8 @@ export function StageBanner({
   audioError,
   singerSongName,
   canSing,
+  musicVolume = 1,
+  onMusicVolumeChange,
   onMixMicGain,
   onMixMusicGain,
 }: StageBannerProps) {
@@ -78,6 +82,12 @@ export function StageBanner({
           />
           <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Listening</span>
         </div>
+        {onMusicVolumeChange && (
+          <div className="flex items-center gap-2">
+            <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider volume-slider--music w-20" />
+            <span className="w-5 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -85,14 +95,14 @@ export function StageBanner({
   // My turn — expanded with controls
   return (
     <div
-      className="rounded-xl border p-4"
+      className="relative overflow-hidden rounded-xl border p-4"
       style={{
         background: "var(--color-dark-surface)",
         borderColor: "var(--color-primary)",
       }}
     >
       <div
-        className="absolute left-0 top-0 h-0.5 w-full rounded-t-xl"
+        className="absolute left-0 top-0 h-0.5 w-full"
         style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-accent))" }}
       />
 
@@ -188,16 +198,40 @@ export function StageBanner({
 
 function MixBalance({ onMicGain, onMusicGain }: { onMicGain: (v: number) => void; onMusicGain: (v: number) => void }) {
   const [balance, setBalance] = useState(50);
-  const handleChange = (val: number) => {
+
+  const handleChange = (raw: number) => {
+    // Snap to center (50) when within 3 units
+    const val = Math.abs(raw - 50) < 3 ? 50 : raw;
     setBalance(val);
     onMusicGain(val / 50);
     onMicGain((100 - val) / 50);
   };
+
+  const voicePct = Math.round((100 - balance) / 50 * 100);
+  const musicPct = Math.round(balance / 50 * 100);
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Voice</span>
-      <input type="range" min="0" max="100" value={balance} onChange={(e) => handleChange(Number(e.target.value))} className="volume-slider flex-1" />
-      <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Music</span>
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="w-14 text-right text-[10px]" style={{ color: balance <= 50 ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+          Voice {voicePct}%
+        </span>
+        <div className="relative flex-1">
+          {/* Center tick mark */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2" style={{ background: "var(--color-dark-border)" }} />
+          <input
+            type="range" min="0" max="100" value={balance}
+            onChange={(e) => handleChange(Number(e.target.value))}
+            className="volume-slider w-full"
+          />
+        </div>
+        <span className="w-14 text-[10px]" style={{ color: balance >= 50 ? "var(--color-accent)" : "var(--color-text-muted)" }}>
+          {musicPct}% Music
+        </span>
+      </div>
+      {balance === 50 && (
+        <p className="text-center text-[9px]" style={{ color: "var(--color-text-muted)" }}>Balanced</p>
+      )}
     </div>
   );
 }

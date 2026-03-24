@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRoomState } from "~/hooks/useRoomState";
 import { useLiveKit } from "~/hooks/useLiveKit";
@@ -13,7 +13,7 @@ import { ChatPanel } from "./ChatPanel";
 import { InviteCode } from "./InviteCode";
 import { StatusBar } from "./StatusBar";
 import { SettingsDrawer } from "./SettingsDrawer";
-import type { Reaction } from "~/hooks/useRoomState";
+import { playReactionSound } from "./ReactionBar";
 
 interface RoomViewProps {
   roomCode: string;
@@ -86,16 +86,21 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   const isConnected = isPartyConnected && isLiveKitConnected;
 
   // Volume controls
+  const [musicVolume, setMusicVolume] = useState(1);
   const [voiceVolume, setVoiceVolume] = useState(1);
   const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
 
   const applyAllVolumes = useCallback(() => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      const identity = el.dataset.lkIdentity ?? "";
-      const personVol = personVolumes[identity] ?? 1;
-      el.volume = voiceVolume * personVol;
+      if (el.dataset.lkType === "music") {
+        el.volume = musicVolume;
+      } else {
+        const identity = el.dataset.lkIdentity ?? "";
+        const personVol = personVolumes[identity] ?? 1;
+        el.volume = voiceVolume * personVol;
+      }
     });
-  }, [voiceVolume, personVolumes]);
+  }, [musicVolume, voiceVolume, personVolumes]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
@@ -116,6 +121,16 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
   }, []);
+
+  // Play sound when new reactions arrive
+  const prevReactionCountRef = useRef(0);
+  useEffect(() => {
+    if (reactions.length > prevReactionCountRef.current && reactions.length > 0) {
+      const latest = reactions[reactions.length - 1]!;
+      playReactionSound(latest.emoji);
+    }
+    prevReactionCountRef.current = reactions.length;
+  }, [reactions]);
 
   // Send status updates
   useEffect(() => {
@@ -234,6 +249,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
                 : null
             }
             canSing={browser.canSing}
+            musicVolume={musicVolume}
+            onMusicVolumeChange={setMusicVolume}
             onMixMicGain={setMixMicGain}
             onMixMusicGain={setMixMusicGain}
           />

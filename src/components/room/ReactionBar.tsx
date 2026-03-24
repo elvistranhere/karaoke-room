@@ -77,7 +77,7 @@ function playShimmer(ctx: AudioContext) {
   });
 }
 
-function playReactionSound(emoji: string) {
+export function playReactionSound(emoji: string) {
   try {
     const ctx = new AudioContext();
     switch (emoji) {

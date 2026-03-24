@@ -1,8 +1,8 @@
 "use client";
 
+import { useCallback, useRef } from "react";
 import type { MicCheckState } from "~/hooks/useLiveKit";
 import type { MicMode } from "~/hooks/useAudioDevices";
-import type { Reaction } from "~/hooks/useRoomState";
 
 interface ToolbarProps {
   isMicEnabled: boolean;
@@ -27,6 +27,14 @@ export function Toolbar({
   onReact,
   isMixActive,
 }: ToolbarProps) {
+  const cooldownRef = useRef(false);
+  const handleReact = useCallback((emoji: string) => {
+    if (cooldownRef.current) return;
+    cooldownRef.current = true;
+    onReact(emoji);
+    setTimeout(() => { cooldownRef.current = false; }, 500);
+  }, [onReact]);
+
   return (
     <div
       className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
@@ -99,7 +107,7 @@ export function Toolbar({
       {REACTIONS.map((emoji) => (
         <button
           key={emoji}
-          onClick={() => onReact(emoji)}
+          onClick={() => handleReact(emoji)}
           className="cursor-pointer rounded-md px-1.5 py-1 text-base transition-transform hover:scale-125 active:scale-90"
           title={`React with ${emoji}`}
         >

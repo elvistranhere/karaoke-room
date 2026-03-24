@@ -57,7 +57,6 @@ export function ChatPanel({ messages, onSend, myPeerId }: ChatPanelProps) {
       style={{
         background: "var(--color-dark-surface)",
         borderColor: "var(--color-dark-border)",
-        height: "320px",
       }}
     >
       {/* Header */}

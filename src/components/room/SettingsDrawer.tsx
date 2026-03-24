@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 
 interface SettingsDrawerProps {
@@ -29,6 +30,13 @@ export function SettingsDrawer({
   onOutputChange,
   micMode,
 }: SettingsDrawerProps) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
