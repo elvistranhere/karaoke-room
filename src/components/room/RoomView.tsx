@@ -68,6 +68,7 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
     sharingError,
     remoteParticipantCount,
     currentSong,
+    activeSpeakers,
   } = useLiveKit({
     roomCode,
     playerName,
@@ -284,6 +285,7 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
             currentSingerId={roomState.currentSingerId}
             myPeerId={myPeerId}
             participantStatus={participantStatus}
+            activeSpeakers={activeSpeakers}
           />
         </div>
       </div>

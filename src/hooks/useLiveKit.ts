@@ -41,6 +41,7 @@ interface UseLiveKitReturn {
   sharingError: string | null;
   remoteParticipantCount: number;
   currentSong: string | null;
+  activeSpeakers: Set<string>; // identities of currently speaking participants
 }
 
 export function useLiveKit({
@@ -60,6 +61,7 @@ export function useLiveKit({
   const [currentSong, setCurrentSong] = useState<string | null>(null);
 
   const [micCheckState, setMicCheckState] = useState<MicCheckState>("idle");
+  const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
 
   const roomRef = useRef<Room | null>(null);
   const systemAudioTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -167,6 +169,12 @@ export function useLiveKit({
     };
     room.on(RoomEvent.ParticipantConnected, updateCount);
     room.on(RoomEvent.ParticipantDisconnected, updateCount);
+
+    // Active speakers — highlight who is talking
+    room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      if (cancelled) return;
+      setActiveSpeakers(new Set(speakers.map((p) => p.identity)));
+    });
 
     // Connection state — including reconnect awareness
     room.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
@@ -785,5 +793,6 @@ export function useLiveKit({
     sharingError,
     remoteParticipantCount,
     currentSong,
+    activeSpeakers,
   };
 }

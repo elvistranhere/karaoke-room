@@ -7,6 +7,7 @@ interface ParticipantListProps {
   currentSingerId: string | null;
   myPeerId: string | null;
   participantStatus?: Record<string, ParticipantStatus>;
+  activeSpeakers?: Set<string>;
 }
 
 export function ParticipantList({
@@ -14,6 +15,7 @@ export function ParticipantList({
   currentSingerId,
   myPeerId,
   participantStatus = {},
+  activeSpeakers = new Set(),
 }: ParticipantListProps) {
   return (
     <div
@@ -48,33 +50,52 @@ export function ParticipantList({
       <ul className="space-y-1.5">
         {participants.map((p, i) => {
           const status = participantStatus[p.id];
+          // Match by name prefix — LiveKit identity is "name-randomhex"
+          const isSpeaking = Array.from(activeSpeakers).some((id) =>
+            id.startsWith(p.name + "-") || id === p.name
+          );
           return (
             <li
               key={p.id}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-200"
               style={{
-                background:
-                  p.id === myPeerId
-                    ? "rgba(0, 240, 255, 0.06)"
+                background: isSpeaking
+                  ? "rgba(139, 92, 246, 0.12)"
+                  : p.id === myPeerId
+                    ? "rgba(139, 92, 246, 0.06)"
                     : "transparent",
+                boxShadow: isSpeaking
+                  ? "inset 0 0 0 1px rgba(139, 92, 246, 0.3)"
+                  : "none",
                 animation: `slide-in 0.3s ease-out ${i * 0.04}s both`,
               }}
             >
               <div
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"
                 style={{
-                  background:
-                    p.id === currentSingerId
-                      ? "rgba(255, 45, 120, 0.2)"
+                  background: isSpeaking
+                    ? "rgba(139, 92, 246, 0.3)"
+                    : p.id === currentSingerId
+                      ? "var(--color-primary-dim)"
                       : "var(--color-dark-card)",
-                  color:
-                    p.id === currentSingerId
-                      ? "var(--color-neon-pink)"
+                  color: isSpeaking
+                    ? "var(--color-primary)"
+                    : p.id === currentSingerId
+                      ? "var(--color-primary)"
                       : "var(--color-text-secondary)",
                   fontFamily: "var(--font-display)",
                 }}
               >
                 {p.id === currentSingerId ? "🎤" : p.name.charAt(0).toUpperCase()}
+                {isSpeaking && (
+                  <span
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      border: "2px solid var(--color-primary)",
+                      animation: "pulse-ring 1.2s ease-out infinite",
+                    }}
+                  />
+                )}
               </div>
 
               <div className="flex min-w-0 flex-1 items-center gap-2">
