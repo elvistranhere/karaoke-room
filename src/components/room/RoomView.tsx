@@ -24,8 +24,11 @@ interface RoomViewProps {
 
 export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   const router = useRouter();
-  const [browser, setBrowser] = useState<BrowserInfo>({ name: "Unknown", isChromium: true, canSing: true, isMobile: false });
-  useEffect(() => { setBrowser(detectBrowser()); }, []);
+  const [browser] = useState<BrowserInfo>(() =>
+    typeof window !== "undefined"
+      ? detectBrowser()
+      : { name: "Unknown", isChromium: true, canSing: true, isMobile: false }
+  );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -107,19 +110,23 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
+  // Ref-stable callback for MutationObserver — avoids re-registering on volume changes
+  const applyVolumesRef = useRef(applyAllVolumes);
+  applyVolumesRef.current = applyAllVolumes;
+
   useEffect(() => {
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (node instanceof HTMLAudioElement && node.id?.startsWith("lk-audio-")) {
-            applyAllVolumes();
+            applyVolumesRef.current();
           }
         }
       }
     });
     observer.observe(document.body, { childList: true });
     return () => observer.disconnect();
-  }, [applyAllVolumes]);
+  }, []);
 
   const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
@@ -133,22 +140,20 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     }
   }, [roomState.currentSingerId, roomState.participants]);
 
-  // Listen for manual song name from singer
+  // Listen for manual song name from singer — ref-stable to avoid re-registration
+  const statusCtxRef = useRef({ isMicEnabled, isSharing, browser, sendStatusUpdate });
+  statusCtxRef.current = { isMicEnabled, isSharing, browser, sendStatusUpdate };
+
   useEffect(() => {
     const handler = (e: Event) => {
       const name = (e as CustomEvent<string>).detail;
-      if (name) {
-        sendStatusUpdate({
-          isMuted: !isMicEnabled,
-          isSharingAudio: isSharing,
-          currentSong: name,
-          browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
-        });
-      }
+      if (!name) return;
+      const { isMicEnabled: mic, isSharing: share, browser: b, sendStatusUpdate: send } = statusCtxRef.current;
+      send({ isMuted: !mic, isSharingAudio: share, currentSong: name, browser: b.name + (b.isMobile ? " (Mobile)" : "") });
     };
     window.addEventListener("karaoke-set-song", handler);
     return () => window.removeEventListener("karaoke-set-song", handler);
-  }, [isMicEnabled, isSharing, browser, sendStatusUpdate]);
+  }, []);
 
   // Play sound when new reactions arrive
   const prevReactionCountRef = useRef(0);
@@ -184,7 +189,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
 
       {/* Header */}
       <header
-        className="relative z-10 flex items-center justify-between border-b px-4 py-3 lg:px-6"
+        className="relative z-10 flex items-center justify-between border-b px-3 py-2 lg:px-6 lg:py-3"
         style={{ borderColor: "var(--color-dark-border)" }}
       >
         <div className="flex items-center gap-3">
@@ -263,9 +268,9 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       )}
 
       {/* Main content */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row lg:gap-4 lg:p-4">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row lg:gap-4 lg:p-4">
         {/* Left: Stage + Toolbar + Chat */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:gap-3">
           <StageBanner
             roomState={roomState}
             isMyTurn={isMyTurn}
@@ -322,7 +327,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         </div>
 
         {/* Right: People panel */}
-        <div className="flex max-h-64 w-full flex-col lg:max-h-none lg:w-72">
+        <div className="flex max-h-52 w-full flex-col overflow-hidden lg:max-h-none lg:w-72">
           <PeoplePanel
             roomState={roomState}
             myPeerId={myPeerId}
@@ -347,7 +352,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       </div>
 
       {/* Floating reactions */}
-      {reactions.length > 0 && (
+      {reactions.length > 0 ? (
         <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
           {reactions.map((r) => (
             <span
@@ -363,7 +368,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             </span>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Status bar */}
       <StatusBar
