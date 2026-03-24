@@ -20,6 +20,7 @@ interface StageBannerProps {
   onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
+  ambientId?: string;
 }
 
 export function StageBanner({
@@ -37,6 +38,7 @@ export function StageBanner({
   onMusicVolumeChange,
   onMixMicGain,
   onMixMusicGain,
+  ambientId,
 }: StageBannerProps) {
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
@@ -62,7 +64,7 @@ export function StageBanner({
   // Someone else singing — informational banner with volume
   if (!isMyTurn) {
     return (
-      <AudioVisualizer room={room} isActive={isSomeoneSinging}>
+      <AudioVisualizer room={room} isActive={isSomeoneSinging} ambientId={ambientId}>
       <div
         className="relative overflow-hidden rounded-xl px-4 py-3"
         style={{ background: "var(--color-dark-surface)" }}
@@ -103,7 +105,7 @@ export function StageBanner({
 
   // My turn — expanded with controls
   return (
-    <AudioVisualizer room={room} isActive={isSharing}>
+    <AudioVisualizer room={room} isActive={isSharing} ambientId={ambientId}>
     <div
       className="relative overflow-hidden rounded-xl p-4"
       style={{ background: "var(--color-dark-surface)" }}

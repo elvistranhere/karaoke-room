@@ -178,10 +178,11 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       {/* Audio unlock prompt — dismisses on first click to satisfy autoplay policy */}
       <AudioUnlockOverlay />
 
-      {/* Ambient background */}
+      {/* Ambient background — driven by audio visualizer when someone sings */}
       <div
-        className="pointer-events-none fixed inset-0 opacity-[0.04]"
-        style={{ background: "radial-gradient(ellipse at 20% 50%, var(--color-primary), transparent 50%), radial-gradient(ellipse at 80% 50%, var(--color-accent), transparent 50%)" }}
+        id="ambient-bg"
+        className="pointer-events-none fixed inset-0 transition-[background] duration-150"
+        style={{ background: "radial-gradient(ellipse 40% 40% at 20% 80%, rgba(139, 92, 246, 0.03), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, rgba(245, 158, 11, 0.02), transparent)" }}
       />
 
       {/* Header */}
@@ -300,6 +301,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             }}
             onMixMicGain={setMixMicGain}
             onMixMusicGain={setMixMusicGain}
+            ambientId="ambient-bg"
           />
 
           <Toolbar

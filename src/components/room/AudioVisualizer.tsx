@@ -8,6 +8,7 @@ interface AudioVisualizerProps {
   room: Room | null;
   isActive: boolean;
   children: React.ReactNode;
+  ambientId?: string; // ID of the ambient background div to pulse
 }
 
 // Shared analyser
@@ -81,7 +82,7 @@ function getAudioEnergy(analyser: AnalyserNode | null): { bass: number; mid: num
   return { bass, mid, high, overall };
 }
 
-export function AudioVisualizer({ room, isActive, children }: AudioVisualizerProps) {
+export function AudioVisualizer({ room, isActive, children, ambientId }: AudioVisualizerProps) {
   const rafRef = useRef<number>(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const trackCheckCounter = useRef(0);
@@ -112,18 +113,34 @@ export function AudioVisualizer({ room, isActive, children }: AudioVisualizerPro
       const el = wrapperRef.current;
       if (el) {
         const intensity = energy.overall;
-        const spread = Math.round(8 + intensity * 24); // 8-32px
-        const opacity = Math.min(intensity * 1.2, 0.7);
+        const spread = Math.round(12 + intensity * 36); // 12-48px
+        const opacity = Math.min(intensity * 1.5, 0.85);
 
         // Multi-color glow: violet from bass, amber from highs
-        const violetGlow = `0 0 ${spread}px rgba(139, 92, 246, ${opacity * energy.bass})`;
-        const amberGlow = `0 0 ${Math.round(spread * 0.7)}px rgba(245, 158, 11, ${opacity * energy.high * 2})`;
-        const innerGlow = `inset 0 0 ${Math.round(spread * 0.4)}px rgba(139, 92, 246, ${opacity * 0.3})`;
+        const violetGlow = `0 0 ${spread}px rgba(139, 92, 246, ${opacity * Math.max(energy.bass, 0.3)})`;
+        const amberGlow = `0 0 ${Math.round(spread * 0.8)}px rgba(245, 158, 11, ${opacity * energy.high * 2.5})`;
+        const innerGlow = `inset 0 0 ${Math.round(spread * 0.5)}px rgba(139, 92, 246, ${opacity * 0.4})`;
 
         el.style.boxShadow = `${violetGlow}, ${amberGlow}, ${innerGlow}`;
         el.style.borderColor = intensity > 0.15
           ? `rgba(139, 92, 246, ${0.4 + intensity * 0.6})`
           : "";
+      }
+
+      // Ambient viewport background — subtle color shift with music
+      if (ambientId) {
+        const ambientEl = document.getElementById(ambientId);
+        if (ambientEl) {
+          // Bass → violet blob (bottom-left), Highs → amber blob (top-right)
+          const bassOpacity = 0.03 + energy.bass * 0.1; // 3% → 13%
+          const highOpacity = 0.02 + energy.high * 0.08; // 2% → 10%
+          const bassSize = 40 + energy.bass * 20; // 40% → 60% spread
+          const highSize = 35 + energy.high * 15;
+
+          ambientEl.style.background =
+            `radial-gradient(ellipse ${bassSize}% ${bassSize}% at 20% 80%, rgba(139, 92, 246, ${bassOpacity}), transparent), ` +
+            `radial-gradient(ellipse ${highSize}% ${highSize}% at 80% 20%, rgba(245, 158, 11, ${highOpacity}), transparent)`;
+        }
       }
 
       rafRef.current = requestAnimationFrame(update);
