@@ -119,8 +119,9 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
       isMuted: !isMicEnabled,
       isSharingAudio: isSharing,
       currentSong,
+      browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
     });
-  }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate]);
+  }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser]);
 
   return (
     <main className="relative flex min-h-dvh flex-col overflow-hidden">

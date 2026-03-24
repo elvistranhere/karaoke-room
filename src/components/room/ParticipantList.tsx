@@ -109,6 +109,17 @@ export function ParticipantList({
                         <MicOnSmallIcon />
                       )}
 
+                      {/* Browser */}
+                      {status.browser && (
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "var(--color-text-secondary)", opacity: 0.7 }}
+                          title={status.browser}
+                        >
+                          {status.browser}
+                        </span>
+                      )}
+
                       {/* Sharing audio */}
                       {status.isSharingAudio && <MusicNoteIcon />}
 

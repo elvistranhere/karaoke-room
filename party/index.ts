@@ -56,6 +56,7 @@ export default class KaraokeRoom implements Party.Server {
           isMuted: msg.isMuted,
           isSharingAudio: msg.isSharingAudio,
           currentSong: msg.currentSong,
+          browser: msg.browser,
         });
         break;
       case "reaction":

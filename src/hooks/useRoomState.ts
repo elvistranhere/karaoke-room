@@ -16,6 +16,7 @@ export interface Reaction {
   fromName: string;
   emoji: string;
   timestamp: number;
+  left: number; // random horizontal position (0-100%), set once at creation
 }
 
 interface UseRoomStateReturn {
@@ -28,7 +29,7 @@ interface UseRoomStateReturn {
   isMyTurn: boolean;
   send: (msg: ClientMessage) => void;
   sendChat: (text: string) => void;
-  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null }) => void;
+  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string }) => void;
   sendReaction: (emoji: string) => void;
   chatMessages: ChatMessage[];
   participantStatus: Record<string, ParticipantStatus>;
@@ -113,7 +114,8 @@ export function useRoomState({
       case "reaction":
         setReactions((prev) => {
           const id = `r-${++reactionIdRef.current}`;
-          const next = [...prev, { id, from: msg.from, fromName: msg.fromName, emoji: msg.emoji, timestamp: Date.now() }];
+          const left = Math.random() * 80 + 10; // 10-90%
+          const next = [...prev, { id, from: msg.from, fromName: msg.fromName, emoji: msg.emoji, timestamp: Date.now(), left }];
           // Keep max 20 active reactions
           return next.length > 20 ? next.slice(-20) : next;
         });
@@ -170,12 +172,13 @@ export function useRoomState({
     }
   }, [send]);
 
-  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null }) => {
+  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string }) => {
     send({
       type: "status-update",
       isMuted: status.isMuted,
       isSharingAudio: status.isSharingAudio,
       currentSong: status.currentSong,
+      browser: status.browser,
     });
   }, [send]);
 

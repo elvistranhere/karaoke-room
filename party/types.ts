@@ -17,6 +17,7 @@ export interface ParticipantStatus {
   isMuted: boolean;
   isSharingAudio: boolean;
   currentSong: string | null;
+  browser?: string;
 }
 
 export interface RoomState {
@@ -35,7 +36,7 @@ export type ClientMessage =
   | { type: "finish-singing" }
   | { type: "signal"; to: string; payload: SignalPayload }
   | { type: "chat"; text: string }
-  | { type: "status-update"; isMuted: boolean; isSharingAudio: boolean; currentSong: string | null }
+  | { type: "status-update"; isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string }
   | { type: "reaction"; emoji: string };
 
 // Server -> Client
