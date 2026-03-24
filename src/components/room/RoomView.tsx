@@ -128,7 +128,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser]);
 
   return (
-    <main className="relative flex min-h-dvh flex-col overflow-hidden">
+    <main className="relative flex h-dvh flex-col overflow-hidden">
       {/* Subtle ambient background */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.04]"
@@ -222,8 +222,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="relative z-10 flex flex-1 flex-col gap-6 p-6 lg:flex-row">
+      {/* Main content — scrolls between fixed header and footer */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 lg:flex-row">
         {/* Left: Stage area */}
         <div className="flex flex-1 flex-col gap-6">
           <NowSinging
