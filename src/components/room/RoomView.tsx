@@ -81,25 +81,43 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
 
   const isConnected = isPartyConnected && isLiveKitConnected;
 
-  // Separate volume controls: music (singer's system audio) vs voices (mics)
-  const [musicVolume, setMusicVolume] = useState(1);
-  const [voiceVolume, setVoiceVolume] = useState(1);
+  // Volume controls
+  const [musicVolume, setMusicVolume] = useState(1);    // music (system audio)
+  const [voiceVolume, setVoiceVolume] = useState(1);    // all voices (master)
+  const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({}); // per-person
 
-  const applyVolumes = useCallback((music: number, voice: number) => {
+  // Apply volumes to all audio elements
+  const applyAllVolumes = useCallback(() => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      el.volume = el.dataset.lkType === "music" ? music : voice;
+      if (el.dataset.lkType === "music") {
+        el.volume = musicVolume;
+      } else {
+        // Extract identity from element ID: lk-audio-{identity}-{trackSid}
+        const idParts = el.id.replace("lk-audio-", "").split("-");
+        // Identity is everything except the last part (trackSid)
+        const identity = idParts.slice(0, -1).join("-");
+        const personVol = personVolumes[identity] ?? 1;
+        el.volume = voiceVolume * personVol;
+      }
     });
-  }, []);
+  }, [musicVolume, voiceVolume, personVolumes]);
 
   const handleMusicVolumeChange = useCallback((vol: number) => {
     setMusicVolume(vol);
-    applyVolumes(vol, voiceVolume);
-  }, [voiceVolume, applyVolumes]);
+  }, []);
 
   const handleVoiceVolumeChange = useCallback((vol: number) => {
     setVoiceVolume(vol);
-    applyVolumes(musicVolume, vol);
-  }, [musicVolume, applyVolumes]);
+  }, []);
+
+  const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
+    setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
+  }, []);
+
+  // Re-apply whenever any volume changes
+  useEffect(() => {
+    applyAllVolumes();
+  }, [applyAllVolumes]);
 
   // Apply correct volume to new remote audio elements as they appear
   useEffect(() => {
@@ -107,14 +125,15 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (node instanceof HTMLAudioElement && node.id?.startsWith("lk-audio-")) {
-            node.volume = node.dataset.lkType === "music" ? musicVolume : voiceVolume;
+            // Defer to next tick so dataset is set
+            requestAnimationFrame(() => applyAllVolumes());
           }
         }
       }
     });
     observer.observe(document.body, { childList: true });
     return () => observer.disconnect();
-  }, [musicVolume, voiceVolume]);
+  }, [applyAllVolumes]);
 
   // Send status updates when mic/sharing/song changes
   useEffect(() => {
@@ -243,6 +262,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
                 ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
                 : null
             }
+            musicVolume={musicVolume}
+            onMusicVolumeChange={handleMusicVolumeChange}
           />
 
           <ReactionBar
@@ -263,8 +284,6 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             onOutputChange={setSelectedOutputId}
             micMode={micMode}
             onMicModeChange={setMicMode}
-            musicVolume={musicVolume}
-            onMusicVolumeChange={handleMusicVolumeChange}
             voiceVolume={voiceVolume}
             onVoiceVolumeChange={handleVoiceVolumeChange}
           />
@@ -285,6 +304,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             myPeerId={myPeerId}
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
+            personVolumes={personVolumes}
+            onPersonVolumeChange={handlePersonVolumeChange}
           />
           <ChatPanel
             messages={chatMessages}

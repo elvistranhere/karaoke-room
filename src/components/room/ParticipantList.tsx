@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Participant, ParticipantStatus } from "~/types/room";
 
 interface ParticipantListProps {
@@ -8,6 +9,8 @@ interface ParticipantListProps {
   myPeerId: string | null;
   participantStatus?: Record<string, ParticipantStatus>;
   activeSpeakers?: Set<string>;
+  personVolumes?: Record<string, number>;
+  onPersonVolumeChange?: (identity: string, vol: number) => void;
 }
 
 export function ParticipantList({
@@ -16,7 +19,10 @@ export function ParticipantList({
   myPeerId,
   participantStatus = {},
   activeSpeakers = new Set(),
+  personVolumes = {},
+  onPersonVolumeChange,
 }: ParticipantListProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   return (
     <div
       className="rounded-2xl border p-5"
@@ -54,10 +60,19 @@ export function ParticipantList({
           const isSpeaking = Array.from(activeSpeakers).some((id) =>
             id.startsWith(p.name + "-") || id === p.name
           );
+          const isMe = p.id === myPeerId;
+          const isExpanded = expandedId === p.id && !isMe;
+          // Find LiveKit identity for this participant (for per-person volume)
+          const lkIdentity = Array.from(activeSpeakers).find((id) =>
+            id.startsWith(p.name + "-") || id === p.name
+          ) ?? p.name;
+          const personVol = personVolumes[lkIdentity] ?? 1;
+
           return (
             <li
               key={p.id}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-200"
+              onClick={() => !isMe && setExpandedId(isExpanded ? null : p.id)}
+              className={`rounded-lg px-3 py-2 text-sm transition-all duration-200 ${!isMe ? "cursor-pointer" : ""}`}
               style={{
                 background: isSpeaking
                   ? "rgba(139, 92, 246, 0.18)"
@@ -70,6 +85,7 @@ export function ParticipantList({
                 animation: `slide-in 0.3s ease-out ${i * 0.04}s both`,
               }}
             >
+              <div className="flex items-center gap-2.5">
               <div
                 className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"
                 style={{
@@ -160,6 +176,32 @@ export function ParticipantList({
                   )}
                 </div>
               </div>
+              </div>
+
+              {/* Per-person volume slider */}
+              {isExpanded && onPersonVolumeChange && (
+                <div
+                  className="mt-2 flex items-center gap-2"
+                  style={{ animation: "fade-in 0.15s ease-out" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  </svg>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(personVol * 100)}
+                    onChange={(e) => onPersonVolumeChange(lkIdentity, Number(e.target.value) / 100)}
+                    className="volume-slider volume-slider--voice flex-1"
+                  />
+                  <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+                    {Math.round(personVol * 100)}
+                  </span>
+                </div>
+              )}
             </li>
           );
         })}

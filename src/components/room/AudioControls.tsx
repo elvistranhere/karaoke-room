@@ -17,8 +17,6 @@ interface AudioControlsProps {
   onOutputChange: (id: string) => void;
   micMode: MicMode;
   onMicModeChange: (mode: MicMode) => void;
-  musicVolume: number;
-  onMusicVolumeChange: (vol: number) => void;
   voiceVolume: number;
   onVoiceVolumeChange: (vol: number) => void;
 }
@@ -36,8 +34,6 @@ export function AudioControls({
   onOutputChange,
   micMode,
   onMicModeChange,
-  musicVolume,
-  onMusicVolumeChange,
   voiceVolume,
   onVoiceVolumeChange,
 }: AudioControlsProps) {
@@ -165,61 +161,31 @@ export function AudioControls({
         )}
       </div>
 
-      {/* Volume sliders */}
-      <div className="mt-4 space-y-3">
-        {/* Music volume (singer's system audio) */}
-        <div className="flex items-center gap-3">
-          <MusicNoteSliderIcon muted={musicVolume === 0} />
-          <div className="flex flex-1 flex-col gap-1">
-            <span
-              className="text-xs"
-              style={{ color: "var(--color-neon-pink)", fontFamily: "var(--font-display)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em" }}
-            >
-              Music
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={Math.round(musicVolume * 100)}
-              onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)}
-              className="volume-slider volume-slider--music flex-1"
-            />
-          </div>
+      {/* Output volume — controls all incoming audio (voices) */}
+      <div className="mt-4 flex items-center gap-3">
+        <SpeakerIcon muted={voiceVolume === 0} />
+        <div className="flex flex-1 flex-col gap-1">
           <span
-            className="w-8 text-right text-xs tabular-nums"
-            style={{ color: "var(--color-text-secondary)" }}
+            className="text-xs"
+            style={{ color: "var(--color-primary)", fontFamily: "var(--font-display)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em" }}
           >
-            {Math.round(musicVolume * 100)}
+            Output Volume
           </span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(voiceVolume * 100)}
+            onChange={(e) => onVoiceVolumeChange(Number(e.target.value) / 100)}
+            className="volume-slider volume-slider--voice flex-1"
+          />
         </div>
-
-        {/* Voice volume (everyone's mics) */}
-        <div className="flex items-center gap-3">
-          <SpeakerIcon muted={voiceVolume === 0} />
-          <div className="flex flex-1 flex-col gap-1">
-            <span
-              className="text-xs"
-              style={{ color: "var(--color-neon-cyan)", fontFamily: "var(--font-display)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em" }}
-            >
-              Voices
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={Math.round(voiceVolume * 100)}
-              onChange={(e) => onVoiceVolumeChange(Number(e.target.value) / 100)}
-              className="volume-slider volume-slider--voice flex-1"
-            />
-          </div>
-          <span
-            className="w-8 text-right text-xs tabular-nums"
-            style={{ color: "var(--color-text-secondary)" }}
-          >
-            {Math.round(voiceVolume * 100)}
-          </span>
-        </div>
+        <span
+          className="w-8 text-right text-xs tabular-nums"
+          style={{ color: "var(--color-text-secondary)" }}
+        >
+          {Math.round(voiceVolume * 100)}
+        </span>
       </div>
 
       <p
@@ -389,26 +355,6 @@ function ProcessingRow({ label, active }: { label: string; active: boolean }) {
         {label}
       </span>
     </div>
-  );
-}
-
-function MusicNoteSliderIcon({ muted }: { muted: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={muted ? "var(--color-text-secondary)" : "var(--color-neon-pink)"}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flexShrink: 0, opacity: muted ? 0.5 : 1 }}
-    >
-      <path d="M9 18V5l12-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="16" r="3" />
-    </svg>
   );
 }
 

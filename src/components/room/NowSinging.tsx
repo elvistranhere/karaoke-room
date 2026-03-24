@@ -12,6 +12,8 @@ interface NowSingingProps {
   onFinishSinging: () => void;
   audioError: string | null;
   singerSongName: string | null;
+  musicVolume: number;
+  onMusicVolumeChange: (vol: number) => void;
 }
 
 export function NowSinging({
@@ -24,6 +26,8 @@ export function NowSinging({
   onFinishSinging,
   audioError,
   singerSongName,
+  musicVolume,
+  onMusicVolumeChange,
 }: NowSingingProps) {
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
@@ -189,6 +193,8 @@ export function NowSinging({
                 Sharing audio to room — everyone can hear the music
               </div>
 
+              <MusicVolumeSlider volume={musicVolume} onChange={onMusicVolumeChange} />
+
               <div className="flex w-full gap-3">
                 <button
                   onClick={onStopSharing}
@@ -267,17 +273,18 @@ export function NowSinging({
           )}
           <div
             className="mt-2 flex items-center gap-2 text-sm"
-            style={{ color: "var(--color-neon-cyan)" }}
+            style={{ color: "var(--color-primary)" }}
           >
             <span
               className="h-2 w-2 rounded-full"
               style={{
-                background: "var(--color-neon-cyan)",
-                animation: "neon-pulse 1.5s ease-in-out infinite",
+                background: "var(--color-primary)",
+                animation: "fade-in 1.5s ease-in-out infinite alternate",
               }}
             />
             Listening...
           </div>
+          <MusicVolumeSlider volume={musicVolume} onChange={onMusicVolumeChange} />
         </div>
       )}
     </div>
@@ -343,6 +350,27 @@ function StepRow({
           {hint}
         </p>
       </div>
+    </div>
+  );
+}
+
+function MusicVolumeSlider({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
+  return (
+    <div className="mt-3 flex w-full max-w-xs items-center gap-3">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: volume === 0 ? 0.4 : 1 }}>
+        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+      </svg>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={Math.round(volume * 100)}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        className="volume-slider volume-slider--music flex-1"
+      />
+      <span className="w-7 text-right text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+        {Math.round(volume * 100)}
+      </span>
     </div>
   );
 }
