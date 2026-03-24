@@ -277,8 +277,8 @@ function MixBalance({ onMicGain, onMusicGain }: { onMicGain: (v: number) => void
   const [balance, setBalance] = useState(50);
 
   const handleChange = (raw: number) => {
-    // Snap to center (50) when within 5 units — stronger magnetic feel
-    const val = Math.abs(raw - 50) <= 5 ? 50 : raw;
+    // Snap to center (50) when within 1 unit — subtle magnetic feel
+    const val = Math.abs(raw - 50) <= 1 ? 50 : raw;
     setBalance(val);
     onMusicGain(val / 50);
     onMicGain((100 - val) / 50);

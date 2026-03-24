@@ -18,19 +18,28 @@ let lastTrackId: string | null = null;
 function getOrSetupAnalyser(room: Room | null): AnalyserNode | null {
   if (!room) return null;
 
-  // Find the screen share audio track (the mixed karaoke stream)
+  // Find audio to visualize — prefer ScreenShareAudio, fall back to any audio
   let mediaTrack: MediaStreamTrack | null = null;
+
+  // 1. Check remote participants for screen share audio (listener sees singer's stream)
   for (const [, participant] of room.remoteParticipants) {
     for (const [, pub] of participant.trackPublications) {
-      if (pub.track && pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed) {
-        mediaTrack = pub.track.mediaStreamTrack;
-        break;
+      if (pub.track && pub.isSubscribed && pub.track.kind === Track.Kind.Audio) {
+        // Prefer screen share audio (the karaoke mix)
+        if (pub.source === Track.Source.ScreenShareAudio) {
+          mediaTrack = pub.track.mediaStreamTrack;
+          break;
+        }
+        // Fall back to any audio track
+        if (!mediaTrack) {
+          mediaTrack = pub.track.mediaStreamTrack;
+        }
       }
     }
-    if (mediaTrack) break;
+    if (mediaTrack && mediaTrack.label.includes("karaoke")) break;
   }
 
-  // Also check local participant (if I'm the singer)
+  // 2. Check local participant (if I'm the singer — use the mix destination)
   if (!mediaTrack) {
     const localPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
     if (localPub?.track) {
@@ -53,7 +62,7 @@ function getOrSetupAnalyser(room: Room | null): AnalyserNode | null {
   vizSource = vizCtx.createMediaStreamSource(new MediaStream([mediaTrack]));
   vizAnalyser = vizCtx.createAnalyser();
   vizAnalyser.fftSize = 128; // 64 frequency bins — good for visual bars
-  vizAnalyser.smoothingTimeConstant = 0.75;
+  vizAnalyser.smoothingTimeConstant = 0.82; // smooth transitions
   vizSource.connect(vizAnalyser);
   // Don't connect to destination — we only want to read data, not play audio
 
@@ -154,7 +163,7 @@ export function AudioVisualizer({ room, isActive }: AudioVisualizerProps) {
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-12 w-full opacity-60"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-16 w-full opacity-70"
       style={{ borderRadius: "0 0 0.75rem 0.75rem" }}
     />
   );
