@@ -126,42 +126,41 @@ export function AudioVisualizer({ room, isActive }: AudioVisualizerProps) {
       const barWidth = w / barCount;
       const gap = 1.5;
 
-      // Draw glow layer first (wider, lower opacity — fake shadow without shadowBlur)
-      for (let i = 0; i < barCount; i++) {
-        const value = dataBuffer[i]! / 255;
-        const barHeight = value * h * 0.9;
-        if (barHeight < 3) continue;
+      // Mirror layout: bars spread from center outward
+      // Left half = frequency data reversed, Right half = frequency data normal
+      // This fills the full width evenly instead of bunching energy on the left
+      const half = Math.floor(barCount / 2);
+      const mirrorBarWidth = w / barCount;
 
-        const x = i * barWidth;
-        const t = i / barCount;
-        const r = Math.round(139 + (245 - 139) * t);
-        const g = Math.round(92 + (158 - 92) * t);
-        const b = Math.round(246 + (11 - 246) * t);
+      for (let pass = 0; pass < 2; pass++) {
+        // pass 0 = glow, pass 1 = crisp bars
+        for (let i = 0; i < barCount; i++) {
+          // Map visual position to frequency index (mirror from center)
+          const freqIdx = i < half ? (half - 1 - i) : (i - half);
+          const value = dataBuffer[freqIdx]! / 255;
+          const barHeight = value * h * 0.9;
+          if (barHeight < (pass === 0 ? 3 : 2)) continue;
 
-        // Glow: wider bar, lower opacity
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${value * 0.15})`;
-        const glowW = Math.max(barWidth + 2, 3);
-        ctx.fillRect(x - 1, h - barHeight - 2, glowW, barHeight + 2);
-      }
+          const x = i * mirrorBarWidth;
+          const t = freqIdx / barCount;
+          const r = Math.round(139 + (245 - 139) * t);
+          const g = Math.round(92 + (158 - 92) * t);
+          const b = Math.round(246 + (11 - 246) * t);
 
-      // Draw crisp bars on top (no shadowBlur — zero GPU cost)
-      for (let i = 0; i < barCount; i++) {
-        const value = dataBuffer[i]! / 255;
-        const barHeight = value * h * 0.9;
-        if (barHeight < 2) continue;
-
-        const x = i * barWidth;
-        const t = i / barCount;
-        const r = Math.round(139 + (245 - 139) * t);
-        const g = Math.round(92 + (158 - 92) * t);
-        const b = Math.round(246 + (11 - 246) * t);
-
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.6 + value * 0.4})`;
-        const bw = Math.max(barWidth - gap, 1);
-        const radius = Math.min(bw / 2, 2);
-        ctx.beginPath();
-        ctx.roundRect(x + gap / 2, h - barHeight, bw, barHeight, [radius, radius, 0, 0]);
-        ctx.fill();
+          if (pass === 0) {
+            // Glow layer
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${value * 0.15})`;
+            ctx.fillRect(x - 1, h - barHeight - 2, Math.max(mirrorBarWidth + 2, 3), barHeight + 2);
+          } else {
+            // Crisp bar
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.6 + value * 0.4})`;
+            const bw = Math.max(mirrorBarWidth - gap, 1);
+            const radius = Math.min(bw / 2, 2);
+            ctx.beginPath();
+            ctx.roundRect(x + gap / 2, h - barHeight, bw, barHeight, [radius, radius, 0, 0]);
+            ctx.fill();
+          }
+        }
       }
 
       rafRef.current = requestAnimationFrame(draw);
