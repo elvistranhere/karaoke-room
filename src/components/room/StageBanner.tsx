@@ -13,6 +13,7 @@ interface StageBannerProps {
   audioError: string | null;
   singerSongName: string | null;
   canSing: boolean;
+  audioLevel?: number; // 0-1, inbound audio level for visualizer
   musicVolume?: number;
   onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
@@ -29,6 +30,7 @@ export function StageBanner({
   audioError,
   singerSongName,
   canSing,
+  audioLevel = 0,
   musicVolume = 1,
   onMusicVolumeChange,
   onMixMicGain,
@@ -53,14 +55,21 @@ export function StageBanner({
     );
   }
 
+  // Audio-reactive glow intensity (0 to ~20px shadow)
+  const glowIntensity = Math.min(audioLevel * 40, 20);
+  const glowColor = `rgba(139, 92, 246, ${Math.min(audioLevel * 0.8, 0.5)})`;
+
   // Someone else singing — informational banner with volume
   if (!isMyTurn) {
     return (
       <div
-        className="rounded-xl border px-4 py-3"
+        className="rounded-xl border px-4 py-3 transition-shadow duration-100"
         style={{
           background: "var(--color-dark-surface)",
           borderColor: "var(--color-primary)",
+          boxShadow: roomState.currentSingerId
+            ? `0 0 ${glowIntensity}px ${glowColor}, inset 0 0 ${glowIntensity * 0.5}px ${glowColor}`
+            : "none",
         }}
       >
         <div className="flex items-center gap-3">
@@ -98,10 +107,13 @@ export function StageBanner({
   // My turn — expanded with controls
   return (
     <div
-      className="relative overflow-hidden rounded-xl border p-4"
+      className="relative overflow-hidden rounded-xl border p-4 transition-shadow duration-100"
       style={{
         background: "var(--color-dark-surface)",
         borderColor: "var(--color-primary)",
+        boxShadow: isSharing
+          ? `0 0 ${glowIntensity}px ${glowColor}, inset 0 0 ${glowIntensity * 0.5}px ${glowColor}`
+          : "none",
       }}
     >
       <div

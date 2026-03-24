@@ -114,7 +114,7 @@ export function PeoplePanel({
 
       {/* People tab */}
       {tab === "people" && (
-      <ul className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-2">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-2">
         {roomState.participants.map((p) => {
           const isMe = p.id === myPeerId;
           const isSpeaking = Array.from(activeSpeakers).some((id) =>
@@ -225,7 +225,7 @@ export function PeoplePanel({
               {/* Per-person volume slider */}
               {isExpanded && (
                 <div
-                  className="mx-3 mb-1 flex items-center gap-2 rounded-lg px-3 py-2"
+                  className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2"
                   style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
                   onClick={(e) => e.stopPropagation()}
                 >
