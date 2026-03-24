@@ -31,50 +31,44 @@ export function NowSinging({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border p-8"
+      className="relative overflow-hidden rounded-2xl border"
       style={{
         background: "var(--color-dark-surface)",
         borderColor: roomState.currentSingerId
-          ? "var(--color-neon-pink)"
+          ? "var(--color-primary)"
           : "var(--color-dark-border)",
-        boxShadow: roomState.currentSingerId
-          ? "0 0 40px rgba(255, 45, 120, 0.15), inset 0 0 40px rgba(255, 45, 120, 0.03)"
-          : "none",
-        transition: "all 0.5s ease",
-        minHeight: "200px",
+        transition: "all 0.3s ease",
+        padding: roomState.currentSingerId ? "2rem" : "1.25rem",
       }}
     >
       {/* Decorative gradient bar at top */}
       <div
-        className="absolute left-0 top-0 h-1 w-full"
+        className="absolute left-0 top-0 h-0.5 w-full"
         style={{
           background: roomState.currentSingerId
-            ? "linear-gradient(90deg, var(--color-neon-pink), var(--color-neon-purple), var(--color-neon-cyan))"
+            ? "linear-gradient(90deg, var(--color-primary), var(--color-accent))"
             : "var(--color-dark-border)",
         }}
       />
 
       {!roomState.currentSingerId ? (
-        /* ── Stage empty ── */
-        <div className="flex h-full flex-col items-center justify-center gap-4 py-8">
-          <div
-            className="text-5xl"
-            style={{ filter: "grayscale(0.5)", opacity: 0.6 }}
-          >
-            🎤
+        /* ── Stage empty — compact ── */
+        <div className="flex items-center gap-3">
+          <span className="text-2xl" style={{ opacity: 0.4 }}>🎤</span>
+          <div>
+            <p
+              className="text-sm font-semibold"
+              style={{
+                fontFamily: "var(--font-display)",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              Stage is empty
+            </p>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              Join the queue to start singing
+            </p>
           </div>
-          <p
-            className="text-lg"
-            style={{
-              fontFamily: "var(--font-display)",
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            Stage is empty
-          </p>
-          <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-            Join the queue to start singing!
-          </p>
         </div>
       ) : isMyTurn ? (
         /* ── My turn — guided step flow ── */
@@ -141,10 +135,8 @@ export function NowSinging({
                 className="mt-4 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-6 py-4 font-bold tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                 style={{
                   fontFamily: "var(--font-display)",
-                  background:
-                    "linear-gradient(135deg, var(--color-neon-pink), var(--color-neon-purple))",
+                  background: "var(--color-primary)",
                   color: "#fff",
-                  boxShadow: "0 0 25px rgba(255, 45, 120, 0.3)",
                   fontSize: "1rem",
                 }}
               >
