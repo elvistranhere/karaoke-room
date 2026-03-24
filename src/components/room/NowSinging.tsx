@@ -40,14 +40,13 @@ export function NowSinging({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border p-8"
+      className="relative overflow-hidden rounded-2xl border p-4 sm:p-6 lg:p-8"
       style={{
         background: "var(--color-dark-surface)",
         borderColor: roomState.currentSingerId
           ? "var(--color-primary)"
           : "var(--color-dark-border)",
         transition: "all 0.3s ease",
-        minHeight: "200px",
       }}
     >
       {/* Decorative gradient bar at top */}
@@ -84,7 +83,7 @@ export function NowSinging({
         </div>
       ) : isMyTurn ? (
         /* ── My turn — guided step flow ── */
-        <div className="flex flex-col items-center gap-6">
+        <div className="flex flex-col items-center gap-4 sm:gap-6">
           <div className="text-center">
             <p
               className="mb-1 text-sm uppercase tracking-widest"
@@ -93,7 +92,7 @@ export function NowSinging({
               You&apos;re up!
             </p>
             <h2
-              className="text-3xl font-bold"
+              className="text-xl sm:text-2xl lg:text-3xl font-bold"
               style={{
                 fontFamily: "var(--font-display)",
                 color: "var(--color-text-primary)",
@@ -118,7 +117,7 @@ export function NowSinging({
 
           {!isSharing ? (
             /* Steps before sharing */
-            <div className="w-full max-w-md space-y-3">
+            <div className="w-full max-w-md space-y-2">
               {/* Step indicators */}
               <StepRow
                 number={1}
@@ -144,7 +143,7 @@ export function NowSinging({
 
               <button
                 onClick={onStartSharing}
-                className="mt-4 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-6 py-4 font-bold tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                className="mt-3 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-4 py-3 font-bold tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                 style={{
                   fontFamily: "var(--font-display)",
                   background: "var(--color-primary)",
@@ -258,7 +257,7 @@ export function NowSinging({
             Now Singing
           </p>
           <h2
-            className="text-3xl font-bold"
+            className="text-xl sm:text-2xl lg:text-3xl font-bold"
             style={{
               fontFamily: "var(--font-display)",
               color: "var(--color-text-primary)",
@@ -392,8 +391,9 @@ function MixBalanceSlider({ onMicGain, onMusicGain }: { onMicGain: (v: number) =
 function MusicVolumeSlider({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
   return (
     <div className="mt-3 flex w-full max-w-xs items-center gap-3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: volume === 0 ? 0.4 : 1 }}>
-        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: volume === 0 ? 0.4 : 1 }}>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
       </svg>
       <input
         type="range"

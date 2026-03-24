@@ -67,8 +67,8 @@ export function useLiveKit({
 
   const roomRef = useRef<Room | null>(null);
   const systemAudioTrackRef = useRef<MediaStreamTrack | null>(null);
-  const systemAudioPubRef = useRef<LocalTrackPublication | null>(null);
   const micCheckAbortRef = useRef<(() => void) | null>(null);
+  const isSharingInFlightRef = useRef(false); // guard against concurrent startSharing/stopSharing
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
   const playerNameRef = useRef(playerName);
@@ -82,7 +82,6 @@ export function useLiveKit({
 
   // Single-track mixing: when sharing, mix system audio + mic into one track
   // via Web Audio API. Both sources share the same render clock → zero drift.
-  // Also bypasses Chrome's system-level echo cancellation (Chromium #40226380).
   const mixCtxRef = useRef<AudioContext | null>(null);
   const mixMicSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mixSystemSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -295,7 +294,6 @@ export function useLiveKit({
         systemAudioTrackRef.current.stop();
         systemAudioTrackRef.current = null;
       }
-      systemAudioPubRef.current = null;
       // Clean up mix context if active
       if (mixPubRef.current?.track) {
         void room.localParticipant?.unpublishTrack(mixPubRef.current.track);
@@ -524,9 +522,15 @@ export function useLiveKit({
     const room = roomRef.current;
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
 
+    // During sharing, mic is mixed into the single track — don't toggle LiveKit's managed mic
+    if (mixPubRef.current) {
+      console.log("[LiveKit] Sharing active — mic toggle ignored (mic is in the mix)");
+      return;
+    }
+
     isTogglingMicRef.current = true;
     try {
-      const newState = !isMicEnabledRef.current; // use ref for fresh value
+      const newState = !isMicEnabledRef.current;
       console.log("[LiveKit] Setting mic enabled:", newState);
       await room.localParticipant.setMicrophoneEnabled(newState);
       setIsMicEnabled(newState);
@@ -570,11 +574,12 @@ export function useLiveKit({
 
   const startSharing = useCallback(async () => {
     const room = roomRef.current;
-    if (!room || !room.localParticipant) {
-      setSharingError("Not connected");
+    if (!room || !room.localParticipant || isSharingInFlightRef.current) {
+      if (!room) setSharingError("Not connected");
       return;
     }
 
+    isSharingInFlightRef.current = true;
     try {
       // 1. Capture system audio
       console.log("[LiveKit] Capturing system audio...");
@@ -588,8 +593,12 @@ export function useLiveKit({
       if (!systemTrack) {
         displayStream.getTracks().forEach((t) => t.stop());
         setSharingError("No audio captured. Check 'Share audio' in the dialog.");
+        isSharingInFlightRef.current = false;
         return;
       }
+
+      // Store system track ref immediately so it's cleaned up on any failure
+      systemAudioTrackRef.current = systemTrack;
 
       // Detect song name from tab title
       const trackLabel = systemTrack.label;
@@ -605,7 +614,8 @@ export function useLiveKit({
       }
       setCurrentSong(detectedSong);
 
-      // 2. Capture raw mic (no processing — bypasses Chrome's system echo cancellation)
+      // 2. Capture raw mic (no browser processing — AudioContext mixing bypasses
+      //    Chrome's system-level echo cancellation, Chromium bug #40226380)
       let micStream: MediaStream | null = null;
       if (isMicEnabledRef.current) {
         try {
@@ -624,8 +634,8 @@ export function useLiveKit({
         }
       }
 
-      // 3. Mix both into a single AudioContext destination
-      const ctx = new AudioContext({ sampleRate: 48000, latencyHint: "playback" });
+      // 3. Mix into a single AudioContext destination (low-latency for send path)
+      const ctx = new AudioContext({ sampleRate: 48000 });
       const dest = ctx.createMediaStreamDestination();
 
       const systemSource = ctx.createMediaStreamSource(new MediaStream([systemTrack]));
@@ -671,17 +681,37 @@ export function useLiveKit({
 
       console.log("[LiveKit] Mixed track published!", pub.trackSid);
 
-      systemAudioTrackRef.current = systemTrack;
       mixPubRef.current = pub;
       setIsSharing(true);
       setSharingError(null);
 
       // When the user stops screen sharing from browser chrome
+      // Use refs in the handler to avoid stale closure issues
       systemTrack.onended = () => {
         console.log("[LiveKit] System audio ended by user");
-        stopSharing();
+        // Inline cleanup instead of calling stopSharing to avoid stale closure
+        if (mixPubRef.current?.track && roomRef.current?.localParticipant) {
+          void roomRef.current.localParticipant.unpublishTrack(mixPubRef.current.track);
+        }
+        mixPubRef.current = null;
+        if (systemAudioTrackRef.current) {
+          systemAudioTrackRef.current.stop();
+          systemAudioTrackRef.current = null;
+        }
+        cleanupMix();
+        setIsSharing(false);
+        setCurrentSong(null);
+        // Restore managed mic
+        if (roomRef.current && isMicEnabledRef.current) {
+          void roomRef.current.localParticipant.setMicrophoneEnabled(true).catch(() => {});
+        }
       };
     } catch (err) {
+      // Stop system track if it was captured
+      if (systemAudioTrackRef.current) {
+        systemAudioTrackRef.current.stop();
+        systemAudioTrackRef.current = null;
+      }
       cleanupMix();
       // Restore managed mic
       try {
@@ -697,6 +727,8 @@ export function useLiveKit({
         console.error("[LiveKit] Share error:", err);
         setSharingError(msg);
       }
+    } finally {
+      isSharingInFlightRef.current = false;
     }
   }, [selectedInputDeviceId, cleanupMix]);
 
@@ -716,7 +748,6 @@ export function useLiveKit({
       systemAudioTrackRef.current.stop();
       systemAudioTrackRef.current = null;
     }
-    systemAudioPubRef.current = null;
 
     // Clean up mix context
     cleanupMix();

@@ -61,7 +61,7 @@ export function ParticipantList({
             id.startsWith(p.name + "-") || id === p.name
           );
           const isMe = p.id === myPeerId;
-          const isExpanded = expandedId === p.id;
+          const isExpanded = expandedId === p.id && !isMe;
           // Find LiveKit identity from audio elements (reliable, not speaker-dependent)
           const lkIdentity = (() => {
             const el = document.querySelector<HTMLAudioElement>(
@@ -74,8 +74,8 @@ export function ParticipantList({
           return (
             <li
               key={p.id}
-              onClick={() => setExpandedId(isExpanded ? null : p.id)}
-              className="cursor-pointer rounded-lg px-3 py-2 text-sm transition-all duration-200"
+              onClick={() => !isMe && setExpandedId(isExpanded ? null : p.id)}
+              className={`rounded-lg px-3 py-2 text-sm transition-all duration-200 ${!isMe ? "cursor-pointer" : ""}`}
               style={{
                 background: isSpeaking
                   ? "rgba(139, 92, 246, 0.18)"
