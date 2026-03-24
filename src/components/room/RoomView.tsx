@@ -177,7 +177,10 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
                 ? "Connecting to room..."
                 : "Connecting to audio..."}
           </div>
-          <EditableName name={playerName} onRename={onRename} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>as</span>
+            <EditableName name={playerName} onRename={onRename} />
+          </div>
           <button
             onClick={() => router.push("/")}
             className="cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95"
