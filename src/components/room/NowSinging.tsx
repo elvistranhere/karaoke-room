@@ -31,14 +31,14 @@ export function NowSinging({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border"
+      className="relative overflow-hidden rounded-2xl border p-8"
       style={{
         background: "var(--color-dark-surface)",
         borderColor: roomState.currentSingerId
           ? "var(--color-primary)"
           : "var(--color-dark-border)",
         transition: "all 0.3s ease",
-        padding: roomState.currentSingerId ? "2rem" : "1.25rem",
+        minHeight: "200px",
       }}
     >
       {/* Decorative gradient bar at top */}
@@ -52,23 +52,26 @@ export function NowSinging({
       />
 
       {!roomState.currentSingerId ? (
-        /* ── Stage empty — compact ── */
-        <div className="flex items-center gap-3">
-          <span className="text-2xl" style={{ opacity: 0.4 }}>🎤</span>
-          <div>
-            <p
-              className="text-sm font-semibold"
-              style={{
-                fontFamily: "var(--font-display)",
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              Stage is empty
-            </p>
-            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              Join the queue to start singing
-            </p>
+        /* ── Stage empty ── */
+        <div className="flex h-full flex-col items-center justify-center gap-4 py-8">
+          <div
+            className="text-5xl"
+            style={{ filter: "grayscale(0.5)", opacity: 0.6 }}
+          >
+            🎤
           </div>
+          <p
+            className="text-lg"
+            style={{
+              fontFamily: "var(--font-display)",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Stage is empty
+          </p>
+          <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
+            Join the queue to start singing!
+          </p>
         </div>
       ) : isMyTurn ? (
         /* ── My turn — guided step flow ── */

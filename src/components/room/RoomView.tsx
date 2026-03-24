@@ -127,7 +127,7 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
   }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser]);
 
   return (
-    <main className="relative flex h-dvh flex-col overflow-hidden">
+    <main className="relative flex min-h-dvh flex-col overflow-hidden">
       {/* Subtle ambient background */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.04]"
@@ -220,11 +220,10 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
         </div>
       )}
 
-      {/* Main content — fills remaining space, scrolls internally */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4 lg:flex-row lg:gap-5 lg:overflow-hidden lg:p-6">
-        {/* Left column: Stage + Controls + Chat */}
-        <div className="flex flex-1 flex-col gap-4 lg:min-h-0 lg:gap-5 lg:overflow-auto">
-          {/* Stage — compact when idle, expands when active */}
+      {/* Main content */}
+      <div className="relative z-10 flex flex-1 flex-col gap-6 p-6 lg:flex-row">
+        {/* Left: Stage area */}
+        <div className="flex flex-1 flex-col gap-6">
           <NowSinging
             roomState={roomState}
             isMyTurn={isMyTurn}
@@ -241,7 +240,11 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
             }
           />
 
-          {/* Audio controls — always visible */}
+          <ReactionBar
+            reactions={reactions}
+            onReact={sendReaction}
+          />
+
           <AudioControls
             isMicEnabled={isMicEnabled}
             toggleMic={toggleMic}
@@ -260,19 +263,10 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
             voiceVolume={voiceVolume}
             onVoiceVolumeChange={handleVoiceVolumeChange}
           />
-
-          {/* Chat — promoted to main area for more space */}
-          <div className="flex-1">
-            <ChatPanel
-              messages={chatMessages}
-              onSend={sendChat}
-              myPeerId={myPeerId}
-            />
-          </div>
         </div>
 
-        {/* Right sidebar: Queue + Participants (compact) */}
-        <div className="flex w-full flex-col gap-4 lg:w-72 lg:min-h-0 lg:gap-5 lg:overflow-auto">
+        {/* Right: Sidebar */}
+        <div className="flex w-full flex-col gap-6 lg:w-80">
           <QueuePanel
             roomState={roomState}
             myPeerId={myPeerId}
@@ -287,14 +281,13 @@ export function RoomView({ roomCode, playerName }: RoomViewProps) {
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
           />
+          <ChatPanel
+            messages={chatMessages}
+            onSend={sendChat}
+            myPeerId={myPeerId}
+          />
         </div>
       </div>
-
-      {/* Reactions overlay — floats above everything */}
-      <ReactionBar
-        reactions={reactions}
-        onReact={sendReaction}
-      />
 
       {/* Status bar */}
       <StatusBar
