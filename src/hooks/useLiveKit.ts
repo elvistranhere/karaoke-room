@@ -114,7 +114,12 @@ export function useLiveKit({
         el.id = `lk-audio-${participant.identity}-${track.sid}`;
         el.dataset.lkType = isMusic ? "music" : "mic";
         el.style.display = "none";
+        el.autoplay = true;
         document.body.appendChild(el);
+        // Force play — may fail due to autoplay policy, but startAudio handles that
+        el.play().catch(() => {
+          console.log("[LiveKit] Autoplay blocked for", participant.identity, "— will resume on user click");
+        });
       },
     );
 
@@ -198,20 +203,26 @@ export function useLiveKit({
     // Resume audio on first user interaction (autoplay policy workaround).
     // This ensures remote audio plays even if the user hasn't toggled their mic.
     const resumeAudio = () => {
-      if (room.canPlaybackAudio) return;
-      room.startAudio().catch(() => {});
-      // Also try to play any paused audio elements
+      room.startAudio().then(() => {
+        // After audio context is resumed, play all audio elements
+        document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
+          if (el.paused) el.play().catch(() => {});
+        });
+      }).catch(() => {});
+      // Also try immediately
       document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
         if (el.paused) el.play().catch(() => {});
       });
     };
     document.addEventListener("click", resumeAudio, { once: false });
     document.addEventListener("keydown", resumeAudio, { once: false });
+    document.addEventListener("touchstart", resumeAudio, { once: false });
 
     return () => {
       cancelled = true;
       document.removeEventListener("click", resumeAudio);
       document.removeEventListener("keydown", resumeAudio);
+      document.removeEventListener("touchstart", resumeAudio);
       if (systemAudioTrackRef.current) {
         systemAudioTrackRef.current.stop();
         systemAudioTrackRef.current = null;
