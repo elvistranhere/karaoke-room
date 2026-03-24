@@ -83,8 +83,8 @@ export function Toolbar({
         </button>
       </div>
 
-      {/* Mic check — hidden during sharing (you're already live) */}
-      {isMicEnabled && !isSharing && (
+      {/* Mic check — records what listeners hear (voice + effects + music when sharing) */}
+      {(isMicEnabled || isSharing) && (
         <button
           onClick={onMicCheck}
           disabled={micCheckState !== "idle"}

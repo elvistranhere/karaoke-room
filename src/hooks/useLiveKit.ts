@@ -454,19 +454,25 @@ export function useLiveKit({
     if (micCheckState !== "idle") return;
 
     const room = roomRef.current;
-    if (!room || !isMicEnabledRef.current) return;
+    if (!room) return;
 
-    // Get the active mic track (mix or managed)
+    // During sharing: record the full mix (voice + effects + music)
+    // Before sharing: record just the mic (with effect if selected)
     let mediaTrack: MediaStreamTrack | undefined;
-    if (mixMicStreamRef.current) {
-      mediaTrack = mixMicStreamRef.current.getAudioTracks()[0];
-    } else {
+
+    if (mixDestRef.current) {
+      // Sharing active — record from mix destination (everything listeners hear)
+      mediaTrack = mixDestRef.current.stream.getAudioTracks()[0];
+      console.log("[LiveKit] Mic check: recording from mix destination (voice + effects + music)");
+    } else if (isMicEnabledRef.current) {
+      // Not sharing — record just the mic
       const micPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
       mediaTrack = micPub?.track?.mediaStreamTrack;
+      console.log("[LiveKit] Mic check: recording from managed mic");
     }
 
     if (!mediaTrack) {
-      console.log("[LiveKit] No mic track for mic check");
+      console.log("[LiveKit] No track for mic check");
       return;
     }
 
