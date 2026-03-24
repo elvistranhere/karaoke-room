@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
+import { AudioVisualizer } from "./AudioVisualizer";
 
 interface StageBannerProps {
+  room: Room | null;
   roomState: RoomState;
   isMyTurn: boolean;
   isSharing: boolean;
@@ -21,6 +24,7 @@ interface StageBannerProps {
 }
 
 export function StageBanner({
+  room,
   roomState,
   isMyTurn,
   isSharing,
@@ -63,7 +67,7 @@ export function StageBanner({
   if (!isMyTurn) {
     return (
       <div
-        className="rounded-xl border px-4 py-3 transition-shadow duration-100"
+        className="relative overflow-hidden rounded-xl border px-4 py-3 transition-shadow duration-100"
         style={{
           background: "var(--color-dark-surface)",
           borderColor: "var(--color-primary)",
@@ -100,6 +104,9 @@ export function StageBanner({
             <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}</span>
           </div>
         )}
+
+        {/* Audio visualizer — frequency bars along the bottom */}
+        <AudioVisualizer room={room} isActive={!!roomState.currentSingerId} />
       </div>
     );
   }
@@ -215,6 +222,9 @@ export function StageBanner({
           </div>
         </div>
       )}
+
+      {/* Audio visualizer — frequency bars along the bottom */}
+      <AudioVisualizer room={room} isActive={isSharing} />
     </div>
   );
 }

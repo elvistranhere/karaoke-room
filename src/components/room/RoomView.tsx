@@ -272,6 +272,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         {/* Left: Stage + Toolbar + Chat */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 lg:gap-3">
           <StageBanner
+            room={room}
             roomState={roomState}
             isMyTurn={isMyTurn}
             isSharing={isSharing}
