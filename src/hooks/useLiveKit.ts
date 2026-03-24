@@ -15,6 +15,7 @@ import {
 } from "livekit-client";
 
 import type { MicMode } from "./useAudioDevices";
+import { createEffectChain, type VoiceEffect, type EffectChain } from "~/lib/voiceEffects";
 
 interface UseLiveKitParams {
   roomCode: string;
@@ -44,6 +45,9 @@ interface UseLiveKitReturn {
   activeSpeakers: Set<string>;
   setMixMicGain: (val: number) => void;
   setMixMusicGain: (val: number) => void;
+  voiceEffect: VoiceEffect;
+  setVoiceEffect: (effect: VoiceEffect) => void;
+  setEffectWetDry: (wet: number) => void;
 }
 
 export function useLiveKit({
@@ -90,6 +94,9 @@ export function useLiveKit({
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixMicStreamRef = useRef<MediaStream | null>(null); // raw mic capture
   const mixPubRef = useRef<LocalTrackPublication | null>(null);
+  const effectChainRef = useRef<EffectChain | null>(null);
+  const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>("none");
+  const voiceEffectRef = useRef<VoiceEffect>("none");
 
   // --- Connect to LiveKit room ---
 
@@ -545,6 +552,8 @@ export function useLiveKit({
   // Also bypasses Chrome's system-level echo cancellation (Chromium #40226380).
 
   const cleanupMix = useCallback(() => {
+    effectChainRef.current?.cleanup();
+    effectChainRef.current = null;
     mixMicSourceRef.current?.disconnect();
     mixSystemSourceRef.current?.disconnect();
     mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -566,6 +575,32 @@ export function useLiveKit({
   }, []);
   const setMixMusicGain = useCallback((val: number) => {
     if (mixSystemGainRef.current) mixSystemGainRef.current.gain.value = val;
+  }, []);
+
+  // Swap voice effect live during sharing
+  const setVoiceEffect = useCallback((effect: VoiceEffect) => {
+    setVoiceEffectState(effect);
+    voiceEffectRef.current = effect;
+    const ctx = mixCtxRef.current;
+    const micSource = mixMicSourceRef.current;
+    const micGain = mixMicGainRef.current;
+    if (!ctx || !micSource || !micGain) return; // not sharing, will apply on next share
+
+    // Tear down old chain
+    effectChainRef.current?.cleanup();
+    micSource.disconnect();
+
+    // Create new chain
+    const chain = createEffectChain(ctx, effect);
+    micSource.connect(chain.input);
+    chain.output.connect(micGain);
+    effectChainRef.current = chain;
+
+    console.log("[LiveKit] Voice effect switched to:", effect);
+  }, []);
+
+  const setEffectWetDry = useCallback((wet: number) => {
+    effectChainRef.current?.setWetDry?.(wet);
   }, []);
 
   const startSharing = useCallback(async () => {
@@ -649,12 +684,17 @@ export function useLiveKit({
         const micSource = ctx.createMediaStreamSource(micStream);
         const micGain = ctx.createGain();
         micGain.gain.value = 1.0;
-        micSource.connect(micGain);
+
+        // Insert voice effect chain: source → effect → gain → dest
+        const chain = createEffectChain(ctx, voiceEffectRef.current);
+        micSource.connect(chain.input);
+        chain.output.connect(micGain);
         micGain.connect(dest);
 
         mixMicSourceRef.current = micSource;
         mixMicGainRef.current = micGain;
         mixMicStreamRef.current = micStream;
+        effectChainRef.current = chain;
       }
 
       // 4. Mute LiveKit's managed mic to avoid duplicate voice
@@ -785,5 +825,8 @@ export function useLiveKit({
     activeSpeakers,
     setMixMicGain,
     setMixMusicGain,
+    voiceEffect,
+    setVoiceEffect,
+    setEffectWetDry,
   };
 }

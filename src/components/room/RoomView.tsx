@@ -77,6 +77,9 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     activeSpeakers,
     setMixMicGain,
     setMixMusicGain,
+    voiceEffect,
+    setVoiceEffect,
+    setEffectWetDry,
   } = useLiveKit({
     roomCode,
     playerName,
@@ -301,6 +304,9 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             }}
             onMixMicGain={setMixMicGain}
             onMixMusicGain={setMixMusicGain}
+            voiceEffect={voiceEffect}
+            onVoiceEffectChange={setVoiceEffect}
+            onEffectWetDry={setEffectWetDry}
             ambientId="ambient-bg"
           />
 

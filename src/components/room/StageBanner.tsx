@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
 import { AudioVisualizer } from "./AudioVisualizer";
+import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
 
 interface StageBannerProps {
   room: Room | null;
@@ -20,6 +21,9 @@ interface StageBannerProps {
   onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
+  voiceEffect?: VoiceEffect;
+  onVoiceEffectChange?: (effect: VoiceEffect) => void;
+  onEffectWetDry?: (wet: number) => void;
   ambientId?: string;
 }
 
@@ -38,6 +42,9 @@ export function StageBanner({
   onMusicVolumeChange,
   onMixMicGain,
   onMixMusicGain,
+  voiceEffect = "none",
+  onVoiceEffectChange,
+  onEffectWetDry,
   ambientId,
 }: StageBannerProps) {
   const currentSinger = roomState.participants.find(
@@ -186,7 +193,14 @@ export function StageBanner({
             }}
           />
 
-          {/* Mix balance */}
+          {/* Voice effect + Mix balance */}
+          {onVoiceEffectChange && (
+            <VoiceEffectSelector
+              current={voiceEffect}
+              onChange={onVoiceEffectChange}
+              onWetDry={onEffectWetDry}
+            />
+          )}
           {onMixMicGain && onMixMusicGain && (
             <MixBalance onMicGain={onMixMicGain} onMusicGain={onMixMusicGain} />
           )}
@@ -212,6 +226,52 @@ export function StageBanner({
 
     </div>
     </AudioVisualizer>
+  );
+}
+
+function VoiceEffectSelector({ current, onChange, onWetDry }: {
+  current: VoiceEffect;
+  onChange: (effect: VoiceEffect) => void;
+  onWetDry?: (wet: number) => void;
+}) {
+  const [wetDry, setWetDry] = useState(50); // 0-100
+
+  const handleWetDry = (val: number) => {
+    setWetDry(val);
+    onWetDry?.(val / 100);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {VOICE_EFFECTS.map((fx) => (
+          <button
+            key={fx.id}
+            onClick={() => onChange(fx.id)}
+            className="cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: current === fx.id ? "var(--color-primary)" : "var(--color-dark-card)",
+              color: current === fx.id ? "#fff" : "var(--color-text-muted)",
+              border: current === fx.id ? "none" : "1px solid var(--color-dark-border)",
+            }}
+            title={fx.description}
+          >
+            {fx.label}
+          </button>
+        ))}
+      </div>
+      {current !== "none" && onWetDry && (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Dry</span>
+          <input
+            type="range" min="0" max="100" value={wetDry}
+            onChange={(e) => handleWetDry(Number(e.target.value))}
+            className="volume-slider flex-1"
+          />
+          <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Wet</span>
+        </div>
+      )}
+    </div>
   );
 }
 

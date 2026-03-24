@@ -41,6 +41,14 @@ function getOrSetupAnalyser(room: Room | null): AnalyserNode | null {
     if (localPub?.track) mediaTrack = localPub.track.mediaStreamTrack;
   }
 
+  // Fallback: grab from any music audio element in the DOM
+  if (!mediaTrack) {
+    const audioEl = document.querySelector<HTMLAudioElement>('audio[data-lk-type="music"]');
+    if (audioEl?.srcObject instanceof MediaStream) {
+      mediaTrack = audioEl.srcObject.getAudioTracks()[0] ?? null;
+    }
+  }
+
   if (!mediaTrack || mediaTrack.readyState !== "live") return null;
   if (mediaTrack.id === lastTrackId && vizAnalyser) return vizAnalyser;
   lastTrackId = mediaTrack.id;
