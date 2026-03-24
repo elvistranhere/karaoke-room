@@ -139,14 +139,19 @@ export function PeoplePanel({
             <li key={p.id}>
               <div
                 onClick={() => !isMe && setExpandedId(isExpanded ? null : p.id)}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${!isMe ? "cursor-pointer hover:bg-[var(--color-dark-card)]" : ""}`}
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${!isMe ? "row-clickable cursor-pointer" : ""}`}
+                onContextMenu={(e) => { if (!isMe) { e.preventDefault(); setExpandedId(isExpanded ? null : p.id); } }}
                 style={{
                   background: isSpeaking
                     ? "rgba(139, 92, 246, 0.15)"
                     : isMe
                       ? "rgba(139, 92, 246, 0.05)"
-                      : "transparent",
-                  boxShadow: isSpeaking ? "inset 0 0 0 1px rgba(139, 92, 246, 0.4)" : "none",
+                      : undefined,
+                  boxShadow: isSpeaking
+                    ? "inset 0 0 0 1px rgba(139, 92, 246, 0.4)"
+                    : isExpanded
+                      ? "0 0 8px rgba(139, 92, 246, 0.3), inset 0 0 0 1px rgba(139, 92, 246, 0.2)"
+                      : undefined,
                 }}
               >
                 {/* Avatar */}

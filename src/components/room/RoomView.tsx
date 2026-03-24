@@ -120,7 +120,15 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
 
   const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
-  }, []);
+    // If this person is the current singer, also sync the music volume
+    // (since music + voice are mixed into one stream tagged as "music")
+    if (roomState.currentSingerId) {
+      const singer = roomState.participants.find((p) => p.id === roomState.currentSingerId);
+      if (singer && (identity.startsWith(singer.name + "-") || identity === singer.name)) {
+        setMusicVolume(vol);
+      }
+    }
+  }, [roomState.currentSingerId, roomState.participants]);
 
   // Listen for manual song name from singer
   useEffect(() => {
@@ -267,7 +275,20 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             }
             canSing={browser.canSing}
             musicVolume={musicVolume}
-            onMusicVolumeChange={setMusicVolume}
+            onMusicVolumeChange={(vol: number) => {
+              setMusicVolume(vol);
+              // Sync per-person volume for the singer too
+              if (roomState.currentSingerId) {
+                const singer = roomState.participants.find((p) => p.id === roomState.currentSingerId);
+                if (singer) {
+                  const el = document.querySelector<HTMLAudioElement>(
+                    `audio[data-lk-identity^="${CSS.escape(singer.name)}-"]`
+                  );
+                  const id = el?.dataset.lkIdentity ?? singer.name;
+                  setPersonVolumes((prev) => ({ ...prev, [id]: vol }));
+                }
+              }
+            }}
             onMixMicGain={setMixMicGain}
             onMixMusicGain={setMixMusicGain}
           />

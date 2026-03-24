@@ -89,13 +89,14 @@ export function Toolbar({
         <button
           onClick={onMicCheck}
           disabled={micCheckState !== "idle"}
-          className="cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 hover:border-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           style={{
-            background: micCheckState !== "idle" ? "var(--color-accent-dim)" : "var(--color-dark-card)",
-            color: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-text-muted)",
+            background: micCheckState !== "idle" ? "var(--color-accent-dim)" : "transparent",
+            borderColor: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-dark-border)",
+            color: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-text-primary)",
           }}
         >
-          {micCheckState === "recording" ? "Rec..." : micCheckState === "playing" ? "Playing..." : "Check"}
+          {micCheckState === "recording" ? "Recording..." : micCheckState === "playing" ? "Playing..." : "Mic Check"}
         </button>
       )}
 

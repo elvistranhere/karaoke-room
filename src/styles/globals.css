@@ -65,6 +65,12 @@ body {
   min-height: 100dvh;
 }
 
+/* Clickable row hover glow */
+.row-clickable:hover {
+  background: rgba(139, 92, 246, 0.08);
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.15);
+}
+
 /* Volume slider styling — rounded ends to match circular thumb */
 .volume-slider {
   -webkit-appearance: none;

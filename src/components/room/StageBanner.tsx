@@ -53,39 +53,42 @@ export function StageBanner({
     );
   }
 
-  // Someone else singing — compact listening state
+  // Someone else singing — informational banner with volume
   if (!isMyTurn) {
     return (
       <div
-        className="flex items-center gap-3 rounded-xl border px-4 py-3"
+        className="rounded-xl border px-4 py-3"
         style={{
           background: "var(--color-dark-surface)",
           borderColor: "var(--color-primary)",
-          borderWidth: "1px",
         }}
       >
-        <span className="text-lg">🎤</span>
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            {currentSinger?.name ?? "Unknown"}
-          </span>
-          {singerSongName && (
-            <span className="ml-2 text-xs" style={{ color: "var(--color-primary)" }}>
-              — {singerSongName}
-            </span>
-          )}
+        <div className="flex items-center gap-3">
+          <span className="text-lg">🎤</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                {currentSinger?.name ?? "Unknown"}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-primary)" }}>singing</span>
+            </div>
+            {singerSongName && (
+              <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-accent)" }}>
+                {singerSongName}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-primary)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Live</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--color-primary)", animation: "fade-in 1.5s ease-in-out infinite alternate" }}
-          />
-          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Listening</span>
-        </div>
+        {/* Volume control for listener */}
         {onMusicVolumeChange && (
-          <div className="flex items-center gap-2">
-            <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider volume-slider--music w-20" />
-            <span className="w-5 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}</span>
+          <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: "var(--color-dark-border)" }}>
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Volume</span>
+            <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider flex-1" />
+            <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}</span>
           </div>
         )}
       </div>
