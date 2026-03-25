@@ -847,11 +847,64 @@ export function useLiveKit({
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
 
     isTogglingMicRef.current = true;
+    const newState = !isMicEnabledRef.current;
     try {
-      const newState = !isMicEnabledRef.current;
       console.log("[LiveKit] Setting mic enabled:", newState);
-      await room.localParticipant.setMicrophoneEnabled(newState);
-      setIsMicEnabled(newState);
+
+      // If sharing is active, add/remove mic from the mix instead of LiveKit managed mic
+      if (mixPubRef.current && mixCtxRef.current && mixDestRef.current) {
+        if (newState && !mixMicStreamRef.current) {
+          // Add mic to mix
+          const nc = singingNCRef.current;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+              echoCancellation: nc,
+              noiseSuppression: nc,
+              autoGainControl: nc,
+              channelCount: 2,
+              sampleRate: 48000,
+            },
+          });
+
+          const ctx = mixCtxRef.current;
+          const dest = mixDestRef.current;
+          const micSource = ctx.createMediaStreamSource(stream);
+          const micGain = ctx.createGain();
+          micGain.gain.value = 1.0;
+
+          const chain = createEffectChain(ctx, voiceEffectRef.current);
+          chain.setWetDry?.(effectWetDryRef.current);
+          micSource.connect(chain.input);
+          chain.output.connect(micGain);
+          micGain.connect(dest);
+
+          mixMicSourceRef.current = micSource;
+          mixMicGainRef.current = micGain;
+          mixMicStreamRef.current = stream;
+          effectChainRef.current = chain;
+
+          console.log("[LiveKit] Mic added to mix on the fly");
+        } else if (!newState && mixMicStreamRef.current) {
+          // Remove mic from mix
+          effectChainRef.current?.cleanup();
+          effectChainRef.current = null;
+          mixMicSourceRef.current?.disconnect();
+          mixMicSourceRef.current = null;
+          mixMicGainRef.current?.disconnect();
+          mixMicGainRef.current = null;
+          mixMicStreamRef.current.getTracks().forEach((t) => t.stop());
+          mixMicStreamRef.current = null;
+
+          console.log("[LiveKit] Mic removed from mix on the fly");
+        }
+        setIsMicEnabled(newState);
+      } else {
+        // Not sharing — use LiveKit managed mic
+        await room.localParticipant.setMicrophoneEnabled(newState);
+        setIsMicEnabled(newState);
+      }
+
       console.log("[LiveKit] Mic is now", newState ? "ON" : "OFF");
     } catch (err) {
       console.error("[LiveKit] Mic error:", err);
@@ -859,7 +912,7 @@ export function useLiveKit({
     } finally {
       isTogglingMicRef.current = false;
     }
-  }, []);
+  }, [selectedInputDeviceId]);
 
   // --- System audio sharing (single-track mixing) ---
   // Mixes system audio + mic into ONE track via Web Audio API.
@@ -965,23 +1018,23 @@ export function useLiveKit({
 
       // 2. Capture mic with singing NC setting (AudioContext mixing bypasses
       //    Chrome's system-level echo cancellation, Chromium bug #40226380)
-      // Always capture mic for the mix — even if currently muted.
-      // This ensures voice is in the mix (and recording) when the singer unmutes.
       const singNC = singingNCRef.current;
       let micStream: MediaStream | null = null;
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
-            echoCancellation: singNC,
-            noiseSuppression: singNC,
-            autoGainControl: singNC,
-            channelCount: 2,
-            sampleRate: 48000,
-          },
-        });
-      } catch (err) {
-        console.warn("[LiveKit] Mic capture failed — sharing music only:", err);
+      if (isMicEnabledRef.current) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+              echoCancellation: singNC,
+              noiseSuppression: singNC,
+              autoGainControl: singNC,
+              channelCount: 2,
+              sampleRate: 48000,
+            },
+          });
+        } catch (err) {
+          console.warn("[LiveKit] Mic capture failed — sharing music only:", err);
+        }
       }
 
       // 3. Mix into a single AudioContext destination (low-latency for send path)
