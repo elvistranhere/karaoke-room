@@ -233,14 +233,15 @@ export function useLiveKit({
           const text = await res.text();
           throw new Error(`Token error: ${res.status} ${text}`);
         }
-        const { token } = (await res.json()) as { token: string };
+        const data = (await res.json()) as { token: string; url?: string; keySet?: number };
         if (cancelled) return;
 
-        const url = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+        // Server may return a different URL per key set (different LiveKit projects)
+        const url = data.url || process.env.NEXT_PUBLIC_LIVEKIT_URL;
         if (!url) throw new Error("NEXT_PUBLIC_LIVEKIT_URL not set");
 
-        console.log("[LiveKit] Connecting to", url);
-        await room.connect(url, token);
+        console.log("[LiveKit] Connecting to", url, data.keySet ? `(key set #${data.keySet})` : "");
+        await room.connect(url, data.token);
         if (cancelled) return;
 
         console.log("[LiveKit] Connected! Local participant:", room.localParticipant.identity);
