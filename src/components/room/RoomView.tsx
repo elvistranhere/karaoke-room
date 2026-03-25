@@ -396,13 +396,6 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         onClose={() => setSettingsOpen(false)}
         voiceVolume={voiceVolume}
         onVoiceVolumeChange={setVoiceVolume}
-        inputDevices={inputDevices}
-        outputDevices={outputDevices}
-        selectedInputId={selectedInputId}
-        selectedOutputId={selectedOutputId}
-        onInputChange={setSelectedInputId}
-        onOutputChange={setSelectedOutputId}
-        micMode={micMode}
       />
 
       {/* Sound Profile Modal */}

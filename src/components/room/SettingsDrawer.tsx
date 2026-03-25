@@ -1,20 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 
 interface SettingsDrawerProps {
   open: boolean;
   onClose: () => void;
   voiceVolume: number;
   onVoiceVolumeChange: (vol: number) => void;
-  inputDevices: AudioDevice[];
-  outputDevices: AudioDevice[];
-  selectedInputId: string;
-  selectedOutputId: string;
-  onInputChange: (id: string) => void;
-  onOutputChange: (id: string) => void;
-  micMode: MicMode;
 }
 
 export function SettingsDrawer({
@@ -22,13 +14,6 @@ export function SettingsDrawer({
   onClose,
   voiceVolume,
   onVoiceVolumeChange,
-  inputDevices,
-  outputDevices,
-  selectedInputId,
-  selectedOutputId,
-  onInputChange,
-  onOutputChange,
-  micMode,
 }: SettingsDrawerProps) {
   useEffect(() => {
     if (!open) return;
@@ -92,63 +77,21 @@ export function SettingsDrawer({
                 {Math.round(voiceVolume * 100)}
               </span>
             </div>
-          </div>
-
-          {/* Microphone */}
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
-              Microphone
-            </label>
-            <select
-              value={selectedInputId}
-              onChange={(e) => onInputChange(e.target.value)}
-              className="w-full cursor-pointer rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-              style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-            >
-              {inputDevices.length === 0 && <option value="">No devices found</option>}
-              {inputDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Speaker */}
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
-              Speaker Output
-            </label>
-            <select
-              value={selectedOutputId}
-              onChange={(e) => onOutputChange(e.target.value)}
-              className="w-full cursor-pointer rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-              style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-            >
-              {outputDevices.length === 0 && <option value="">Default</option>}
-              {outputDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mic Mode Info */}
-          <div className="rounded-lg p-4" style={{ background: "var(--color-dark-surface)" }}>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
-              Mic Mode
+            <p className="mt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+              Controls overall volume of all incoming audio
             </p>
-            <div className="space-y-2 text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              <p>
-                <span style={{ color: "var(--color-primary)" }}>Talk</span> — Echo cancellation + noise suppression. Best for chatting.
-              </p>
-              <p>
-                <span style={{ color: "var(--color-accent)" }}>Sing</span> — No processing, stereo 48kHz. Use headphones!
-              </p>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]">
-              <Dot label="Echo Cancel" on={micMode === "voice"} />
-              <Dot label="Noise Suppress" on={micMode === "voice"} />
-              <Dot label="Auto Gain" on={micMode === "voice"} />
-              <Dot label="Stereo 48kHz" on={micMode === "raw"} />
-            </div>
+          </div>
+
+          <div className="rounded-lg p-4 text-center" style={{ background: "var(--color-dark-surface)" }}>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              Mic settings, voice effects, and device selection are in
+            </p>
+            <p className="mt-1 text-xs font-bold" style={{ color: "var(--color-primary)" }}>
+              Sound Profile
+            </p>
+            <p className="mt-0.5 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+              (click the Talk/Sing button in the toolbar)
+            </p>
           </div>
         </div>
       </div>
@@ -156,11 +99,3 @@ export function SettingsDrawer({
   );
 }
 
-function Dot({ label, on }: { label: string; on: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="h-1.5 w-1.5 rounded-full" style={{ background: on ? "var(--color-primary)" : "var(--color-dark-border)" }} />
-      <span style={{ color: on ? "var(--color-text-primary)" : "var(--color-text-muted)", opacity: on ? 1 : 0.5 }}>{label}</span>
-    </div>
-  );
-}

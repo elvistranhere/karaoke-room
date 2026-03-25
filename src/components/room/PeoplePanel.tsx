@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Participant, ParticipantStatus, RoomState } from "~/types/room";
+import { RandomWheel } from "./RandomWheel";
 
 interface PeoplePanelProps {
   roomState: RoomState;
@@ -29,7 +30,7 @@ export function PeoplePanel({
   onPersonVolumeChange,
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"people" | "queue">("people");
+  const [tab, setTab] = useState<"people" | "queue" | "wheel">("people");
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [songIntent, setSongIntent] = useState("");
 
@@ -75,7 +76,31 @@ export function PeoplePanel({
             {roomState.queue.length}
           </span>
         </button>
+        <button
+          onClick={() => setTab("wheel")}
+          className="flex flex-1 cursor-pointer items-center justify-center px-3 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all"
+          style={{
+            fontFamily: "var(--font-display)",
+            color: tab === "wheel" ? "var(--color-success)" : "var(--color-text-muted)",
+            borderBottom: tab === "wheel" ? "2px solid var(--color-success)" : "2px solid transparent",
+          }}
+        >
+          Wheel
+        </button>
       </div>
+
+      {/* Wheel tab */}
+      {tab === "wheel" && (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <RandomWheel
+            participants={roomState.participants}
+            onPick={(p) => {
+              // Could auto-add to queue in the future
+              setTab("queue");
+            }}
+          />
+        </div>
+      )}
 
       {/* Queue tab */}
       {tab === "queue" && (
