@@ -53,6 +53,9 @@ interface UseLiveKitReturn {
   voiceEffect: VoiceEffect;
   setVoiceEffect: (effect: VoiceEffect) => void;
   setEffectWetDry: (wet: number) => void;
+  // Auto-mix (sidechain ducking)
+  autoMix: boolean;
+  setAutoMix: (on: boolean) => void;
   // Recording
   recordingState: RecordingState;
   recordingDuration: number;
@@ -948,6 +951,84 @@ export function useLiveKit({
     mixCtxRef.current = null;
   }, []);
 
+  // --- Auto-mix: sidechain ducking (lower music when voice detected) ---
+  const [autoMix, setAutoMixState] = useState(false);
+  const autoMixRef = useRef(false);
+  const autoMixTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoMixAnalyserRef = useRef<AnalyserNode | null>(null);
+
+  const setAutoMix = useCallback((on: boolean) => {
+    setAutoMixState(on);
+    autoMixRef.current = on;
+
+    if (!on) {
+      // Stop auto-mix, restore music gain to slider value
+      if (autoMixTimerRef.current) {
+        clearInterval(autoMixTimerRef.current);
+        autoMixTimerRef.current = null;
+      }
+      autoMixAnalyserRef.current?.disconnect();
+      autoMixAnalyserRef.current = null;
+      return;
+    }
+
+    // Start auto-mix: attach analyser to mic source, poll voice level
+    const ctx = mixCtxRef.current;
+    const micSource = mixMicSourceRef.current;
+    const musicGain = mixSystemGainRef.current;
+    if (!ctx || !micSource || !musicGain) return;
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    // Connect analyser in parallel (doesn't affect audio path)
+    const chain = effectChainRef.current;
+    if (chain) {
+      chain.output.connect(analyser);
+    } else {
+      micSource.connect(analyser);
+    }
+    autoMixAnalyserRef.current = analyser;
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const musicBaseGain = musicGain.gain.value; // snapshot current slider position
+    let smoothedLevel = 0;
+
+    autoMixTimerRef.current = setInterval(() => {
+      if (!autoMixRef.current) return;
+      analyser.getByteFrequencyData(dataArray);
+
+      // Calculate RMS energy of voice frequencies (100Hz-4kHz)
+      const binHz = (ctx.sampleRate / 2) / analyser.frequencyBinCount;
+      const lowBin = Math.floor(100 / binHz);
+      const highBin = Math.min(Math.floor(4000 / binHz), dataArray.length);
+      let sum = 0;
+      for (let i = lowBin; i < highBin; i++) sum += dataArray[i]! * dataArray[i]!;
+      const rms = Math.sqrt(sum / (highBin - lowBin)) / 255;
+
+      // Smooth the level to avoid pumping
+      smoothedLevel = smoothedLevel * 0.7 + rms * 0.3;
+
+      // Duck music: voice loud → music at 30% of slider, voice quiet → music at 100% of slider
+      const voiceThreshold = 0.08;
+      const duckRatio = smoothedLevel > voiceThreshold
+        ? Math.max(0.3, 1 - (smoothedLevel - voiceThreshold) * 3)
+        : 1.0;
+
+      musicGain.gain.setTargetAtTime(
+        musicBaseGain * duckRatio,
+        ctx.currentTime,
+        0.15, // 150ms smoothing
+      );
+    }, 50); // 20Hz polling — smooth enough, negligible CPU
+  }, []);
+
+  // Stop auto-mix when sharing stops
+  useEffect(() => {
+    if (!isSharing && autoMixRef.current) {
+      setAutoMix(false);
+    }
+  }, [isSharing, setAutoMix]);
+
   // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
   const syncNCToRoom = useCallback(() => {
     const room = roomRef.current;
@@ -1069,7 +1150,7 @@ export function useLiveKit({
 
       const systemSource = ctx.createMediaStreamSource(new MediaStream([systemTrack]));
       const systemGain = ctx.createGain();
-      systemGain.gain.value = 1.0;
+      systemGain.gain.value = 0.7; // default: voice louder than music (karaoke standard)
       systemSource.connect(systemGain);
       systemGain.connect(dest);
 
@@ -1309,6 +1390,8 @@ export function useLiveKit({
     voiceEffect,
     setVoiceEffect,
     setEffectWetDry,
+    autoMix,
+    setAutoMix,
     recordingState,
     recordingDuration,
     recordingBlob,

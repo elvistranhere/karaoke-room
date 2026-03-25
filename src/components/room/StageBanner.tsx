@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
-import { Mic, Music, VolumeX, Volume2, Circle, Square } from "lucide-react";
+import { Mic, Music, VolumeX, Volume2, Circle, Square, Wand2 } from "lucide-react";
 import type { RecordingState } from "~/hooks/useLiveKit";
 import { AudioVisualizer } from "./AudioVisualizer";
 
@@ -26,6 +26,9 @@ interface StageBannerProps {
   onMuteAll?: () => void;
   onUnmuteAll?: () => void;
   isMutedAll?: boolean;
+  // Auto-mix
+  autoMix?: boolean;
+  onAutoMixChange?: (on: boolean) => void;
   // Recording
   recordingState?: RecordingState;
   recordingDuration?: number;
@@ -52,6 +55,8 @@ export function StageBanner({
   onMuteAll,
   onUnmuteAll,
   isMutedAll = false,
+  autoMix = false,
+  onAutoMixChange,
   recordingState = "idle",
   recordingDuration = 0,
   onStartRecording,
@@ -203,11 +208,26 @@ export function StageBanner({
             }}
           />
 
-          {/* Separate mic/music volume sliders */}
+          {/* Separate mic/music volume sliders + auto-mix */}
           {onMixMicGain && onMixMusicGain && (
             <div className="space-y-2">
               <MixSlider label="Voice" icon={<Mic size={14} style={{ color: "var(--color-primary)" }} />} defaultValue={100} onChange={(v) => onMixMicGain(v / 100)} />
-              <MixSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} defaultValue={100} onChange={(v) => onMixMusicGain(v / 100)} />
+              <MixSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} defaultValue={70} onChange={(v) => onMixMusicGain(v / 100)} />
+              {onAutoMixChange && (
+                <button
+                  onClick={() => onAutoMixChange(!autoMix)}
+                  className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[10px] font-medium transition-all hover:brightness-110"
+                  style={{
+                    borderColor: autoMix ? "var(--color-primary)" : "var(--color-dark-border)",
+                    background: autoMix ? "var(--color-primary-dim)" : "transparent",
+                    color: autoMix ? "var(--color-primary)" : "var(--color-text-muted)",
+                  }}
+                  title="Automatically lower music when you sing"
+                >
+                  <Wand2 size={10} />
+                  {autoMix ? "Auto Mix ON" : "Auto Mix"}
+                </button>
+              )}
             </div>
           )}
 

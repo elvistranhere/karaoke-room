@@ -96,6 +96,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     voiceEffect,
     setVoiceEffect,
     setEffectWetDry,
+    autoMix,
+    setAutoMix,
     recordingState,
     recordingDuration,
     recordingBlob,
@@ -376,6 +378,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
             onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
             isMutedAll={singerMutedAll}
+            autoMix={autoMix}
+            onAutoMixChange={setAutoMix}
             recordingState={recordingState}
             recordingDuration={recordingDuration}
             onStartRecording={startRecording}
