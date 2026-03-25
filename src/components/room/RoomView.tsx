@@ -96,6 +96,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     selectedInputDeviceId: selectedInputId,
     selectedOutputDeviceId: selectedOutputId,
     micMode,
+    talkingNC,
+    singingNC,
   });
 
   const isConnected = isPartyConnected && isLiveKitConnected;

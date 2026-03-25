@@ -24,6 +24,8 @@ interface UseLiveKitParams {
   selectedInputDeviceId: string;
   selectedOutputDeviceId: string;
   micMode: MicMode;
+  talkingNC: boolean;  // noise cancellation for talking mode
+  singingNC: boolean;  // noise cancellation for singing mode
 }
 
 export type MicCheckState = "idle" | "recording" | "playing";
@@ -58,6 +60,8 @@ export function useLiveKit({
   selectedInputDeviceId,
   selectedOutputDeviceId,
   micMode,
+  talkingNC,
+  singingNC,
 }: UseLiveKitParams): UseLiveKitReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +88,10 @@ export function useLiveKit({
   isMicEnabledRef.current = isMicEnabled;
   const selectedOutputRef = useRef(selectedOutputDeviceId);
   selectedOutputRef.current = selectedOutputDeviceId;
+  const talkingNCRef = useRef(talkingNC);
+  talkingNCRef.current = talkingNC;
+  const singingNCRef = useRef(singingNC);
+  singingNCRef.current = singingNC;
 
   // Single-track mixing: when sharing, mix system audio + mic into one track
   // via Web Audio API. Both sources share the same render clock → zero drift.
@@ -108,13 +116,15 @@ export function useLiveKit({
     let cancelled = false;
 
     const isRawMode = micModeRef.current === "raw";
+    // NC setting depends on the current mode
+    const ncEnabled = isRawMode ? singingNCRef.current : talkingNCRef.current;
     const room = new Room({
       audioCaptureDefaults: {
-        echoCancellation: !isRawMode,
-        noiseSuppression: !isRawMode,
-        autoGainControl: !isRawMode,
+        echoCancellation: ncEnabled,
+        noiseSuppression: ncEnabled,
+        autoGainControl: ncEnabled,
         deviceId: selectedInputDeviceId || undefined,
-        channelCount: isRawMode ? 2 : 1, // stereo for singing, mono for talking
+        channelCount: isRawMode ? 2 : 1,
         sampleRate: isRawMode ? 48000 : undefined,
       },
       audioOutput: {
@@ -348,12 +358,13 @@ export function useLiveKit({
     if (mixPubRef.current && mixMicStreamRef.current) {
       void (async () => {
         try {
+          const nc = singingNCRef.current;
           const newStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               deviceId: { exact: selectedInputDeviceId },
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
+              echoCancellation: nc,
+              noiseSuppression: nc,
+              autoGainControl: nc,
               channelCount: 2,
               sampleRate: 48000,
             },
@@ -409,11 +420,13 @@ export function useLiveKit({
     void (async () => {
       try {
         await room.localParticipant.setMicrophoneEnabled(false);
+        // Use NC toggle for the target mode
+        const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
         room.options.audioCaptureDefaults = {
           ...room.options.audioCaptureDefaults,
-          echoCancellation: !isRaw,
-          noiseSuppression: !isRaw,
-          autoGainControl: !isRaw,
+          echoCancellation: nc,
+          noiseSuppression: nc,
+          autoGainControl: nc,
           channelCount: isRaw ? 2 : 1,
           sampleRate: isRaw ? 48000 : undefined,
         };
@@ -423,7 +436,7 @@ export function useLiveKit({
         console.error("[LiveKit] Error switching mic mode:", err);
       }
     })();
-  }, [micMode, isConnected, isMicEnabled]);
+  }, [micMode, isConnected, isMicEnabled, talkingNC, singingNC]);
 
   // --- Switch output device without reconnecting ---
 
@@ -738,17 +751,18 @@ export function useLiveKit({
       }
       setCurrentSong(detectedSong);
 
-      // 2. Capture raw mic (no browser processing — AudioContext mixing bypasses
+      // 2. Capture mic with singing NC setting (AudioContext mixing bypasses
       //    Chrome's system-level echo cancellation, Chromium bug #40226380)
+      const singNC = singingNCRef.current;
       let micStream: MediaStream | null = null;
       if (isMicEnabledRef.current) {
         try {
           micStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
+              echoCancellation: singNC,
+              noiseSuppression: singNC,
+              autoGainControl: singNC,
               channelCount: 2,
               sampleRate: 48000,
             },
