@@ -112,15 +112,15 @@ export function SoundProfileModal({
             </div>
 
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              {/* Noise cancellation info */}
+              {/* Noise cancellation toggle */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
                   <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    Echo cancel + noise suppression active in Talk mode
+                    {talkingNoiseCancellation ? "Echo cancel + noise suppression ON" : "Raw audio, no processing"}
                   </p>
                 </div>
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}>ON</span>
+                <ToggleSwitch on={talkingNoiseCancellation} onChange={onTalkingNoiseCancellationChange} color="var(--color-primary)" />
               </div>
 
               {/* Talking mic check */}
@@ -185,15 +185,15 @@ export function SoundProfileModal({
                 </div>
               )}
 
-              {/* Noise cancellation info */}
+              {/* Noise cancellation toggle */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
                   <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    OFF — raw stereo 48kHz for best vocal quality
+                    {singingNoiseCancellation ? "Processing ON (may reduce voice quality)" : "OFF — raw stereo 48kHz (recommended)"}
                   </p>
                 </div>
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "var(--color-dark-card)", color: "var(--color-text-muted)" }}>OFF</span>
+                <ToggleSwitch on={singingNoiseCancellation} onChange={onSingingNoiseCancellationChange} color="var(--color-accent)" />
               </div>
 
               {/* Singing mic check */}
@@ -258,3 +258,17 @@ export function SoundProfileModal({
   );
 }
 
+function ToggleSwitch({ on, onChange, color }: { on: boolean; onChange: (on: boolean) => void; color: string }) {
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      className="relative h-6 w-11 cursor-pointer rounded-full transition-all duration-200"
+      style={{ background: on ? color : "var(--color-dark-border)" }}
+    >
+      <span
+        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-200"
+        style={{ left: on ? "calc(100% - 22px)" : "2px" }}
+      />
+    </button>
+  );
+}

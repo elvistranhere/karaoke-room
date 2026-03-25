@@ -35,7 +35,8 @@ interface UseLiveKitReturn {
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
   micCheckState: MicCheckState;
-  startMicCheck: () => void;
+  startTalkingMicCheck: (noiseCancellation: boolean) => void;
+  startSingingMicCheck: (noiseCancellation: boolean) => void;
   isSharing: boolean;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
@@ -451,86 +452,159 @@ export function useLiveKit({
   // exactly how you sound to other participants. No stuttering issues
   // since playback is from a finished recording, not a live loopback.
 
-  const startMicCheck = useCallback(() => {
-    if (micCheckState !== "idle") return;
-
-    const room = roomRef.current;
-    if (!room) return;
-
-    // Always record YOUR voice only (not music, not other people)
-    // During sharing: use the raw mic stream from the mix
-    // Not sharing: use the managed LiveKit mic track
-    let mediaTrack: MediaStreamTrack | undefined;
-
-    if (mixMicStreamRef.current) {
-      // Sharing — use the raw mic stream (your voice only, no music)
-      mediaTrack = mixMicStreamRef.current.getAudioTracks()[0];
-      console.log("[LiveKit] Mic check: recording from raw mic stream (your voice only)");
-    } else if (isMicEnabledRef.current) {
-      // Not sharing — use managed mic
-      const micPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
-      mediaTrack = micPub?.track?.mediaStreamTrack;
-      console.log("[LiveKit] Mic check: recording from managed mic");
-    }
-
-    if (!mediaTrack) {
-      console.log("[LiveKit] No track for mic check");
-      return;
-    }
-
+  // Helper: record from a MediaStreamTrack for 5s and play back
+  const recordAndPlayback = useCallback((track: MediaStreamTrack, label: string) => {
     let cancelled = false;
     setMicCheckState("recording");
-    console.log("[LiveKit] Mic check: recording 5s...");
+    console.log(`[LiveKit] ${label}: recording 5s...`);
 
-    const recorder = new MediaRecorder(new MediaStream([mediaTrack]), {
-      mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm",
+    const recorder = new MediaRecorder(new MediaStream([track]), {
+      mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm",
     });
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
     recorder.onstop = () => {
+      // Stop the captured stream (we own it)
+      track.stop();
       if (cancelled) { setMicCheckState("idle"); return; }
 
       const blob = new Blob(chunks, { type: recorder.mimeType });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      // Play through the selected output device
       if (selectedOutputRef.current && typeof audio.setSinkId === "function") {
         void (audio as HTMLAudioElement).setSinkId(selectedOutputRef.current).catch(() => {});
       }
 
       setMicCheckState("playing");
-      console.log("[LiveKit] Mic check: playing back...");
+      console.log(`[LiveKit] ${label}: playing back...`);
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setMicCheckState("idle");
-        console.log("[LiveKit] Mic check: done");
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setMicCheckState("idle");
-      };
+      audio.onended = () => { URL.revokeObjectURL(url); setMicCheckState("idle"); };
+      audio.onerror = () => { URL.revokeObjectURL(url); setMicCheckState("idle"); };
       void audio.play().catch(() => setMicCheckState("idle"));
     };
 
     recorder.start();
-    const timer = setTimeout(() => {
-      if (recorder.state === "recording") recorder.stop();
-    }, 5000);
+    const timer = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 5000);
 
-    // Abort handler: stop recorder + clear timer
     micCheckAbortRef.current = () => {
       cancelled = true;
       clearTimeout(timer);
-      if (recorder.state === "recording") {
-        try { recorder.stop(); } catch { /* already stopped */ }
-      }
+      track.stop();
+      if (recorder.state === "recording") { try { recorder.stop(); } catch { /* */ } }
       setMicCheckState("idle");
     };
-  }, [micCheckState]);
+  }, []);
+
+  // Talking Mic Check: captures a FRESH mic with talking constraints, records YOUR voice only
+  const startTalkingMicCheck = useCallback(async (noiseCancellation: boolean) => {
+    if (micCheckState !== "idle") return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          echoCancellation: noiseCancellation,
+          noiseSuppression: noiseCancellation,
+          autoGainControl: noiseCancellation,
+          channelCount: 1,
+        },
+      });
+      const track = stream.getAudioTracks()[0];
+      if (!track) { setMicCheckState("idle"); return; }
+      recordAndPlayback(track, "Talking mic check");
+    } catch (err) {
+      console.error("[LiveKit] Talking mic check error:", err);
+      setMicCheckState("idle");
+    }
+  }, [micCheckState, selectedInputDeviceId, recordAndPlayback]);
+
+  // Singing Mic Check: captures FRESH mic → routes through voice effect chain → records effected output
+  const startSingingMicCheck = useCallback(async (noiseCancellation: boolean) => {
+    if (micCheckState !== "idle") return;
+    try {
+      // 1. Capture raw mic
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          echoCancellation: noiseCancellation,
+          noiseSuppression: noiseCancellation,
+          autoGainControl: noiseCancellation,
+          channelCount: 2,
+          sampleRate: 48000,
+        },
+      });
+      const rawTrack = stream.getAudioTracks()[0];
+      if (!rawTrack) { setMicCheckState("idle"); return; }
+
+      // 2. Route through effect chain in a temporary AudioContext
+      const ctx = new AudioContext({ sampleRate: 48000 });
+      const source = ctx.createMediaStreamSource(stream);
+      const chain = createEffectChain(ctx, voiceEffectRef.current);
+      const dest = ctx.createMediaStreamDestination();
+
+      source.connect(chain.input);
+      chain.output.connect(dest);
+
+      // Apply current wet/dry if effect is active
+      // (chain starts with default values from the factory)
+
+      const effectedTrack = dest.stream.getAudioTracks()[0];
+      if (!effectedTrack) { ctx.close(); rawTrack.stop(); setMicCheckState("idle"); return; }
+
+      // 3. Record the effected output
+      console.log("[LiveKit] Singing mic check: recording with effect:", voiceEffectRef.current);
+
+      let cancelled = false;
+      setMicCheckState("recording");
+
+      const recorder = new MediaRecorder(dest.stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm",
+      });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      recorder.onstop = () => {
+        // Clean up everything
+        source.disconnect();
+        chain.cleanup();
+        rawTrack.stop();
+        void ctx.close();
+
+        if (cancelled) { setMicCheckState("idle"); return; }
+
+        const blob = new Blob(chunks, { type: recorder.mimeType });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        if (selectedOutputRef.current && typeof audio.setSinkId === "function") {
+          void (audio as HTMLAudioElement).setSinkId(selectedOutputRef.current).catch(() => {});
+        }
+
+        setMicCheckState("playing");
+        console.log("[LiveKit] Singing mic check: playing back with effect...");
+
+        audio.onended = () => { URL.revokeObjectURL(url); setMicCheckState("idle"); };
+        audio.onerror = () => { URL.revokeObjectURL(url); setMicCheckState("idle"); };
+        void audio.play().catch(() => setMicCheckState("idle"));
+      };
+
+      recorder.start();
+      const timer = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 5000);
+
+      micCheckAbortRef.current = () => {
+        cancelled = true;
+        clearTimeout(timer);
+        source.disconnect();
+        chain.cleanup();
+        rawTrack.stop();
+        void ctx.close();
+        if (recorder.state === "recording") { try { recorder.stop(); } catch { /* */ } }
+        setMicCheckState("idle");
+      };
+    } catch (err) {
+      console.error("[LiveKit] Singing mic check error:", err);
+      setMicCheckState("idle");
+    }
+  }, [micCheckState, selectedInputDeviceId]);
 
   // --- Microphone ---
 
@@ -823,7 +897,8 @@ export function useLiveKit({
     isMicEnabled,
     toggleMic,
     micCheckState,
-    startMicCheck,
+    startTalkingMicCheck,
+    startSingingMicCheck,
     isSharing,
     startSharing,
     stopSharing,

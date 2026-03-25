@@ -34,8 +34,10 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundProfileOpen, setSoundProfileOpen] = useState(false);
-  const [talkingNC, setTalkingNC] = useState(true);  // noise cancellation for talking
-  const [singingNC, setSingingNC] = useState(false);  // noise cancellation for singing
+  // Per-mode noise cancellation state — independent of micMode
+  // These control the constraints used during mic check and sharing
+  const [talkingNC, setTalkingNC] = useState(true);   // ON by default for talking
+  const [singingNC, setSingingNC] = useState(false);   // OFF by default for singing
 
   const {
     roomState,
@@ -73,7 +75,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     isMicEnabled,
     toggleMic,
     micCheckState,
-    startMicCheck,
+    startTalkingMicCheck,
+    startSingingMicCheck,
     isSharing,
     startSharing,
     stopSharing,
@@ -427,14 +430,15 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         onTalkingNoiseCancellationChange={setTalkingNC}
         singingNoiseCancellation={singingNC}
         onSingingNoiseCancellationChange={setSingingNC}
+
         inputDevices={inputDevices}
         outputDevices={outputDevices}
         selectedInputId={selectedInputId}
         selectedOutputId={selectedOutputId}
         onInputChange={setSelectedInputId}
         onOutputChange={setSelectedOutputId}
-        onTalkingMicCheck={startMicCheck}
-        onSingingMicCheck={startMicCheck}
+        onTalkingMicCheck={() => startTalkingMicCheck(talkingNC)}
+        onSingingMicCheck={() => startSingingMicCheck(singingNC)}
         micCheckState={micCheckState}
       />
     </main>
