@@ -69,7 +69,8 @@ export function SoundProfileModal({
   // Apply wet/dry when effect changes
   useEffect(() => {
     if (voiceEffect !== "none") onEffectWetDry(wetDry / 100);
-  }, [voiceEffect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceEffect]); // intentionally only fires on effect change, not on wetDry/callback change
 
   const handleWetDry = (val: number) => {
     setWetDry(val);
@@ -111,19 +112,15 @@ export function SoundProfileModal({
             </div>
 
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              {/* Noise cancellation toggle */}
+              {/* Noise cancellation info */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
                   <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    {talkingNoiseCancellation ? "Echo cancel + noise suppression ON" : "Raw audio, no processing"}
+                    Echo cancel + noise suppression active in Talk mode
                   </p>
                 </div>
-                <ToggleSwitch
-                  on={talkingNoiseCancellation}
-                  onChange={onTalkingNoiseCancellationChange}
-                  color="var(--color-primary)"
-                />
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}>ON</span>
               </div>
 
               {/* Talking mic check */}
@@ -188,19 +185,15 @@ export function SoundProfileModal({
                 </div>
               )}
 
-              {/* Noise cancellation toggle */}
+              {/* Noise cancellation info */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
                   <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    {singingNoiseCancellation ? "Processing ON (may affect voice quality)" : "OFF — raw stereo 48kHz (recommended)"}
+                    OFF — raw stereo 48kHz for best vocal quality
                   </p>
                 </div>
-                <ToggleSwitch
-                  on={singingNoiseCancellation}
-                  onChange={onSingingNoiseCancellationChange}
-                  color="var(--color-accent)"
-                />
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "var(--color-dark-card)", color: "var(--color-text-muted)" }}>OFF</span>
               </div>
 
               {/* Singing mic check */}

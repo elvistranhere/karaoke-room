@@ -171,11 +171,14 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     prevReactionCountRef.current = reactions.length;
   }, [reactions]);
 
-  // Auto-switch to singing mode when it's your turn
+  // Auto-switch to singing mode ONCE when becoming the singer
+  const wasMyTurnRef = useRef(false);
   useEffect(() => {
-    if (isMyTurn && micMode === "voice") {
-      setMicMode("raw");
+    if (isMyTurn && !wasMyTurnRef.current) {
+      wasMyTurnRef.current = true;
+      if (micMode === "voice") setMicMode("raw");
     }
+    if (!isMyTurn) wasMyTurnRef.current = false;
   }, [isMyTurn, micMode, setMicMode]);
 
   // Send status updates
@@ -365,7 +368,10 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
           >
             <RandomWheel
               participants={roomState.participants}
-              onPick={() => {}}
+              onPick={(p) => {
+              // Auto-join queue for the picked participant (only works for self)
+              if (p.id === myPeerId) joinQueue();
+            }}
             />
           </div>
         </div>

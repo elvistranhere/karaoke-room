@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, RoomConfiguration, TrackSource } from "livekit-server-sdk";
 
-// Multiple LiveKit API key sets for quota rotation.
-// When one key hits quota, automatically falls back to the next.
+// Multiple LiveKit API key sets for quota distribution.
+// NOTE: Token generation (toJwt) is local — quota errors happen at room.connect()
+// on the client, not here. This rotation is PREEMPTIVE: keys are round-robined
+// to spread usage across projects. The cooldown/exhaustion tracking is best-effort
+// and resets on serverless cold starts. For true reactive failover, the client
+// would need to retry with a different key hint on connect failure.
 // Set in env: LIVEKIT_API_KEY, LIVEKIT_API_KEY_2, LIVEKIT_API_KEY_3, etc.
 interface LiveKitKeySet {
   apiKey: string;

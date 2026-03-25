@@ -74,7 +74,12 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
         className="relative h-40 w-40 rounded-full border-2"
         style={{
           borderColor: "var(--color-dark-border)",
-          background: "var(--color-dark-card)",
+          background: `conic-gradient(${participants.map((_, i) => {
+            const color = colors[i % colors.length];
+            const start = (i * segmentAngle / 360 * 100).toFixed(1);
+            const end = ((i + 1) * segmentAngle / 360 * 100).toFixed(1);
+            return `${color} ${start}% ${end}%`;
+          }).join(", ")})`,
           transform: `rotate(${rotation}deg)`,
           transition: spinning ? "transform 3.5s cubic-bezier(0.17, 0.67, 0.12, 0.99)" : "none",
         }}
@@ -125,20 +130,6 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
           style={{ background: "var(--color-primary)" }}
         />
       </div>
-
-      {/* Conic gradient background for colored segments */}
-      <style>{`
-        .wheel-segments {
-          background: conic-gradient(
-            ${participants.map((_, i) => {
-              const color = colors[i % colors.length];
-              const start = (i * segmentAngle / 360 * 100).toFixed(1);
-              const end = ((i + 1) * segmentAngle / 360 * 100).toFixed(1);
-              return `${color} ${start}% ${end}%`;
-            }).join(", ")}
-          );
-        }
-      `}</style>
 
       {/* Spin button or winner display */}
       {winner ? (
