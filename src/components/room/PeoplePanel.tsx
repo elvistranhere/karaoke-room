@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Mic, MicOff, Music, Globe } from "lucide-react";
 import type { Participant, ParticipantStatus, RoomState } from "~/types/room";
 import { RandomWheel } from "./RandomWheel";
 
@@ -30,7 +31,8 @@ export function PeoplePanel({
   onPersonVolumeChange,
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"people" | "queue" | "wheel">("people");
+  const [tab, setTab] = useState<"people" | "queue">("people");
+  const [showWheel, setShowWheel] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [songIntent, setSongIntent] = useState("");
 
@@ -76,31 +78,7 @@ export function PeoplePanel({
             {roomState.queue.length}
           </span>
         </button>
-        <button
-          onClick={() => setTab("wheel")}
-          className="flex flex-1 cursor-pointer items-center justify-center px-3 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all"
-          style={{
-            fontFamily: "var(--font-display)",
-            color: tab === "wheel" ? "var(--color-success)" : "var(--color-text-muted)",
-            borderBottom: tab === "wheel" ? "2px solid var(--color-success)" : "2px solid transparent",
-          }}
-        >
-          Wheel
-        </button>
       </div>
-
-      {/* Wheel tab */}
-      {tab === "wheel" && (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <RandomWheel
-            participants={roomState.participants}
-            onPick={(p) => {
-              // Could auto-add to queue in the future
-              setTab("queue");
-            }}
-          />
-        </div>
-      )}
 
       {/* Queue tab */}
       {tab === "queue" && (
@@ -198,7 +176,7 @@ export function PeoplePanel({
                       : "var(--color-text-muted)",
                   }}
                 >
-                  {isSinger ? "🎤" : p.name.charAt(0).toUpperCase()}
+                  {isSinger ? <Mic size={14} /> : p.name.charAt(0).toUpperCase()}
                   {isSpeaking && (
                     <span
                       className="absolute inset-0 rounded-full"
@@ -232,21 +210,19 @@ export function PeoplePanel({
                       #{queuePos}
                     </span>
                   )}
+                  {status?.browser && (
+                    <span className="flex items-center gap-0.5 text-[9px]" style={{ color: "var(--color-text-muted)", opacity: 0.6 }}>
+                      <Globe size={9} />
+                      {status.browser}
+                    </span>
+                  )}
                   {status && (
-                    status.isMuted ? (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-                        <line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/>
-                      </svg>
-                    ) : (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
-                      </svg>
-                    )
+                    status.isMuted
+                      ? <MicOff size={12} style={{ color: "var(--color-text-muted)", opacity: 0.5 }} />
+                      : <Mic size={12} style={{ color: "var(--color-primary)" }} />
                   )}
                   {status?.isSharingAudio && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                    </svg>
+                    <Music size={12} style={{ color: "var(--color-accent)" }} />
                   )}
                 </div>
               </div>
@@ -274,6 +250,25 @@ export function PeoplePanel({
           );
         })}
       </ul>
+      )}
+
+      {/* Random Wheel — below people list */}
+      {tab === "people" && roomState.participants.length >= 2 && (
+        <div className="border-t px-3 py-2" style={{ borderColor: "var(--color-dark-border)" }}>
+          <button
+            onClick={() => setShowWheel(!showWheel)}
+            className="w-full cursor-pointer rounded-lg py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+            style={{ background: showWheel ? "var(--color-primary-dim)" : "var(--color-dark-card)", color: showWheel ? "var(--color-primary)" : "var(--color-text-muted)" }}
+          >
+            {showWheel ? "Hide Wheel" : "🎡 Random Wheel"}
+          </button>
+          {showWheel && (
+            <RandomWheel
+              participants={roomState.participants}
+              onPick={() => setShowWheel(false)}
+            />
+          )}
+        </div>
       )}
 
       {/* Queue action */}
