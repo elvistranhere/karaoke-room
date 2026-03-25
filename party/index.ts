@@ -387,6 +387,7 @@ export default class KaraokeRoom implements Party.Server {
 
   private handleMixAdjust(sender: Party.Connection, voice: number, music: number) {
     if (!this.currentSingerId) return;
+    if (!Number.isFinite(voice) || !Number.isFinite(music)) return;
     const participant = this.participants.get(sender.id);
     if (!participant) return;
 

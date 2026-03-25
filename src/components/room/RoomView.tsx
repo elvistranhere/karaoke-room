@@ -126,7 +126,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   const [voiceVolume, setVoiceVolume] = useState(1);
   const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
 
-  // Collaborative mix values (synced between singer and listeners)
+  // Collaborative mix values (synced via PartyKit: singer broadcasts to listeners, listeners send to singer)
   const [mixVoiceValue, setMixVoiceValue] = useState(100);
   const [mixMusicValue, setMixMusicValue] = useState(70);
 
@@ -189,19 +189,18 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     const musicPercent = Math.round(music * 100);
 
     if (isMyTurn) {
-      // Singer receives listener's adjustment → apply to gain nodes + chat
+      // Singer receives listener's adjustment → apply to gain nodes (no chat — adjuster sends it)
       setMixMicGain(voice);
       setMixMusicGain(music);
       setMixVoiceValue(voicePercent);
       setMixMusicValue(musicPercent);
-      sendChat(`${fromName} adjusted mix — Voice ${voicePercent}%, Music ${musicPercent}%`);
     } else {
       // Listener receives singer's broadcast → sync sliders only (no gain, no chat)
       setMixVoiceValue(voicePercent);
       setMixMusicValue(musicPercent);
     }
     clearPendingMixAdjust();
-  }, [pendingMixAdjust, isMyTurn, setMixMicGain, setMixMusicGain, sendChat, clearPendingMixAdjust]);
+  }, [pendingMixAdjust, isMyTurn, setMixMicGain, setMixMusicGain, clearPendingMixAdjust]);
 
   // LiveKit identity for status updates — must be before statusCtxRef
   const lkIdentity = room?.localParticipant?.identity ?? null;
@@ -420,7 +419,10 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
             onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
             isMutedAll={singerMutedAll}
-            onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
+            onMixAdjust={!isMyTurn ? (voice, music) => {
+              sendMixAdjust(voice, music);
+              sendChat(`adjusted mix — Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
+            } : undefined}
             autoMix={autoMix}
             onAutoMixChange={setAutoMix}
             recordingState={recordingState}
