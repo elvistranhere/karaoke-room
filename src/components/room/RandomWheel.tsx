@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { ChevronDown } from "lucide-react";
 import type { Participant } from "~/types/room";
 
 interface RandomWheelProps {
@@ -60,15 +61,8 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
 
   return (
     <div className="flex flex-col items-center gap-3 py-3">
-      {/* Pointer triangle — points DOWN into the wheel (top = 0°) */}
-      <div
-        className="h-0 w-0"
-        style={{
-          borderLeft: "8px solid transparent",
-          borderRight: "8px solid transparent",
-          borderBottom: "12px solid var(--color-primary)",
-        }}
-      />
+      {/* Pointer — points down into the wheel */}
+      <ChevronDown size={24} style={{ color: "var(--color-primary)" }} />
 
       {/* Wheel */}
       <div
@@ -144,7 +138,7 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
             className="mt-1 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
             style={{ background: "var(--color-primary)", color: "#fff" }}
           >
-            Add to Queue
+            Spin Again
           </button>
         </div>
       ) : (
