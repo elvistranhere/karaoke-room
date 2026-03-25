@@ -558,9 +558,20 @@ export function useLiveKit({
   // Guard against concurrent mic checks (async race)
   const micCheckInFlightRef = useRef(false);
 
+  // Safety: if mic check state gets stuck, force reset after 10s
+  useEffect(() => {
+    if (micCheckState === "idle" || micCheckState === "error") return;
+    const safety = setTimeout(() => {
+      console.warn("[LiveKit] Mic check state stuck at", micCheckState, "— force resetting");
+      micCheckInFlightRef.current = false;
+      setMicCheckState("idle");
+    }, 10000);
+    return () => clearTimeout(safety);
+  }, [micCheckState]);
+
   // Talking Mic Check: captures a FRESH mic with talking constraints, records YOUR voice only
   const startTalkingMicCheck = useCallback(async (noiseCancellation: boolean) => {
-    if (micCheckState !== "idle" || micCheckInFlightRef.current) return;
+    if ((micCheckState !== "idle" && micCheckState !== "error") || micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -587,7 +598,7 @@ export function useLiveKit({
 
   // Singing Mic Check: captures FRESH mic → routes through voice effect chain → records effected output
   const startSingingMicCheck = useCallback(async (noiseCancellation: boolean) => {
-    if (micCheckState !== "idle" || micCheckInFlightRef.current) return;
+    if ((micCheckState !== "idle" && micCheckState !== "error") || micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
     try {
       // 1. Capture raw mic

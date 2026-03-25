@@ -126,7 +126,7 @@ export function SoundProfileModal({
               {/* Talking mic check */}
               <button
                 onClick={onTalkingMicCheck}
-                disabled={micCheckState !== "idle"}
+                disabled={micCheckState === "recording" || micCheckState === "playing"}
                 className="w-full cursor-pointer rounded-lg border py-2 text-xs font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
                   borderColor: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-dark-border)",
@@ -199,7 +199,7 @@ export function SoundProfileModal({
               {/* Singing mic check */}
               <button
                 onClick={onSingingMicCheck}
-                disabled={micCheckState !== "idle"}
+                disabled={micCheckState === "recording" || micCheckState === "playing"}
                 className="w-full cursor-pointer rounded-lg border py-2 text-xs font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
                   borderColor: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-dark-border)",
