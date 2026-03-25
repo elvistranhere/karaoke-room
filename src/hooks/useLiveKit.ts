@@ -28,7 +28,7 @@ interface UseLiveKitParams {
   singingNC: boolean;  // noise cancellation for singing mode
 }
 
-export type MicCheckState = "idle" | "recording" | "playing";
+export type MicCheckState = "idle" | "recording" | "playing" | "error";
 
 interface UseLiveKitReturn {
   room: Room | null;
@@ -438,6 +438,51 @@ export function useLiveKit({
     })();
   }, [micMode, isConnected, isMicEnabled, talkingNC, singingNC]);
 
+  // --- Hot-swap NC during sharing ---
+  // When NC toggle changes while sharing, re-capture mic with new constraints
+  const prevSingingNCRef = useRef(singingNC);
+  useEffect(() => {
+    if (prevSingingNCRef.current === singingNC) return;
+    prevSingingNCRef.current = singingNC;
+
+    // Only hot-swap if we're actively sharing with a mic in the mix
+    if (!mixPubRef.current || !mixMicStreamRef.current || !mixCtxRef.current) return;
+
+    console.log("[LiveKit] Hot-swapping NC during sharing:", singingNC ? "ON" : "OFF");
+    void (async () => {
+      try {
+        const nc = singingNC;
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+            echoCancellation: nc,
+            noiseSuppression: nc,
+            autoGainControl: nc,
+            channelCount: 2,
+            sampleRate: 48000,
+          },
+        });
+
+        // Stop old mic stream
+        mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
+        mixMicStreamRef.current = newStream;
+
+        // Reconnect in the Web Audio graph
+        mixMicSourceRef.current?.disconnect();
+        const ctx = mixCtxRef.current;
+        const chain = effectChainRef.current;
+        if (ctx && chain) {
+          const newSource = ctx.createMediaStreamSource(newStream);
+          newSource.connect(chain.input);
+          mixMicSourceRef.current = newSource;
+          console.log("[LiveKit] Mix mic re-captured with NC:", nc ? "ON" : "OFF");
+        }
+      } catch (err) {
+        console.error("[LiveKit] Error hot-swapping NC:", err);
+      }
+    })();
+  }, [singingNC, selectedInputDeviceId]);
+
   // --- Switch output device without reconnecting ---
 
   useEffect(() => {
@@ -535,7 +580,8 @@ export function useLiveKit({
     } catch (err) {
       console.error("[LiveKit] Talking mic check error:", err);
       micCheckInFlightRef.current = false;
-      setMicCheckState("idle");
+      setMicCheckState("error");
+      setTimeout(() => setMicCheckState("idle"), 2000);
     }
   }, [micCheckState, selectedInputDeviceId, recordAndPlayback]);
 
@@ -625,7 +671,8 @@ export function useLiveKit({
     } catch (err) {
       console.error("[LiveKit] Singing mic check error:", err);
       micCheckInFlightRef.current = false;
-      setMicCheckState("idle");
+      setMicCheckState("error");
+      setTimeout(() => setMicCheckState("idle"), 2000);
     }
   }, [micCheckState, selectedInputDeviceId]);
 

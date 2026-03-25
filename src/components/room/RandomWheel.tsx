@@ -6,10 +6,12 @@ import type { Participant } from "~/types/room";
 
 interface RandomWheelProps {
   participants: Participant[];
+  myName?: string;
   onPick: (participant: Participant) => void;
 }
 
-export function RandomWheel({ participants, onPick }: RandomWheelProps) {
+export function RandomWheel({ participants, myName, onPick }: RandomWheelProps) {
+  const [spunBy, setSpunBy] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [winner, setWinner] = useState<Participant | null>(null);
@@ -35,6 +37,7 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
     if (spinning) return;
     setSpinning(true);
     setWinner(null);
+    setSpunBy(myName ?? null);
 
     // Random: 3-5 full rotations + random landing position
     const extraRotations = 3 + Math.random() * 2;
@@ -130,6 +133,11 @@ export function RandomWheel({ participants, onPick }: RandomWheelProps) {
       {/* Spin button or winner display */}
       {winner ? (
         <div className="text-center" style={{ animation: "fade-in 0.3s ease-out" }}>
+          {spunBy && (
+            <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+              spun by {spunBy}
+            </p>
+          )}
           <p className="text-xs font-bold" style={{ color: "var(--color-primary)", fontFamily: "var(--font-display)" }}>
             {winner.name}!
           </p>

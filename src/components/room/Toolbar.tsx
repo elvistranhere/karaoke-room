@@ -12,7 +12,7 @@ interface ToolbarProps {
   onReact: (emoji: string) => void;
 }
 
-const REACTIONS = ["🔥", "👏", "😍", "🎵", "💯", "🙌", "😂", "💀", "👎", "😴"];
+import { REACTION_EMOJIS } from "~/lib/reactions";
 
 export function Toolbar({
   isMicEnabled,
@@ -44,7 +44,7 @@ export function Toolbar({
           color: isMicEnabled ? "var(--color-primary)" : "#fff",
           border: isMicEnabled ? "1px solid var(--color-primary)" : "none",
         }}
-        title="Toggle microphone"
+        title={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
       >
         {isMicEnabled ? <Mic size={14} /> : <MicOff size={14} />}
         {isMicEnabled ? "Mute" : "Unmute"}
@@ -69,7 +69,7 @@ export function Toolbar({
       <div className="flex-1" />
 
       {/* Reactions */}
-      {REACTIONS.map((emoji) => (
+      {REACTION_EMOJIS.map((emoji) => (
         <button
           key={emoji}
           onClick={() => handleReact(emoji)}

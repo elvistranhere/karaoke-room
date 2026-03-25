@@ -134,7 +134,7 @@ export function SoundProfileModal({
                   color: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-text-primary)",
                 }}
               >
-                {micCheckState === "recording" ? "Recording..." : micCheckState === "playing" ? "Playing back..." : "Talking Mic Check"}
+                {micCheckState === "recording" ? "Recording..." : micCheckState === "playing" ? "Playing back..." : micCheckState === "error" ? "Mic access denied" : "Talking Mic Check"}
               </button>
             </div>
           </section>
@@ -207,7 +207,7 @@ export function SoundProfileModal({
                   color: micCheckState !== "idle" ? "var(--color-accent)" : "var(--color-text-primary)",
                 }}
               >
-                {micCheckState === "recording" ? "Recording..." : micCheckState === "playing" ? "Playing back..." : "Singing Mic Check"}
+                {micCheckState === "recording" ? "Recording..." : micCheckState === "playing" ? "Playing back..." : micCheckState === "error" ? "Mic access denied" : "Singing Mic Check"}
               </button>
               <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
                 Hear yourself with the selected voice effect applied

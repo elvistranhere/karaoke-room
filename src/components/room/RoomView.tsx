@@ -373,8 +373,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
           >
             <RandomWheel
               participants={roomState.participants}
+              myName={playerName}
               onPick={(p) => {
-              // Auto-join queue for the picked participant (only works for self)
               if (p.id === myPeerId) joinQueue();
             }}
             />
