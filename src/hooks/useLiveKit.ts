@@ -122,6 +122,12 @@ export function useLiveKit({
   const mixSystemGainRef = useRef<GainNode | null>(null);
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixMicStreamRef = useRef<MediaStream | null>(null); // raw mic capture
+  const [mixMicStreamState, setMixMicStreamState] = useState<MediaStream | null>(null);
+  // Helper: set both ref and state for mixMicStream
+  const setMixMicStream = useCallback((stream: MediaStream | null) => {
+    mixMicStreamRef.current = stream;
+    setMixMicStreamState(stream);
+  }, []);
   const mixPubRef = useRef<LocalTrackPublication | null>(null);
   const effectChainRef = useRef<EffectChain | null>(null);
   const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>("none");
@@ -358,7 +364,7 @@ export function useLiveKit({
       mixMicSourceRef.current?.disconnect();
       mixSystemSourceRef.current?.disconnect();
       mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
-      mixMicStreamRef.current = null;
+      mixMicStreamRef.current = null; setMixMicStreamState(null);
       if (mixCtxRef.current?.state !== "closed") {
         void mixCtxRef.current?.close();
       }
@@ -407,7 +413,7 @@ export function useLiveKit({
           });
 
           mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
-          mixMicStreamRef.current = newStream;
+          mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
           mixMicSourceRef.current?.disconnect();
           const ctx = mixCtxRef.current;
@@ -507,7 +513,7 @@ export function useLiveKit({
 
         // Stop old mic stream
         mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
-        mixMicStreamRef.current = newStream;
+        mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
         // Reconnect in the Web Audio graph
         mixMicSourceRef.current?.disconnect();
@@ -897,7 +903,7 @@ export function useLiveKit({
 
           mixMicSourceRef.current = micSource;
           mixMicGainRef.current = micGain;
-          mixMicStreamRef.current = stream;
+          mixMicStreamRef.current = stream; setMixMicStreamState(stream);
           effectChainRef.current = chain;
 
           console.log("[LiveKit] Mic added to mix on the fly");
@@ -912,7 +918,7 @@ export function useLiveKit({
           mixMicGainRef.current?.disconnect();
           mixMicGainRef.current = null;
           mixMicStreamRef.current.getTracks().forEach((t) => t.stop());
-          mixMicStreamRef.current = null;
+          mixMicStreamRef.current = null; setMixMicStreamState(null);
 
           console.log("[LiveKit] Mic removed from mix on the fly");
         }
@@ -943,7 +949,7 @@ export function useLiveKit({
     mixMicSourceRef.current?.disconnect();
     mixSystemSourceRef.current?.disconnect();
     mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mixMicStreamRef.current = null;
+    mixMicStreamRef.current = null; setMixMicStreamState(null);
     mixMicSourceRef.current = null;
     mixSystemSourceRef.current = null;
     mixMicGainRef.current = null;
@@ -1201,7 +1207,7 @@ export function useLiveKit({
 
         mixMicSourceRef.current = micSource;
         mixMicGainRef.current = micGain;
-        mixMicStreamRef.current = micStream;
+        mixMicStreamRef.current = micStream; setMixMicStreamState(micStream);
         effectChainRef.current = chain;
         // Apply current wet/dry to match Sound Profile setting
         chain.setWetDry?.(effectWetDryRef.current);
@@ -1419,7 +1425,7 @@ export function useLiveKit({
     voiceEffect,
     setVoiceEffect,
     setEffectWetDry,
-    mixMicStream: mixMicStreamRef.current,
+    mixMicStream: mixMicStreamState,
     autoMix,
     setAutoMix,
     recordingState,

@@ -107,7 +107,7 @@ export function useAudioLevel(room: Room | null, mixMicStream?: MediaStream | nu
       running = false;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [room]);
+  }, [room, mixMicStream]);
 
   return { micLevel, inboundLevel, isReceivingAudio };
 }

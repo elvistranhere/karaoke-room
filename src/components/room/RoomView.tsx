@@ -226,10 +226,13 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       wasMyTurnRef.current = true;
       if (micMode === "voice") setMicMode("raw");
     }
-    if (!isMyTurn) {
+    if (!isMyTurn && wasMyTurnRef.current) {
       wasMyTurnRef.current = false;
       if (singerMutedAll) setSingerMutedAll(false);
+      // Switch back to talking mode when done singing
+      if (micMode === "raw") setMicMode("voice");
     }
+    if (!isMyTurn) wasMyTurnRef.current = false;
   }, [isMyTurn, micMode, setMicMode]);
 
   // Send status updates (includes LiveKit identity for per-person volume matching)
