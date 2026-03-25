@@ -15,6 +15,10 @@ npm run deploy:party     # Deploy PartyKit server to Cloudflare
 
 No test framework is configured. Verify changes with `npm run typecheck`.
 
+## Git
+
+Do NOT include `Co-Authored-By` lines in commit messages.
+
 ## Architecture
 
 **KaraOK** is a real-time karaoke room app. Three systems work together:
