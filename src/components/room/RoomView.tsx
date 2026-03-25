@@ -13,6 +13,7 @@ import { ChatPanel } from "./ChatPanel";
 import { InviteCode } from "./InviteCode";
 import { StatusBar } from "./StatusBar";
 import { SettingsDrawer } from "./SettingsDrawer";
+import { SoundProfileModal } from "./SoundProfileModal";
 import { playReactionSound } from "./ReactionBar";
 
 interface RoomViewProps {
@@ -30,6 +31,9 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
   );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [soundProfileOpen, setSoundProfileOpen] = useState(false);
+  const [talkingNC, setTalkingNC] = useState(true);  // noise cancellation for talking
+  const [singingNC, setSingingNC] = useState(false);  // noise cancellation for singing
 
   const {
     roomState,
@@ -164,6 +168,13 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     }
     prevReactionCountRef.current = reactions.length;
   }, [reactions]);
+
+  // Auto-switch to singing mode when it's your turn
+  useEffect(() => {
+    if (isMyTurn && micMode === "voice") {
+      setMicMode("raw");
+    }
+  }, [isMyTurn, micMode, setMicMode]);
 
   // Send status updates
   useEffect(() => {
@@ -304,9 +315,6 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             }}
             onMixMicGain={setMixMicGain}
             onMixMusicGain={setMixMusicGain}
-            voiceEffect={voiceEffect}
-            onVoiceEffectChange={setVoiceEffect}
-            onEffectWetDry={setEffectWetDry}
             ambientId="ambient-bg"
           />
 
@@ -314,11 +322,8 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             isMicEnabled={isMicEnabled}
             toggleMic={toggleMic}
             micMode={micMode}
-            onMicModeChange={setMicMode}
-            micCheckState={micCheckState}
-            onMicCheck={startMicCheck}
+            onSoundProfileOpen={() => setSoundProfileOpen(true)}
             onReact={sendReaction}
-            isSharing={isSharing}
           />
 
           {/* Chat — gets the most space */}
@@ -398,6 +403,30 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
         onInputChange={setSelectedInputId}
         onOutputChange={setSelectedOutputId}
         micMode={micMode}
+      />
+
+      {/* Sound Profile Modal */}
+      <SoundProfileModal
+        open={soundProfileOpen}
+        onClose={() => setSoundProfileOpen(false)}
+        micMode={micMode}
+        onMicModeChange={setMicMode}
+        voiceEffect={voiceEffect}
+        onVoiceEffectChange={setVoiceEffect}
+        onEffectWetDry={setEffectWetDry}
+        talkingNoiseCancellation={talkingNC}
+        onTalkingNoiseCancellationChange={setTalkingNC}
+        singingNoiseCancellation={singingNC}
+        onSingingNoiseCancellationChange={setSingingNC}
+        inputDevices={inputDevices}
+        outputDevices={outputDevices}
+        selectedInputId={selectedInputId}
+        selectedOutputId={selectedOutputId}
+        onInputChange={setSelectedInputId}
+        onOutputChange={setSelectedOutputId}
+        onTalkingMicCheck={startMicCheck}
+        onSingingMicCheck={startMicCheck}
+        micCheckState={micCheckState}
       />
     </main>
   );

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
 import { AudioVisualizer } from "./AudioVisualizer";
-import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
 
 interface StageBannerProps {
   room: Room | null;
@@ -21,9 +20,6 @@ interface StageBannerProps {
   onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
-  voiceEffect?: VoiceEffect;
-  onVoiceEffectChange?: (effect: VoiceEffect) => void;
-  onEffectWetDry?: (wet: number) => void;
   ambientId?: string;
 }
 
@@ -42,9 +38,6 @@ export function StageBanner({
   onMusicVolumeChange,
   onMixMicGain,
   onMixMusicGain,
-  voiceEffect = "none",
-  onVoiceEffectChange,
-  onEffectWetDry,
   ambientId,
 }: StageBannerProps) {
   const currentSinger = roomState.participants.find(
@@ -193,16 +186,12 @@ export function StageBanner({
             }}
           />
 
-          {/* Voice effect + Mix balance */}
-          {onVoiceEffectChange && (
-            <VoiceEffectSelector
-              current={voiceEffect}
-              onChange={onVoiceEffectChange}
-              onWetDry={onEffectWetDry}
-            />
-          )}
+          {/* Separate mic/music volume sliders */}
           {onMixMicGain && onMixMusicGain && (
-            <MixBalance onMicGain={onMixMicGain} onMusicGain={onMixMusicGain} />
+            <div className="space-y-2">
+              <MixSlider label="Voice" icon="🎤" defaultValue={100} onChange={(v) => onMixMicGain(v / 100)} />
+              <MixSlider label="Music" icon="🎵" defaultValue={100} onChange={(v) => onMixMusicGain(v / 100)} />
+            </div>
           )}
 
           <div className="flex gap-2">
@@ -229,55 +218,15 @@ export function StageBanner({
   );
 }
 
-function VoiceEffectSelector({ current, onChange, onWetDry }: {
-  current: VoiceEffect;
-  onChange: (effect: VoiceEffect) => void;
-  onWetDry?: (wet: number) => void;
-}) {
-  const [wetDry, setWetDry] = useState(70); // 0-100, default 70% wet for audible effect
-
-  // Apply initial wet/dry when effect changes
-  useEffect(() => {
-    if (current !== "none") {
-      onWetDry?.(wetDry / 100);
-    }
-  }, [current]);
-
-  const handleWetDry = (val: number) => {
-    setWetDry(val);
-    onWetDry?.(val / 100);
-  };
-
+function MixSlider({ label, icon, defaultValue, onChange }: { label: string; icon: string; defaultValue: number; onChange: (val: number) => void }) {
+  const [value, setValue] = useState(defaultValue);
+  const handleChange = (v: number) => { setValue(v); onChange(v); };
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {VOICE_EFFECTS.map((fx) => (
-          <button
-            key={fx.id}
-            onClick={() => onChange(fx.id)}
-            className="cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium transition-all hover:scale-105 active:scale-95"
-            style={{
-              background: current === fx.id ? "var(--color-primary)" : "var(--color-dark-card)",
-              color: current === fx.id ? "#fff" : "var(--color-text-muted)",
-              border: current === fx.id ? "none" : "1px solid var(--color-dark-border)",
-            }}
-            title={fx.description}
-          >
-            {fx.label}
-          </button>
-        ))}
-      </div>
-      {current !== "none" && onWetDry && (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Dry</span>
-          <input
-            type="range" min="0" max="100" value={wetDry}
-            onChange={(e) => handleWetDry(Number(e.target.value))}
-            className="volume-slider flex-1"
-          />
-          <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Wet</span>
-        </div>
-      )}
+    <div className="flex items-center gap-2">
+      <span className="text-sm">{icon}</span>
+      <span className="w-10 text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>{label}</span>
+      <input type="range" min="0" max="150" value={value} onChange={(e) => handleChange(Number(e.target.value))} className="volume-slider flex-1" />
+      <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{value}</span>
     </div>
   );
 }
@@ -326,59 +275,3 @@ function SongNameInput({ initial, onSet }: { initial: string; onSet: (name: stri
   );
 }
 
-function MixBalance({ onMicGain, onMusicGain }: { onMicGain: (v: number) => void; onMusicGain: (v: number) => void }) {
-  const [balance, setBalance] = useState(50);
-
-  const handleChange = (raw: number) => {
-    // Smooth magnetic snap: within 3 units, ease toward center
-    let val = raw;
-    const dist = Math.abs(raw - 50);
-    if (dist <= 3) {
-      // Lerp toward 50 — the closer, the stronger the pull
-      const strength = 1 - dist / 3;
-      val = Math.round(raw + (50 - raw) * strength);
-    }
-    setBalance(val);
-    onMusicGain(val / 50);
-    onMicGain((100 - val) / 50);
-  };
-
-  const voicePct = Math.round((100 - balance) / 50 * 100);
-  const musicPct = Math.round(balance / 50 * 100);
-  const isCenter = balance === 50;
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="w-16 text-right text-[10px] font-medium" style={{ color: balance <= 50 ? "var(--color-primary)" : "var(--color-text-muted)" }}>
-          Voice {voicePct}%
-        </span>
-        <div className="relative flex-1">
-          {/* Center guide line */}
-          <div
-            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{
-              width: "2px",
-              height: "14px",
-              borderRadius: "1px",
-              background: isCenter ? "var(--color-primary)" : "var(--color-dark-border)",
-              opacity: isCenter ? 1 : 0.5,
-              transition: "all 0.15s ease",
-            }}
-          />
-          <input
-            type="range" min="0" max="100" value={balance}
-            onChange={(e) => handleChange(Number(e.target.value))}
-            className="volume-slider w-full"
-          />
-        </div>
-        <span className="w-16 text-[10px] font-medium" style={{ color: balance >= 50 ? "var(--color-accent)" : "var(--color-text-muted)" }}>
-          {musicPct}% Music
-        </span>
-      </div>
-      {isCenter && (
-        <p className="text-center text-[9px] font-medium" style={{ color: "var(--color-primary)" }}>Balanced</p>
-      )}
-    </div>
-  );
-}

@@ -128,10 +128,10 @@ function createEcho(ctx: AudioContext): EffectChain {
   const delay = ctx.createDelay(1.0);
   const feedback = ctx.createGain();
 
-  dry.gain.value = 0.6;
-  wet.gain.value = 0.5;
-  delay.delayTime.value = 0.3; // 300ms delay — more audible
-  feedback.gain.value = 0.5; // 50% feedback — more repeats
+  dry.gain.value = 0.7;
+  wet.gain.value = 0.35;
+  delay.delayTime.value = 0.2; // 200ms delay — more audible
+  feedback.gain.value = 0.35; // 50% feedback — more repeats
 
   // Dry path
   input.connect(dry);

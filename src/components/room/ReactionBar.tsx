@@ -10,6 +10,10 @@ const REACTIONS = [
   { emoji: "🎵", label: "Music" },
   { emoji: "💯", label: "100" },
   { emoji: "🙌", label: "Raise" },
+  { emoji: "😂", label: "Laugh" },
+  { emoji: "💀", label: "Skull" },
+  { emoji: "👎", label: "Thumbs Down" },
+  { emoji: "😴", label: "Sleep" },
 ];
 
 // --- Web Audio API synthesized sounds (zero dependencies) ---
@@ -26,7 +30,7 @@ function playClap(ctx: AudioContext) {
   filter.type = "highpass";
   filter.frequency.value = 1000;
   const gain = ctx.createGain();
-  gain.gain.value = 0.15;
+  gain.gain.value = 0.11;
   src.connect(filter).connect(gain).connect(ctx.destination);
   src.start();
   return src;
@@ -38,11 +42,11 @@ function playPop(ctx: AudioContext, freq: number) {
   osc.frequency.setValueAtTime(freq, ctx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(freq * 0.5, ctx.currentTime + 0.1);
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.12, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
   osc.connect(gain).connect(ctx.destination);
   osc.start();
-  osc.stop(ctx.currentTime + 0.12);
+  osc.stop(ctx.currentTime + 0.18);
   return osc;
 }
 
@@ -54,11 +58,11 @@ function playChime(ctx: AudioContext, notes: number[]) {
     const gain = ctx.createGain();
     const t = ctx.currentTime + i * 0.06;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.08, t + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    gain.gain.linearRampToValueAtTime(0.05, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + 0.2);
+    osc.stop(t + 0.3);
   });
 }
 
@@ -69,11 +73,27 @@ function playShimmer(ctx: AudioContext) {
     osc.frequency.value = freq;
     const gain = ctx.createGain();
     const t = ctx.currentTime + i * 0.03;
-    gain.gain.setValueAtTime(0.06, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    gain.gain.setValueAtTime(0.04, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + 0.25);
+    osc.stop(t + 0.38);
+  });
+}
+
+function playSleepShimmer(ctx: AudioContext) {
+  [220, 330, 440].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const gain = ctx.createGain();
+    const t = ctx.currentTime + i * 0.09;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.03, t + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.57);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.57);
   });
 }
 
@@ -110,6 +130,18 @@ export function playReactionSound(emoji: string) {
         break;
       case "🙌":
         playChime(ctx, [659, 784, 988, 1047]);
+        break;
+      case "😂":
+        playChime(ctx, [330, 392, 440]);
+        break;
+      case "💀":
+        playPop(ctx, 220);
+        break;
+      case "👎":
+        playChime(ctx, [440, 330, 220]);
+        break;
+      case "😴":
+        playSleepShimmer(ctx);
         break;
       default:
         playPop(ctx, 880);
