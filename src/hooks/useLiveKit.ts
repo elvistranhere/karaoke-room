@@ -406,10 +406,16 @@ export function useLiveKit({
 
           mixMicSourceRef.current?.disconnect();
           const ctx = mixCtxRef.current;
+          const chain = effectChainRef.current;
           const gain = mixMicGainRef.current;
-          if (ctx && gain) {
+          if (ctx) {
             const newSource = ctx.createMediaStreamSource(newStream);
-            newSource.connect(gain);
+            // Route through effect chain if present, otherwise direct to gain
+            if (chain) {
+              newSource.connect(chain.input);
+            } else if (gain) {
+              newSource.connect(gain);
+            }
             mixMicSourceRef.current = newSource;
             console.log("[LiveKit] Mix mic switched to new input device");
           }
@@ -535,6 +541,11 @@ export function useLiveKit({
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
       void el.setSinkId(selectedOutputDeviceId).catch(() => {});
     });
+
+    // Also route mic check AudioContext to new output if active
+    if (micCheckCtxRef.current && "setSinkId" in micCheckCtxRef.current) {
+      void (micCheckCtxRef.current as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputDeviceId).catch(() => {});
+    }
   }, [selectedOutputDeviceId, isConnected]);
 
   // --- Real-time mic check (live loopback) ---
@@ -937,6 +948,20 @@ export function useLiveKit({
     mixCtxRef.current = null;
   }, []);
 
+  // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
+  const syncNCToRoom = useCallback(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    const isRaw = micModeRef.current === "raw";
+    const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
+    room.options.audioCaptureDefaults = {
+      ...room.options.audioCaptureDefaults,
+      echoCancellation: nc,
+      noiseSuppression: nc,
+      autoGainControl: nc,
+    };
+  }, []);
+
   // Expose gain controls for the singer to adjust mix balance
   const setMixMicGain = useCallback((val: number) => {
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
@@ -958,8 +983,9 @@ export function useLiveKit({
     effectChainRef.current?.cleanup();
     micSource.disconnect();
 
-    // Create new chain
+    // Create new chain with current wet/dry
     const chain = createEffectChain(ctx, effect);
+    chain.setWetDry?.(effectWetDryRef.current);
     micSource.connect(chain.input);
     chain.output.connect(micGain);
     effectChainRef.current = chain;
@@ -1067,6 +1093,8 @@ export function useLiveKit({
         mixMicGainRef.current = micGain;
         mixMicStreamRef.current = micStream;
         effectChainRef.current = chain;
+        // Apply current wet/dry to match Sound Profile setting
+        chain.setWetDry?.(effectWetDryRef.current);
       }
 
       // 4. Mute LiveKit's managed mic to avoid duplicate voice
@@ -1109,7 +1137,8 @@ export function useLiveKit({
         cleanupMix();
         setIsSharing(false);
         setCurrentSong(null);
-        // Restore managed mic
+        // Restore managed mic with current NC settings
+        syncNCToRoom();
         if (roomRef.current && isMicEnabledRef.current) {
           void roomRef.current.localParticipant.setMicrophoneEnabled(true).catch(() => {});
         }
@@ -1121,7 +1150,8 @@ export function useLiveKit({
         systemAudioTrackRef.current = null;
       }
       cleanupMix();
-      // Restore managed mic
+      // Restore managed mic with current NC settings
+      syncNCToRoom();
       try {
         if (isMicEnabledRef.current && roomRef.current) {
           await roomRef.current.localParticipant.setMicrophoneEnabled(true);
@@ -1164,7 +1194,8 @@ export function useLiveKit({
     setSharingError(null);
     setCurrentSong(null);
 
-    // Restore managed mic
+    // Restore managed mic with current NC settings
+    syncNCToRoom();
     if (room && isMicEnabledRef.current) {
       void room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
         console.error("[LiveKit] Error restoring managed mic:", err);
