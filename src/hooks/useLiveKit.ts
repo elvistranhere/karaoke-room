@@ -864,6 +864,7 @@ export function useLiveKit({
   // --- Microphone ---
 
   const isTogglingMicRef = useRef(false);
+  const micErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toggleMic = useCallback(async () => {
     const room = roomRef.current;
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
@@ -940,8 +941,14 @@ export function useLiveKit({
           ? "No microphone found — check your device"
           : (err instanceof Error ? err.message : "Mic failed");
       setError(msg);
-      // Only clear if the error hasn't changed since we set it
-      if (isTransient) setTimeout(() => setError((prev) => prev === msg ? null : prev), 3000);
+      // Clear previous timer, schedule new one — only one timer active at a time
+      if (micErrorTimerRef.current) clearTimeout(micErrorTimerRef.current);
+      if (isTransient) {
+        micErrorTimerRef.current = setTimeout(() => {
+          setError((prev) => prev === msg ? null : prev);
+          micErrorTimerRef.current = null;
+        }, 3000);
+      }
     } finally {
       isTogglingMicRef.current = false;
     }
