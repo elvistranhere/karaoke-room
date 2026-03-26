@@ -505,7 +505,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
 
         {/* Left: Stage + Toolbar + Chat */}
-        <div className={`min-h-0 flex-1 flex-col gap-2 lg:flex lg:gap-3 ${mobileSection === "people" ? "hidden" : "flex"}`}>
+        <div className={`min-h-0 flex-1 flex-col gap-2 lg:flex lg:gap-3 lg:overflow-auto ${mobileSection === "people" ? "hidden" : "flex"}`}>
           <div className={`flex-col gap-2 lg:flex lg:gap-3 ${mobileSection === "stage" ? "flex" : "hidden"}`}>
               {roomState.roomMode === "watch" ? (
                 <>

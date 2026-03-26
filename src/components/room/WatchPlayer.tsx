@@ -257,7 +257,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
           <div
             className="watch-glow overflow-hidden rounded-xl"
             style={{
-              aspectRatio: "16/9",
+              height: "clamp(220px, 45dvh, 520px)",
               background: "linear-gradient(135deg, rgba(212, 160, 23, 0.10), rgba(245, 230, 200, 0.04))",
             }}
           >
