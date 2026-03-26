@@ -75,13 +75,13 @@ function RoomContent() {
   const handleConflictSubmit = (newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) {
-      // Dismissed (Escape/Skip) - keep current name, just close the modal
       setNameConflict(null);
       return;
     }
-    setName(trimmed);
-    saveName(trimmed);
-    setNameConflict(null); // clear conflict, join will retry with new name
+    const clean = sanitizeName(trimmed);
+    setName(clean);
+    if (clean !== "Anonymous") saveName(clean);
+    setNameConflict(null);
   };
 
   // Don't mount RoomView until INITIAL name is resolved (first visit only)
@@ -102,6 +102,9 @@ function RoomContent() {
 
 function NameModal({ onSubmit, conflict }: { onSubmit: (name: string) => void; conflict?: { name: string; suggestions: string[] } | null }) {
   const [draft, setDraft] = useState(conflict?.name ?? "");
+
+  // Sync draft if conflict changes (e.g. multiple name-taken events)
+  useEffect(() => { if (conflict?.name) setDraft(conflict.name); }, [conflict?.name]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onSubmit(""); };
