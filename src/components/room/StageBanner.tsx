@@ -32,6 +32,7 @@ interface StageBannerProps {
   // Collaborative mix (listener can adjust singer's mix)
   onMixAdjust?: (voice: number, music: number) => void;
   onMixAdjustDone?: (voice: number, music: number) => void;
+  singerAutoMix?: boolean;
   mixVoiceValue?: number;
   mixMusicValue?: number;
   // Recording
@@ -62,6 +63,7 @@ export function StageBanner({
   isMutedAll = false,
   onMixAdjust,
   onMixAdjustDone,
+  singerAutoMix = false,
   mixVoiceValue = 100,
   mixMusicValue = 70,
   autoMix = false,
@@ -129,8 +131,13 @@ export function StageBanner({
           </div>
         )}
         {/* Collaborative mix — adjust singer's voice/music balance for everyone */}
-        {onMixAdjust && (
+        {onMixAdjust && !singerAutoMix && (
           <ListenerMixControl voiceValue={mixVoiceValue} musicValue={mixMusicValue} onAdjust={onMixAdjust} onDone={onMixAdjustDone} />
+        )}
+        {singerAutoMix && (
+          <p className="mt-2 text-center text-[10px]" style={{ color: "var(--color-primary)" }}>
+            Auto Mix is active — music adjusts automatically
+          </p>
         )}
 
       </div>

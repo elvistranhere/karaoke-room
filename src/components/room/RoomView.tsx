@@ -285,7 +285,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
     if (!isMyTurn) wasMyTurnRef.current = false;
   }, [isMyTurn, micMode, setMicMode]);
 
-  // Send status updates (includes LiveKit identity for per-person volume matching)
+  // Send status updates (includes LiveKit identity + auto-mix state)
   useEffect(() => {
     if (!isPartyConnected) return;
     sendStatusUpdate({
@@ -294,8 +294,9 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
       currentSong,
       browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
       lkIdentity: lkIdentity ?? undefined,
+      autoMix,
     });
-  }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser, lkIdentity]);
+  }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser, lkIdentity, autoMix]);
 
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden">
@@ -434,12 +435,13 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
             onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
             onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
             isMutedAll={singerMutedAll}
+            singerAutoMix={roomState.currentSingerId ? participantStatus[roomState.currentSingerId]?.autoMix : false}
             onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
             onMixAdjustDone={!isMyTurn ? (voice, music) => {
               sendChat(`adjusted mix — Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
             } : undefined}
             autoMix={autoMix}
-            onAutoMixChange={setAutoMix}
+            onAutoMixChange={(on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); }}
             recordingState={recordingState}
             recordingDuration={recordingDuration}
             onStartRecording={startRecording}
@@ -478,6 +480,7 @@ export function RoomView({ roomCode, playerName, onRename }: RoomViewProps) {
                 currentSong: song,
                 browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
                 lkIdentity: lkIdentity ?? undefined,
+                autoMix,
               });
             }}
             canSing={browser.canSing}
