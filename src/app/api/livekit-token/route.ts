@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, RoomConfiguration, TrackSource } from "livekit-server-sdk";
 import { getKeySets, getKeyForRoom } from "~/lib/keyRotation";
+import { validateRoomCode } from "~/lib/room-code";
 
 // LiveKit token endpoint with Redis-backed key rotation.
 // See docs/IDEOLOGY.md for full architecture documentation.
@@ -18,8 +19,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Validate room code format (alphanumeric + dash, 1-20 chars)
-    if (!/^[a-zA-Z0-9-]{1,20}$/.test(room)) {
+    // Validate using the same room code format the app generates (6-char custom charset)
+    const normalizedRoom = room.toUpperCase();
+    if (!validateRoomCode(normalizedRoom)) {
       return NextResponse.json(
         { error: "Invalid room code" },
         { status: 400 },
@@ -35,7 +37,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Get the key for this room (Redis-backed with fallback to hash)
-    const result = await getKeyForRoom(room, keySets, keyHint === "next");
+    const result = await getKeyForRoom(normalizedRoom, keySets, keyHint === "next");
 
     if (!result || "error" in result) {
       const msg = result?.error === "all-exhausted"
@@ -54,7 +56,7 @@ export async function GET(req: NextRequest) {
     });
 
     at.addGrant({
-      room,
+      room: normalizedRoom,
       roomJoin: true,
       roomCreate: true,
       canPublish: true,

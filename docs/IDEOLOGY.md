@@ -1,3 +1,12 @@
+# Key Rotation Architecture - Design Transcript
+
+> **Note:** This is a historical conversation transcript capturing the design journey
+> for the Redis-backed key rotation system. Earlier sections discuss approaches (like
+> INCR/DECR counters) that were later replaced by SCAN-based TTL counting. For the
+> canonical current algorithm and Redis key schema, see `src/lib/keyRotation.ts`.
+
+---
+
 ❯ okay now if we migrate to upstash redis approach now what is the
 end to end behaviour edge case and result: afew: users in the
 current room and it limit? what occur, think like a human : user

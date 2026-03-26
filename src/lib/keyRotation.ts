@@ -118,11 +118,8 @@ export async function getKeyForRoom(
   }
 
   try {
-    // Validate room code format (alphanumeric + dash, 1-20 chars)
-    // Reject invalid codes rather than lossy sanitization (which could collide distinct rooms)
-    if (!/^[a-zA-Z0-9-]{1,20}$/.test(room)) {
-      return null;
-    }
+    // Room code validation is done at the API boundary (route.ts uses validateRoomCode).
+    // Here we just construct the Redis key from the already-validated, uppercased room code.
     const roomKey = `room:${room}:key`;
 
     // Client reported connect failure - mark current key exhausted
@@ -145,6 +142,9 @@ export async function getKeyForRoom(
         return { keySet: keySets[existingKey]!, index: existingKey };
       }
       // Key is exhausted with active mapping - refuse (don't split room)
+      // Still refresh TTL so the mapping doesn't expire while the room is active,
+      // which would cause a late joiner to get a different key and split the room.
+      await r.expire(roomKey, ROOM_KEY_TTL);
       // TODO: if room is actually empty (all users left), we could reassign.
       // This requires checking PartyKit participant count, which is a cross-service call.
       // For now, the 1hr TTL on the mapping handles this: empty rooms expire naturally.
