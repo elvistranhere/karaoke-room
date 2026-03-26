@@ -579,6 +579,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                     myPeerId={myPeerId}
                     isMicEnabled={isMicEnabled}
                     toggleMic={toggleMic}
+                    onSoundProfileOpen={() => setSoundProfileOpen(true)}
                     playerApi={watchPlayerApi}
                     onQueueAdd={sendWatchQueueAdd}
                     onSync={sendWatchSync}

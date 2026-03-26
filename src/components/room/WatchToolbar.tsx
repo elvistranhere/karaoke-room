@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Mic, MicOff, Pause, Play, SkipForward, Link as LinkIcon, X } from "lucide-react";
+import { Mic, MicOff, Pause, Play, SkipForward, Link as LinkIcon, Settings, X } from "lucide-react";
 import { extractYouTubeVideoId, validateYouTubeVideo } from "~/lib/youtube";
 import type { RoomState } from "~/types/room";
 import type { WatchPlayerApi } from "./WatchPlayer";
@@ -11,13 +11,14 @@ interface WatchToolbarProps {
   myPeerId: string | null;
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
+  onSoundProfileOpen: () => void;
   playerApi: WatchPlayerApi | null;
   onQueueAdd: (videoId: string, title: string) => void;
   onSync: (state: "playing" | "paused", time: number) => void;
   onSkip: () => void;
 }
 
-export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, playerApi, onQueueAdd, onSync, onSkip }: WatchToolbarProps) {
+export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onSoundProfileOpen, playerApi, onQueueAdd, onSync, onSkip }: WatchToolbarProps) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -108,6 +109,22 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, pla
         >
           {isMicEnabled ? <Mic size={14} /> : <MicOff size={14} />}
           {isMicEnabled ? "Mute" : "Unmute"}
+        </button>
+
+        {/* Sound Profile (devices/effects) */}
+        <button
+          onClick={onSoundProfileOpen}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all active:scale-95"
+          style={{
+            fontFamily: "var(--font-display)",
+            borderColor: "var(--color-dark-border)",
+            background: "rgba(9, 9, 11, 0.25)",
+            color: "var(--color-text-muted)",
+          }}
+          title="Sound Profile"
+        >
+          <Settings size={14} />
+          Sound
         </button>
 
         <button
