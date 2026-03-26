@@ -12,8 +12,13 @@
  * Expired TTLs self-clean via SCAN (only non-expired keys appear in results).
  *
  * Exhaustion tracking uses a Redis Set per key (SADD) to count distinct rooms
- * reporting failures within a time window. This prevents a single client from
- * marking a key exhausted via repeated retries.
+ * reporting failures within a fixed time window. This prevents a single client
+ * from marking a key exhausted via repeated retries. The window TTL is set once
+ * when the first room reports (not reset on subsequent reports).
+ *
+ * Known limitation: an attacker with 3+ valid mapped room codes can still
+ * exhaust keys. Full mitigation requires authenticated forceNext or server-side
+ * LiveKit error detection (webhook integration), which is out of scope.
  *
  * See docs/IDEOLOGY.md for full architecture decisions.
  */
@@ -70,7 +75,7 @@ function hashRoomToKey(room: string, total: number): number {
 const ROOM_KEY_TTL = 3600;     // 1 hour - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
 const EXHAUST_THRESHOLD = 3;   // require 3+ distinct rooms to report before marking key exhausted
-const EXHAUST_WINDOW = 60;     // count distinct room reports within 60s window
+const EXHAUST_WINDOW = 60;     // fixed window from first report (not reset on subsequent reports)
 
 /**
  * Count active rooms per key using SCAN (TTL-based counting).
@@ -134,16 +139,21 @@ export async function getKeyForRoom(
 
     // Client reported connect failure - track distinct rooms reporting this key.
     // Uses SADD (Redis Set) so the same room reporting multiple times only counts once.
-    // Mark key exhausted only after EXHAUST_THRESHOLD distinct rooms report within EXHAUST_WINDOW.
+    // The window TTL is set only when the set is first created (SADD returns 1 for new member
+    // on an empty set), so the window is fixed from the first report, not sliding.
     if (forceNext && currentKey !== null) {
       const reportSetKey = `key:${currentKey}:report_rooms`;
-      // SADD + EXPIRE in a pipeline (atomic batch) to avoid orphaned keys
-      const reportPipeline = r.pipeline();
-      reportPipeline.sadd(reportSetKey, room);
-      reportPipeline.expire(reportSetKey, EXHAUST_WINDOW);
-      reportPipeline.scard(reportSetKey);
-      const reportResults = await reportPipeline.exec<[number, number, number]>();
-      const distinctCount = reportResults[2] ?? 0;
+      // SADD the room to the set
+      const added = await r.sadd(reportSetKey, room);
+      // Only set TTL if this is a new set (first member added) - prevents sliding window
+      if (added === 1) {
+        const ttl = await r.ttl(reportSetKey);
+        if (ttl < 0) {
+          // Key has no TTL (newly created or TTL was lost) - set it
+          await r.expire(reportSetKey, EXHAUST_WINDOW);
+        }
+      }
+      const distinctCount = await r.scard(reportSetKey);
       if (distinctCount >= EXHAUST_THRESHOLD) {
         // Only set exhaustion if not already set (NX) to avoid resetting the TTL
         await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
@@ -177,9 +187,11 @@ export async function getKeyForRoom(
     }
     const exhaustionResults = await pipeline.exec<number[]>();
 
+    // Treat undefined pipeline results as exhausted (fail-closed) to avoid
+    // routing to a potentially bad key on partial pipeline failure
     const nonExhausted = keySets
       .map((_, i) => i)
-      .filter((i) => exhaustionResults[i] === 0);
+      .filter((i) => (exhaustionResults[i] ?? 1) === 0);
 
     if (nonExhausted.length === 0) {
       return { error: "all-exhausted" as const };
@@ -209,13 +221,20 @@ export async function getKeyForRoom(
         return { keySet: keySets[assignedKey]!, index: assignedKey };
       }
       // Winner's key vanished (theoretically impossible with 1hr TTL).
-      // Use SET NX again to avoid clobbering a concurrent write.
+      // Try SET NX to avoid clobbering a concurrent write, then read back
+      // whatever Redis has to ensure we return the actual stored value.
       await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
+      const finalKey = await r.get<number>(roomKey);
+      if (finalKey !== null && keySets[finalKey]) {
+        return { keySet: keySets[finalKey]!, index: finalKey };
+      }
     }
 
     return { keySet: keySets[bestIdx]!, index: bestIdx };
   } catch (err) {
-    // Redis error - fall back to deterministic hash function
+    // Redis error - fall back to deterministic hash function.
+    // Note: this can break room affinity for rooms previously pinned via Redis,
+    // but availability is preferred over perfect affinity during outages.
     console.error("[KeyRotation] Redis error, falling back to hash:", err);
     const idx = hashRoomToKey(room, keySets.length);
     return { keySet: keySets[idx]!, index: idx };

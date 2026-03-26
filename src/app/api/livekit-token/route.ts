@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, RoomConfiguration, TrackSource } from "livekit-server-sdk";
 import { getKeySets, getKeyForRoom } from "~/lib/keyRotation";
 import { validateRoomCode } from "~/lib/room-code";
+import { MAX_NAME_LENGTH } from "~/lib/playerName";
 
 // LiveKit token endpoint with Redis-backed key rotation.
 // See docs/IDEOLOGY.md for full architecture documentation.
@@ -19,8 +20,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Cap name length to prevent oversized JWTs (matches MAX_NAME_LENGTH in playerName.ts)
-    const safeName = name.trim().slice(0, 20);
+    // Cap name length to prevent oversized JWTs
+    const safeName = name.trim().slice(0, MAX_NAME_LENGTH);
     if (!safeName) {
       return NextResponse.json(
         { error: "Name cannot be empty" },
