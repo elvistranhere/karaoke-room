@@ -102,7 +102,7 @@ Both sources share one AudioContext render clock → zero drift. This is the mos
 
 ## Environment
 
-Required env vars: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`).
+Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`). See `docs/IDEOLOGY.md` for key rotation architecture.
 
 Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedIndexedAccess`.
 

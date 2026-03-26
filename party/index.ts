@@ -81,6 +81,21 @@ export default class KaraokeRoom implements Party.Server {
     }
   }
 
+  // HTTP health endpoint for monitoring (GET /parties/main/<room-id>)
+  async onRequest(req: Party.Request) {
+    if (req.method !== "GET") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+    return new Response(JSON.stringify({
+      status: "ok",
+      participants: this.participants.size,
+      queue: this.queue.length,
+      hasSinger: this.currentSingerId !== null,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   onConnect(conn: Party.Connection) {
     this.lastPong.set(conn.id, Date.now());
     this.startHeartbeat();

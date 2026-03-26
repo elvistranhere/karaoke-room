@@ -1,0 +1,124 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  vercel:
+    name: Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production site
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://karaoke-room.vercel.app)
+          if [ "$STATUS" -eq 429 ]; then
+            echo "::warning::Vercel is rate-limited (429) - service is up but throttled"
+          elif [ "$STATUS" -ne 200 ]; then
+            echo "::error::Vercel returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "OK ($STATUS)"
+
+      - name: Check token endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://karaoke-room.vercel.app/api/livekit-token")
+          if [ "$HTTP_CODE" -ne 400 ]; then
+            echo "::error::Token endpoint returned HTTP $HTTP_CODE (expected 400 for missing params)"
+            exit 1
+          fi
+          echo "OK ($HTTP_CODE)"
+
+  partykit:
+    name: PartyKit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PartyKit server
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://karaoke-room.elvistranhere.partykit.dev/parties/main/healthcheck)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          if [ "$HTTP_CODE" -eq 000 ] || [ "$HTTP_CODE" -ge 500 ]; then
+            echo "::error::PartyKit returned $HTTP_CODE"
+            exit 1
+          fi
+          if [ "$HTTP_CODE" -eq 429 ]; then
+            echo "::warning::PartyKit is rate-limited (429) - service is up but throttled"
+          fi
+          echo "OK ($HTTP_CODE) - $BODY"
+
+  upstash:
+    name: Upstash Redis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Redis PING
+        env:
+          UPSTASH_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          if [ -z "$UPSTASH_URL" ] || [ -z "$UPSTASH_TOKEN" ]; then
+            echo "::warning::Upstash secrets not configured - skipping"
+            exit 0
+          fi
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$UPSTASH_URL/ping" \
+            -H "Authorization: Bearer $UPSTASH_TOKEN")
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::Upstash Redis returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "OK (PING successful)"
+
+  livekit:
+    name: LiveKit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Primary
+            secret_key: LIVEKIT_URL
+          - name: Key 2
+            secret_key: LIVEKIT_URL_2
+          - name: Key 3
+            secret_key: LIVEKIT_URL_3
+          - name: Key 4
+            secret_key: LIVEKIT_URL_4
+          - name: Key 5
+            secret_key: LIVEKIT_URL_5
+    steps:
+      - name: Check LiveKit (${{ matrix.name }})
+        env:
+          LK_URL_PRIMARY: ${{ secrets.LIVEKIT_URL }}
+          LK_URL_2: ${{ secrets.LIVEKIT_URL_2 }}
+          LK_URL_3: ${{ secrets.LIVEKIT_URL_3 }}
+          LK_URL_4: ${{ secrets.LIVEKIT_URL_4 }}
+          LK_URL_5: ${{ secrets.LIVEKIT_URL_5 }}
+        run: |
+          # Map matrix secret_key to the actual env var
+          case "${{ matrix.secret_key }}" in
+            LIVEKIT_URL)   LK_URL="$LK_URL_PRIMARY" ;;
+            LIVEKIT_URL_2) LK_URL="$LK_URL_2" ;;
+            LIVEKIT_URL_3) LK_URL="$LK_URL_3" ;;
+            LIVEKIT_URL_4) LK_URL="$LK_URL_4" ;;
+            LIVEKIT_URL_5) LK_URL="$LK_URL_5" ;;
+          esac
+
+          if [ -z "$LK_URL" ]; then
+            echo "${{ matrix.name }}: not configured - skipping"
+            exit 0
+          fi
+          # Convert wss:// to https:// for curl (WebSocket URLs return 000 with curl)
+          HTTP_URL=$(echo "$LK_URL" | sed 's|^wss://|https://|;s|^ws://|http://|')
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HTTP_URL")
+          if [ "$STATUS" -eq 000 ] || [ "$STATUS" -ge 500 ]; then
+            echo "::error::${{ matrix.name }} returned $STATUS"
+            exit 1
+          fi
+          if [ "$STATUS" -eq 429 ]; then
+            echo "::warning::${{ matrix.name }} is rate-limited (429) - service is up but throttled"
+          fi
+          echo "${{ matrix.name }}: OK (responded $STATUS)"

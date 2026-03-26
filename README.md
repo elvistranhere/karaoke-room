@@ -1,4 +1,8 @@
-# KaraOK — Sing Together Online
+# KaraOK - Sing Together Online
+
+[![Health Check](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-check.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-check.yml)
+[![Deploy PartyKit](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml)
+[![Vercel](https://img.shields.io/badge/Vercel-deployed-black?logo=vercel)](https://karaoke-room.vercel.app)
 
 Real-time online karaoke rooms. Join with a code, share your audio, and sing with friends.
 
