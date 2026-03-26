@@ -1,0 +1,28 @@
+name: "Health: Vercel"
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production site
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://karaoke-room.vercel.app)
+          if [ "$STATUS" -eq 429 ]; then
+            echo "::warning::Rate-limited (429)"
+          elif [ "$STATUS" -ne 200 ]; then
+            echo "::error::HTTP $STATUS"
+            exit 1
+          fi
+          echo "OK ($STATUS)"
+      - name: Check token endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://karaoke-room.vercel.app/api/livekit-token")
+          if [ "$HTTP_CODE" -ne 400 ]; then
+            echo "::error::Token endpoint returned HTTP $HTTP_CODE (expected 400)"
+            exit 1
+          fi
+          echo "OK ($HTTP_CODE)"

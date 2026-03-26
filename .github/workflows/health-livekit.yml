@@ -1,0 +1,43 @@
+name: "Health: LiveKit"
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Primary
+            secret_key: LIVEKIT_URL
+          - name: Key 2
+            secret_key: LIVEKIT_URL_2
+          # Add more entries here when adding keys 3+
+    steps:
+      - name: Check LiveKit (${{ matrix.name }})
+        env:
+          LK_URL_PRIMARY: ${{ secrets.LIVEKIT_URL }}
+          LK_URL_2: ${{ secrets.LIVEKIT_URL_2 }}
+        run: |
+          case "${{ matrix.secret_key }}" in
+            LIVEKIT_URL)   LK_URL="$LK_URL_PRIMARY" ;;
+            LIVEKIT_URL_2) LK_URL="$LK_URL_2" ;;
+          esac
+
+          if [ -z "$LK_URL" ]; then
+            echo "${{ matrix.name }}: not configured - skipping"
+            exit 0
+          fi
+          HTTP_URL=$(echo "$LK_URL" | sed 's|^wss://|https://|;s|^ws://|http://|')
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HTTP_URL")
+          if [ "$STATUS" -eq 000 ] || [ "$STATUS" -ge 500 ]; then
+            echo "::error::${{ matrix.name }} returned $STATUS"
+            exit 1
+          fi
+          if [ "$STATUS" -eq 429 ]; then
+            echo "::warning::${{ matrix.name }} rate-limited (429)"
+          fi
+          echo "${{ matrix.name }}: OK ($STATUS)"

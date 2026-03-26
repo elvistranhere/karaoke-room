@@ -1,8 +1,10 @@
 # KaraOK - Sing Together Online
 
-[![Health Check](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-check.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-check.yml)
+[![Vercel](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-vercel.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-vercel.yml)
+[![PartyKit](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-partykit.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-partykit.yml)
+[![Upstash](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-upstash.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-upstash.yml)
+[![LiveKit](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-livekit.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-livekit.yml)
 [![Deploy PartyKit](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml)
-[![Vercel](https://img.shields.io/badge/Vercel-deployed-black?logo=vercel)](https://karaoke-room.vercel.app)
 
 Real-time online karaoke rooms. Join with a code, share your audio, and sing with friends.
 
