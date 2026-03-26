@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { loadYouTubeIFrameAPI } from "~/lib/youtube";
 
 export interface WatchPlayerApi {
@@ -30,7 +30,8 @@ function isProbablyMobile() {
 }
 
 export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdvance, onApi }: WatchPlayerProps) {
-  const containerId = useMemo(() => `yt-${Math.random().toString(36).slice(2)}`, []);
+  const reactId = useId();
+  const containerId = `yt-${reactId.replace(/:/g, "")}`;
   const playerRef = useRef<YT.Player | null>(null);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isProcessingSyncRef = useRef(false);
