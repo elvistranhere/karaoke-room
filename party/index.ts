@@ -8,7 +8,7 @@ interface ParticipantEntry {
 
 const MAX_CHAT_MESSAGES = 100;
 const MAX_CHAT_LENGTH = 500;
-const MAX_NAME_LENGTH = 30;
+const MAX_NAME_LENGTH = 20; // must match client-side MAX_NAME_LENGTH in src/lib/playerName.ts
 const MAX_BROWSER_LENGTH = 64;
 const ALLOWED_EMOJIS = new Set(["🔥", "👏", "😍", "🎵", "💯", "🙌", "😂", "💀", "👎", "😴"]);
 const HEARTBEAT_INTERVAL_MS = 15_000; // ping every 15s
