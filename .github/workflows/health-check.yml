@@ -83,28 +83,17 @@ jobs:
             secret_key: LIVEKIT_URL
           - name: Key 2
             secret_key: LIVEKIT_URL_2
-          - name: Key 3
-            secret_key: LIVEKIT_URL_3
-          - name: Key 4
-            secret_key: LIVEKIT_URL_4
-          - name: Key 5
-            secret_key: LIVEKIT_URL_5
+          # Add more entries here when adding keys 3+
     steps:
       - name: Check LiveKit (${{ matrix.name }})
         env:
           LK_URL_PRIMARY: ${{ secrets.LIVEKIT_URL }}
           LK_URL_2: ${{ secrets.LIVEKIT_URL_2 }}
-          LK_URL_3: ${{ secrets.LIVEKIT_URL_3 }}
-          LK_URL_4: ${{ secrets.LIVEKIT_URL_4 }}
-          LK_URL_5: ${{ secrets.LIVEKIT_URL_5 }}
         run: |
           # Map matrix secret_key to the actual env var
           case "${{ matrix.secret_key }}" in
             LIVEKIT_URL)   LK_URL="$LK_URL_PRIMARY" ;;
             LIVEKIT_URL_2) LK_URL="$LK_URL_2" ;;
-            LIVEKIT_URL_3) LK_URL="$LK_URL_3" ;;
-            LIVEKIT_URL_4) LK_URL="$LK_URL_4" ;;
-            LIVEKIT_URL_5) LK_URL="$LK_URL_5" ;;
           esac
 
           if [ -z "$LK_URL" ]; then
