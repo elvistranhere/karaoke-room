@@ -86,6 +86,7 @@ export function VideoQueue({ myPeerId, current, queue, onRemove }: VideoQueuePro
                   className="cursor-pointer rounded-lg border p-2 transition-all hover:scale-105 active:scale-95"
                   style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
                   title="Remove"
+                  aria-label="Remove from queue"
                 >
                   <X size={14} />
                 </button>

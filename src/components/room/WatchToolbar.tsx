@@ -178,6 +178,7 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
               style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
               onClick={() => { setUrl(""); setError(null); }}
               title="Clear"
+              aria-label="Clear URL"
             >
               <X size={14} />
             </button>

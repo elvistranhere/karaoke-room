@@ -152,7 +152,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
       playerRef.current = player;
     };
 
-    void mount();
+    void mount().catch(() => { /* YouTube API load failed - user can retry */ });
 
     return () => {
       cancelled = true;
