@@ -387,7 +387,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             <button
               onClick={() => router.push("/")}
               className="mt-2 cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-              style={{ background: "var(--color-danger)", color: "#fff" }}
+              style={{ background: "var(--color-danger)", color: "var(--color-text-primary)" }}
             >
               Create New Room
             </button>
@@ -396,7 +396,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             <button
               onClick={() => window.location.reload()}
               className="mt-2 cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-              style={{ background: "var(--color-danger)", color: "#fff" }}
+              style={{ background: "var(--color-danger)", color: "var(--color-text-primary)" }}
             >
               Try Again
             </button>

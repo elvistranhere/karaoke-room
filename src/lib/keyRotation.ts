@@ -141,7 +141,7 @@ export async function getKeyForRoom(
     // Uses SADD (Redis Set) so the same room reporting multiple times only counts once.
     // The window TTL is set only when the set is first created (SADD returns 1 for new member
     // on an empty set), so the window is fixed from the first report, not sliding.
-    if (forceNext && currentKey !== null) {
+    if (forceNext && currentKey !== null && currentKey >= 0 && currentKey < keySets.length) {
       const reportSetKey = `key:${currentKey}:report_rooms`;
       // SADD the room to the set so the same room only counts once
       await r.sadd(reportSetKey, room);
