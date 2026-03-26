@@ -267,6 +267,7 @@ export function useLiveKit({
       console.log("[LiveKit] Disconnected");
       if (!cancelled) {
         setIsConnected(false);
+        setError("Disconnected - the room may have hit its session limit. Ask others to create a new room, or create one yourself.");
       }
     });
 

@@ -379,10 +379,19 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       {/* Error banner */}
       {liveKitError && liveKitError !== "Reconnecting..." && (
         <div
-          className="relative z-10 mx-4 mt-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
+          className="relative z-10 mx-4 mt-2 rounded-lg px-4 py-3 text-xs lg:mx-6"
           style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
         >
-          {liveKitError}
+          <p>{liveKitError}</p>
+          {(liveKitError.includes("session limit") || liveKitError.includes("Disconnected")) && (
+            <button
+              onClick={() => router.push("/")}
+              className="mt-2 cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+              style={{ background: "var(--color-danger)", color: "#fff" }}
+            >
+              Create New Room
+            </button>
+          )}
         </div>
       )}
 
