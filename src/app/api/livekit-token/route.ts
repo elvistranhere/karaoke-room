@@ -16,31 +16,21 @@ interface LiveKitKeySet {
 
 function getKeySets(): LiveKitKeySet[] {
   const sets: LiveKitKeySet[] = [];
+  const defaultUrl = process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
 
-  // Primary key
-  if (process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
-    sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY,
-      apiSecret: process.env.LIVEKIT_API_SECRET,
-      url: process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
-    });
-  }
+  // Scan LIVEKIT_API_KEY, LIVEKIT_API_KEY_2, LIVEKIT_API_KEY_3, ... up to _20
+  // Add as many key sets as you want - just add env vars with incrementing suffixes
+  const suffixes = ["", ...Array.from({ length: 20 }, (_, i) => `_${i + 2}`)];
 
-  // Secondary key
-  if (process.env.LIVEKIT_API_KEY_2 && process.env.LIVEKIT_API_SECRET_2) {
-    sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY_2,
-      apiSecret: process.env.LIVEKIT_API_SECRET_2,
-      url: process.env.LIVEKIT_URL_2 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
-    });
-  }
+  for (const suffix of suffixes) {
+    const apiKey = process.env[`LIVEKIT_API_KEY${suffix}`];
+    const apiSecret = process.env[`LIVEKIT_API_SECRET${suffix}`];
+    if (!apiKey || !apiSecret) continue;
 
-  // Tertiary key
-  if (process.env.LIVEKIT_API_KEY_3 && process.env.LIVEKIT_API_SECRET_3) {
     sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY_3,
-      apiSecret: process.env.LIVEKIT_API_SECRET_3,
-      url: process.env.LIVEKIT_URL_3 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
+      apiKey,
+      apiSecret,
+      url: process.env[`LIVEKIT_URL${suffix}`] ?? defaultUrl,
     });
   }
 
