@@ -16,49 +16,50 @@ interface LiveKitKeySet {
 
 function getKeySets(): LiveKitKeySet[] {
   const sets: LiveKitKeySet[] = [];
-  const defaultUrl = process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
 
-  // Scan LIVEKIT_API_KEY, LIVEKIT_API_KEY_2, LIVEKIT_API_KEY_3, ... up to _20
-  // Add as many key sets as you want - just add env vars with incrementing suffixes
-  const suffixes = ["", ...Array.from({ length: 20 }, (_, i) => `_${i + 2}`)];
-
-  for (const suffix of suffixes) {
-    const apiKey = process.env[`LIVEKIT_API_KEY${suffix}`];
-    const apiSecret = process.env[`LIVEKIT_API_SECRET${suffix}`];
-    if (!apiKey || !apiSecret) continue;
-
+  // Primary key
+  if (process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
     sets.push({
-      apiKey,
-      apiSecret,
-      url: process.env[`LIVEKIT_URL${suffix}`] ?? defaultUrl,
+      apiKey: process.env.LIVEKIT_API_KEY,
+      apiSecret: process.env.LIVEKIT_API_SECRET,
+      url: process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
+    });
+  }
+
+  // Secondary key
+  if (process.env.LIVEKIT_API_KEY_2 && process.env.LIVEKIT_API_SECRET_2) {
+    sets.push({
+      apiKey: process.env.LIVEKIT_API_KEY_2,
+      apiSecret: process.env.LIVEKIT_API_SECRET_2,
+      url: process.env.LIVEKIT_URL_2 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
+    });
+  }
+
+  // Tertiary key
+  if (process.env.LIVEKIT_API_KEY_3 && process.env.LIVEKIT_API_SECRET_3) {
+    sets.push({
+      apiKey: process.env.LIVEKIT_API_KEY_3,
+      apiSecret: process.env.LIVEKIT_API_SECRET_3,
+      url: process.env.LIVEKIT_URL_3 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
     });
   }
 
   return sets;
 }
 
+// Track which key set is currently active (round-robin on quota errors)
+let activeKeyIndex = 0;
 // Track exhausted keys with cooldown (avoid hammering a key that just hit quota)
 const exhaustedUntil = new Map<number, number>();
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown after quota hit
 
-// Hash room code to a key index - ensures all users in the same room
-// get the same LiveKit project (rooms are project-scoped)
-function roomKeyIndex(room: string, total: number): number {
-  let hash = 0;
-  for (let i = 0; i < room.length; i++) {
-    hash = ((hash << 5) - hash + room.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % total;
-}
-
-function getKeySetForRoom(room: string, keySets: LiveKitKeySet[], offset = 0): { keySet: LiveKitKeySet; index: number } | null {
+function getActiveKeySet(keySets: LiveKitKeySet[]): { keySet: LiveKitKeySet; index: number } | null {
   const now = Date.now();
   const total = keySets.length;
-  const baseIdx = roomKeyIndex(room, total);
 
-  // Try keys starting from the room's hashed index + offset
+  // Try each key starting from activeKeyIndex
   for (let attempt = 0; attempt < total; attempt++) {
-    const idx = (baseIdx + offset + attempt) % total;
+    const idx = (activeKeyIndex + attempt) % total;
     const cooldownEnd = exhaustedUntil.get(idx);
 
     if (!cooldownEnd || now > cooldownEnd) {
@@ -66,7 +67,7 @@ function getKeySetForRoom(room: string, keySets: LiveKitKeySet[], offset = 0): {
     }
   }
 
-  // All keys exhausted - use the one with the shortest remaining cooldown
+  // All keys exhausted — use the one with the shortest remaining cooldown
   let bestIdx = 0;
   let bestTime = Infinity;
   for (const [idx, until] of exhaustedUntil) {
@@ -80,7 +81,12 @@ function getKeySetForRoom(room: string, keySets: LiveKitKeySet[], offset = 0): {
 
 function markExhausted(index: number) {
   exhaustedUntil.set(index, Date.now() + COOLDOWN_MS);
-  console.log(`[LiveKit] Key set #${index + 1} hit quota - cooldown for ${COOLDOWN_MS / 1000}s`);
+  console.log(`[LiveKit] Key set #${index + 1} hit quota — cooldown for ${COOLDOWN_MS / 1000}s`);
+}
+
+function rotateToNext(keySets: LiveKitKeySet[], currentIndex: number) {
+  activeKeyIndex = (currentIndex + 1) % keySets.length;
+  console.log(`[LiveKit] Rotated to key set #${activeKeyIndex + 1}`);
 }
 
 export async function GET(req: NextRequest) {
@@ -104,13 +110,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // If client reported a connect failure, try the next key for this room
-    const offset = keyHint === "next" ? 1 : 0;
+    // If client reported a connect failure, rotate to next key
+    if (keyHint === "next" && keySets.length > 1) {
+      markExhausted(activeKeyIndex);
+      rotateToNext(keySets, activeKeyIndex);
+    }
 
-    // Try key sets with failover (starting from the room's hashed key)
+    // Try key sets with failover
     let lastError: unknown = null;
     for (let attempt = 0; attempt < keySets.length; attempt++) {
-      const active = getKeySetForRoom(room, keySets, offset + attempt);
+      const active = getActiveKeySet(keySets);
       if (!active) break;
 
       try {
@@ -157,7 +166,8 @@ export async function GET(req: NextRequest) {
 
         if (isQuotaError) {
           markExhausted(active.index);
-          continue; // try next key for this room
+          rotateToNext(keySets, active.index);
+          continue; // try next key
         }
 
         // Non-quota error — don't rotate, just fail
