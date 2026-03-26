@@ -252,64 +252,66 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
         </div>
       </div>
 
-      {videoId ? (
-        <div className="relative">
-          <div
-            className="watch-glow overflow-hidden rounded-xl"
-            style={{
-              height: "clamp(220px, 45dvh, 520px)",
-              background: "linear-gradient(135deg, rgba(212, 160, 23, 0.10), rgba(245, 230, 200, 0.04))",
-            }}
-          >
-            <div id={containerId} className="h-full w-full" />
-          </div>
-
-          {needsTap ? (
-            <button
-              onClick={() => {
-                setNeedsTap(false);
-                isProcessingSyncRef.current = true;
-                try {
-                  playerRef.current?.playVideo();
-                } finally {
-                  setTimeout(() => {
-                    isProcessingSyncRef.current = false;
-                  }, 0);
-                }
-              }}
-              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-xl"
-              style={{ background: "rgba(9, 9, 11, 0.55)" }}
-            >
-              <div className="rounded-xl border px-4 py-3 text-center" style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.75)" }}>
-                <p className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-                  Tap to play
-                </p>
-                <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  Required by mobile autoplay rules
-                </p>
-              </div>
-            </button>
-          ) : null}
-        </div>
-      ) : (
+      <div className="relative">
         <div
-          className="flex items-center justify-center rounded-xl border"
+          className="watch-glow overflow-hidden rounded-xl"
           style={{
-            aspectRatio: "16/9",
-            borderColor: "var(--color-dark-border)",
-            background: "var(--color-dark-card)",
+            height: "clamp(220px, 45dvh, 520px)",
+            background: videoId
+              ? "linear-gradient(135deg, rgba(212, 160, 23, 0.10), rgba(245, 230, 200, 0.04))"
+              : "var(--color-dark-card)",
           }}
         >
-          <div className="max-w-sm text-center">
-            <p className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-              Paste a YouTube URL to start watching together
-            </p>
-            <p className="mt-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
-              The queue auto-plays. Anyone can pause, resume, or skip.
-            </p>
-          </div>
+          {/* Keep the mount node stable to avoid DOM cleanup races with the YouTube IFrame API. */}
+          <div id={containerId} className="h-full w-full" />
         </div>
-      )}
+
+        {videoId && needsTap ? (
+          <button
+            onClick={() => {
+              setNeedsTap(false);
+              isProcessingSyncRef.current = true;
+              try {
+                playerRef.current?.playVideo();
+              } finally {
+                setTimeout(() => {
+                  isProcessingSyncRef.current = false;
+                }, 0);
+              }
+            }}
+            className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-xl"
+            style={{ background: "rgba(9, 9, 11, 0.55)" }}
+          >
+            <div className="rounded-xl border px-4 py-3 text-center" style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.75)" }}>
+              <p className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                Tap to play
+              </p>
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Required by mobile autoplay rules
+              </p>
+            </div>
+          </button>
+        ) : null}
+
+        {!videoId ? (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-xl border"
+            style={{
+              borderColor: "var(--color-dark-border)",
+              background: "rgba(9, 9, 11, 0.55)",
+            }}
+          >
+            <div className="max-w-sm rounded-xl border px-4 py-3 text-center" style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.75)" }}>
+              <p className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                Paste a YouTube URL to start watching together
+              </p>
+              <p className="mt-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                The queue auto-plays. Anyone can pause, resume, or skip.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

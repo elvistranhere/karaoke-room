@@ -519,12 +519,13 @@ export default class KaraokeRoom implements Party.Server {
       addedByName: participant.name,
     });
 
-    // Auto-start if nothing playing
+    this.handleChat(sender, `queued "${trimmedTitle}"`);
+
+    // Auto-start if nothing playing (after queue message, so chat reads naturally)
     if (this.watchCurrentVideoId === null) {
       this.startNextWatchVideo();
     }
 
-    this.handleChat(sender, `queued "${trimmedTitle}"`);
     this.broadcastState();
   }
 

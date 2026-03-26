@@ -21,6 +21,7 @@ import { playReactionSound } from "./ReactionBar";
 import { WatchPlayer, type WatchPlayerApi } from "./WatchPlayer";
 import { WatchToolbar } from "./WatchToolbar";
 import { VideoQueue } from "./VideoQueue";
+import { usePaneSplit } from "~/hooks/usePaneSplit";
 
 interface RoomViewProps {
   roomCode: string;
@@ -92,6 +93,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const [sessionStartTime] = useState(() => Date.now());
   const [mobileSection, setMobileSection] = useState<"stage" | "chat" | "people">("stage");
+
+  const paneSplit = usePaneSplit({
+    storageKey: "karaok.sidebar.width",
+    minPx: 260,
+    maxPx: 460,
+    defaultPx: 288,
+  });
 
   const {
     room,
@@ -481,7 +489,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       )}
 
       {/* Main content */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pb-4 lg:flex-row lg:gap-4 lg:overflow-hidden lg:p-4">
+      <div
+        className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pb-4 lg:grid lg:gap-4 lg:overflow-hidden lg:p-4"
+        style={paneSplit.gridStyle}
+      >
         {/* Mobile section switcher */}
         <div className="grid grid-cols-3 gap-1 rounded-lg border p-1 lg:hidden" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-surface)" }}>
           {[
@@ -596,8 +607,29 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           </div>
         </div>
 
+        {/* Desktop resizer */}
+        <div className="hidden lg:block">
+          <div
+            onMouseDown={paneSplit.onMouseDown}
+            className="group h-full cursor-col-resize"
+            title="Drag to resize sidebar"
+            style={{ width: 10 }}
+          >
+            <div
+              className="mx-auto h-full w-[2px] transition-colors"
+              style={{
+                background: "rgba(63, 63, 70, 0.6)",
+              }}
+            />
+            <div
+              className="pointer-events-none mx-auto -mt-full h-full w-[2px] opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ background: "rgba(212, 160, 23, 0.5)" }}
+            />
+          </div>
+        </div>
+
         {/* Right: People panel + Random Wheel */}
-        <div className={`w-full flex-col gap-3 pb-1 lg:flex lg:w-72 lg:min-h-0 lg:overflow-auto lg:pb-0 ${mobileSection === "people" ? "flex" : "hidden"}`}>
+        <div className={`w-full flex-col gap-3 pb-1 lg:flex lg:min-h-0 lg:overflow-auto lg:pb-0 ${mobileSection === "people" ? "flex" : "hidden"}`}>
           {roomState.roomMode === "watch" ? (
             <VideoQueue
               myPeerId={myPeerId}
