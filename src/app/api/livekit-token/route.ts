@@ -19,6 +19,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Cap name length to prevent oversized JWTs (matches MAX_NAME_LENGTH in playerName.ts)
+    const safeName = name.trim().slice(0, 20);
+    if (!safeName) {
+      return NextResponse.json(
+        { error: "Name cannot be empty" },
+        { status: 400 },
+      );
+    }
+
     // Validate using the same room code format the app generates (6-char custom charset)
     const normalizedRoom = room.toUpperCase();
     if (!validateRoomCode(normalizedRoom)) {
@@ -47,11 +56,11 @@ export async function GET(req: NextRequest) {
     }
 
     const { keySet, index } = result;
-    const uniqueId = `${name}-${crypto.randomUUID().slice(0, 8)}`;
+    const uniqueId = `${safeName}-${crypto.randomUUID().slice(0, 8)}`;
 
     const at = new AccessToken(keySet.apiKey, keySet.apiSecret, {
       identity: uniqueId,
-      name: name,
+      name: safeName,
       ttl: 3600, // 1 hour
     });
 

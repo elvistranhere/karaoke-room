@@ -9,7 +9,11 @@
  *
  * Room counts use TTL-based counting: each room:X:key mapping has a 1hr TTL.
  * To find the least-loaded key, we count active mappings per key via SCAN.
- * No INCR/DECR counters - expired TTLs self-clean. No drift.
+ * Expired TTLs self-clean via SCAN (only non-expired keys appear in results).
+ *
+ * Exhaustion tracking uses a Redis Set per key (SADD) to count distinct rooms
+ * reporting failures within a time window. This prevents a single client from
+ * marking a key exhausted via repeated retries.
  *
  * See docs/IDEOLOGY.md for full architecture decisions.
  */
@@ -66,7 +70,7 @@ function hashRoomToKey(room: string, total: number): number {
 const ROOM_KEY_TTL = 3600;     // 1 hour - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
 const EXHAUST_THRESHOLD = 3;   // require 3+ distinct rooms to report before marking key exhausted
-const EXHAUST_WINDOW = 60;     // count reports within 60s window
+const EXHAUST_WINDOW = 60;     // count distinct room reports within 60s window
 
 /**
  * Count active rooms per key using SCAN (TTL-based counting).
@@ -104,7 +108,7 @@ async function countRoomsPerKey(r: Redis, totalKeys: number): Promise<number[]> 
  * Get the key set for a room.
  * - Existing rooms: use stored mapping (room affinity)
  * - New rooms: least-loaded non-exhausted key, assigned with SET NX (atomic)
- * - Exhausted key + existing mapping: return null (429, never split)
+ * - Exhausted key + existing mapping: return error (429, never split)
  * - Redis down: fall back to deterministic hash function
  */
 export async function getKeyForRoom(
@@ -125,31 +129,34 @@ export async function getKeyForRoom(
     // Here we just construct the Redis key from the already-validated, uppercased room code.
     const roomKey = `room:${room}:key`;
 
-    // Client reported connect failure - mark current key exhausted only after
-    // multiple distinct rooms report the same key (prevents single-client DoS).
-    // Each report increments key:N:reports (60s window). At threshold, mark exhausted.
-    if (forceNext) {
-      const currentKey = await r.get<number>(roomKey);
-      if (currentKey !== null) {
-        const reportKey = `key:${currentKey}:reports`;
-        const count = await r.incr(reportKey);
-        if (count === 1) {
-          await r.expire(reportKey, EXHAUST_WINDOW);
-        }
-        if (count >= EXHAUST_THRESHOLD) {
-          await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL });
-        }
+    // Read room's current key mapping once (reused by both forceNext and affinity check)
+    const currentKey = await r.get<number>(roomKey);
+
+    // Client reported connect failure - track distinct rooms reporting this key.
+    // Uses SADD (Redis Set) so the same room reporting multiple times only counts once.
+    // Mark key exhausted only after EXHAUST_THRESHOLD distinct rooms report within EXHAUST_WINDOW.
+    if (forceNext && currentKey !== null) {
+      const reportSetKey = `key:${currentKey}:report_rooms`;
+      // SADD + EXPIRE in a pipeline (atomic batch) to avoid orphaned keys
+      const reportPipeline = r.pipeline();
+      reportPipeline.sadd(reportSetKey, room);
+      reportPipeline.expire(reportSetKey, EXHAUST_WINDOW);
+      reportPipeline.scard(reportSetKey);
+      const reportResults = await reportPipeline.exec<[number, number, number]>();
+      const distinctCount = reportResults[2] ?? 0;
+      if (distinctCount >= EXHAUST_THRESHOLD) {
+        // Only set exhaustion if not already set (NX) to avoid resetting the TTL
+        await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
       }
     }
 
-    // Check existing room-to-key mapping
-    const existingKey = await r.get<number>(roomKey);
-    if (existingKey !== null) {
-      const exhausted = await r.exists(`key:${existingKey}:exhausted`);
-      if (!exhausted && keySets[existingKey]) {
+    // Check existing room-to-key mapping (reuse the GET we already did)
+    if (currentKey !== null) {
+      const exhausted = await r.exists(`key:${currentKey}:exhausted`);
+      if (!exhausted && keySets[currentKey]) {
         // Key is healthy - use it (room affinity)
         await r.expire(roomKey, ROOM_KEY_TTL);
-        return { keySet: keySets[existingKey]!, index: existingKey };
+        return { keySet: keySets[currentKey]!, index: currentKey };
       }
       // Key is exhausted with active mapping - refuse (don't split room)
       // Still refresh TTL so the mapping doesn't expire while the room is active,
@@ -201,9 +208,9 @@ export async function getKeyForRoom(
       if (assignedKey !== null && keySets[assignedKey]) {
         return { keySet: keySets[assignedKey]!, index: assignedKey };
       }
-      // Winner's key vanished (theoretically impossible with 1hr TTL, but handle
-      // gracefully). Persist our choice so the room has a consistent mapping.
-      await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL });
+      // Winner's key vanished (theoretically impossible with 1hr TTL).
+      // Use SET NX again to avoid clobbering a concurrent write.
+      await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
     }
 
     return { keySet: keySets[bestIdx]!, index: bestIdx };
