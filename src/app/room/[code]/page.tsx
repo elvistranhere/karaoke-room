@@ -70,15 +70,30 @@ function RoomContent() {
 
   const handleNameRejected = (info: { name: string; suggestions: string[] }) => {
     setNameConflict(info);
-    setShowNameModal(true);
   };
 
-  // Don't mount RoomView until name is resolved
+  const handleConflictSubmit = (newName: string) => {
+    const trimmed = newName.trim();
+    const clean = trimmed || "Anonymous";
+    setName(clean);
+    if (trimmed) saveName(trimmed);
+    setNameConflict(null); // clear conflict, join will retry with new name
+  };
+
+  // Don't mount RoomView until INITIAL name is resolved (first visit only)
   if (showNameModal) {
-    return <NameModal onSubmit={handleNameSubmit} conflict={nameConflict} />;
+    return <NameModal onSubmit={handleNameSubmit} />;
   }
 
-  return <RoomView roomCode={code} playerName={name} onRename={handleRename} onNameRejected={handleNameRejected} />;
+  return (
+    <>
+      <RoomView roomCode={code} playerName={name} onRename={handleRename} onNameRejected={handleNameRejected} />
+      {/* Name conflict overlay - does NOT unmount RoomView */}
+      {nameConflict && (
+        <NameModal onSubmit={handleConflictSubmit} conflict={nameConflict} />
+      )}
+    </>
+  );
 }
 
 function NameModal({ onSubmit, conflict }: { onSubmit: (name: string) => void; conflict?: { name: string; suggestions: string[] } | null }) {

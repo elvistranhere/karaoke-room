@@ -222,10 +222,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   // Forward name-taken rejection to parent so it can show the name modal
   useEffect(() => {
-    if (nameTaken && onNameRejected) {
-      onNameRejected(nameTaken);
-      clearNameTaken();
-    }
+    if (!nameTaken) return;
+    onNameRejected?.(nameTaken);
+    clearNameTaken(); // always clear to prevent re-firing
   }, [nameTaken, onNameRejected, clearNameTaken]);
 
   // LiveKit identity for status updates - must be before statusCtxRef

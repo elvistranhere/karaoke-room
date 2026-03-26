@@ -86,14 +86,14 @@ export default class KaraokeRoom implements Party.Server {
     this.startHeartbeat();
     this.send(conn, { type: "you-joined", peerId: conn.id });
 
-    // Evict connections that don't send "join" within 10s
+    // Evict connections that don't join within 30s (extra time for name-taken flow)
     setTimeout(() => {
       if (!this.participants.has(conn.id)) {
         console.log(`[KaraokeRoom] Connection ${conn.id} never joined - disconnecting`);
         this.lastPong.delete(conn.id);
         try { conn.close(); } catch { /* already closed */ }
       }
-    }, 10_000);
+    }, 30_000);
   }
 
   onMessage(message: string | ArrayBuffer | ArrayBufferView, sender: Party.Connection) {
@@ -220,17 +220,18 @@ export default class KaraokeRoom implements Party.Server {
     const trimmedName = name.trim().slice(0, MAX_NAME_LENGTH);
 
     // Check for duplicate names (case-insensitive)
-    // Skip check if this is a re-join (same peerId updating their own name)
+    // Allow "Anonymous" duplicates - multiple unnamed users is expected
+    // Skip check for existing participants updating their own name (rename flow)
     const existing = this.participants.get(sender.id);
-    const isDuplicate = Array.from(this.participants.values()).some(
+    const isAnonymous = trimmedName.toLowerCase() === "anonymous";
+    const isDuplicate = !isAnonymous && Array.from(this.participants.values()).some(
       (p) => p.name.toLowerCase() === trimmedName.toLowerCase() && p.ws.id !== sender.id
     );
 
     if (isDuplicate) {
-      // Generate suggestions
       const suggestions: string[] = [];
-      for (let i = 2; i <= 5; i++) {
-        const candidate = `${trimmedName}${i}`;
+      for (let i = 2; i <= 10; i++) {
+        const candidate = `${trimmedName}${i}`.slice(0, MAX_NAME_LENGTH);
         const taken = Array.from(this.participants.values()).some(
           (p) => p.name.toLowerCase() === candidate.toLowerCase()
         );
@@ -241,7 +242,7 @@ export default class KaraokeRoom implements Party.Server {
       return;
     }
 
-    // Handle re-join: update name if already present
+    // Update name if already a participant (rename), otherwise add new
     if (existing) {
       existing.name = trimmedName;
     } else {
