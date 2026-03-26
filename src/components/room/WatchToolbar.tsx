@@ -139,7 +139,7 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
             className="rounded-full border px-2 py-1 uppercase tracking-[0.12em]"
             style={{
               borderColor: "var(--color-dark-border)",
-              background: "rgba(212, 160, 23, 0.05)",
+              background: "var(--color-accent-dim)",
               color: "var(--color-accent)",
               fontWeight: 700,
             }}

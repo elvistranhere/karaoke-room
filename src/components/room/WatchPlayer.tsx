@@ -261,7 +261,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
           style={{
             ...(!hasVideo ? { height: "120px" } : {}),
             background: hasVideo
-              ? "linear-gradient(135deg, rgba(212, 160, 23, 0.10), rgba(245, 230, 200, 0.04))"
+              ? "linear-gradient(135deg, var(--color-accent-dim), transparent)"
               : "var(--color-dark-card)",
           }}
         >
