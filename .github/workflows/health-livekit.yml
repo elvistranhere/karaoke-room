@@ -34,10 +34,10 @@ jobs:
           HTTP_URL=$(echo "$LK_URL" | sed 's|^wss://|https://|;s|^ws://|http://|')
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HTTP_URL")
           if [ "$STATUS" -eq 000 ] || [ "$STATUS" -ge 500 ]; then
-            echo "::error::${{ matrix.name }} returned $STATUS"
+            echo "::error::${{ matrix.name }} is DOWN ($STATUS)"
             exit 1
           fi
           if [ "$STATUS" -eq 429 ]; then
-            echo "::warning::${{ matrix.name }} rate-limited (429)"
+            echo "::warning::${{ matrix.name }} is rate-limited (429) - up but throttled"
           fi
           echo "${{ matrix.name }}: OK ($STATUS)"
