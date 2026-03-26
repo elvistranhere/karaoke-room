@@ -3,7 +3,7 @@
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { getSavedName, saveName, sanitizeName } from "~/lib/playerName";
+import { getSavedName, saveName, sanitizeName, MAX_NAME_LENGTH } from "~/lib/playerName";
 
 const RoomView = dynamic(
   () => import("~/components/room/RoomView").then((m) => m.RoomView),
@@ -110,7 +110,7 @@ function NameModal({ onSubmit }: { onSubmit: (name: string) => void }) {
           autoFocus
           type="text"
           value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, 20))}
+          onChange={(e) => setDraft(e.target.value.slice(0, MAX_NAME_LENGTH))}
           placeholder="Your name"
           className="mb-3 w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
           style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}

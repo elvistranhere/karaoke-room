@@ -1,5 +1,5 @@
 const STORAGE_KEY = "karaoke-player-name";
-const MAX_NAME_LENGTH = 20;
+export const MAX_NAME_LENGTH = 20;
 
 /** Get saved name — returns null if empty, whitespace-only, or storage blocked. */
 export function getSavedName(): string | null {

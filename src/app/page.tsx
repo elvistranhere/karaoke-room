@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Users, Music, ArrowRight } from "lucide-react";
-import { getSavedName, saveName } from "~/lib/playerName";
+import { getSavedName, saveName, MAX_NAME_LENGTH } from "~/lib/playerName";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -24,7 +24,7 @@ export default function Home() {
   useEffect(() => {
     const saved = getSavedName();
     if (!saved) return;
-    const trimmed = saved.trim().slice(0, 20);
+    const trimmed = saved.trim().slice(0, MAX_NAME_LENGTH);
     if (trimmed) setName(trimmed);
   }, []);
 
