@@ -27,9 +27,7 @@ export function Toolbar({
 
   useEffect(() => {
     if (!showMobileReactions) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (!reactionsRef.current) return;
-      const target = e.target;
+
     const handleClickOutside = (e: PointerEvent) => {
       if (reactionsRef.current && !reactionsRef.current.contains(e.target as Node)) {
         setShowMobileReactions(false);
