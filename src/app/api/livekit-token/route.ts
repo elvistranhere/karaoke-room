@@ -1,99 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, RoomConfiguration, TrackSource } from "livekit-server-sdk";
+import { getKeySets, getKeyForRoom, markKeyExhausted } from "~/lib/keyRotation";
 
-// Multiple LiveKit API key sets for quota distribution.
-// NOTE: Token generation (toJwt) is local — quota errors happen at room.connect()
-// on the client, not here. This rotation is PREEMPTIVE: keys are round-robined
-// to spread usage across projects. The cooldown/exhaustion tracking is best-effort
-// and resets on serverless cold starts. For true reactive failover, the client
-// would need to retry with a different key hint on connect failure.
-// Set in env: LIVEKIT_API_KEY, LIVEKIT_API_KEY_2, LIVEKIT_API_KEY_3, etc.
-interface LiveKitKeySet {
-  apiKey: string;
-  apiSecret: string;
-  url: string;
-}
-
-function getKeySets(): LiveKitKeySet[] {
-  const sets: LiveKitKeySet[] = [];
-
-  // Primary key
-  if (process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
-    sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY,
-      apiSecret: process.env.LIVEKIT_API_SECRET,
-      url: process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
-    });
-  }
-
-  // Secondary key
-  if (process.env.LIVEKIT_API_KEY_2 && process.env.LIVEKIT_API_SECRET_2) {
-    sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY_2,
-      apiSecret: process.env.LIVEKIT_API_SECRET_2,
-      url: process.env.LIVEKIT_URL_2 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
-    });
-  }
-
-  // Tertiary key
-  if (process.env.LIVEKIT_API_KEY_3 && process.env.LIVEKIT_API_SECRET_3) {
-    sets.push({
-      apiKey: process.env.LIVEKIT_API_KEY_3,
-      apiSecret: process.env.LIVEKIT_API_SECRET_3,
-      url: process.env.LIVEKIT_URL_3 ?? process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "",
-    });
-  }
-
-  return sets;
-}
-
-// Track which key set is currently active (round-robin on quota errors)
-let activeKeyIndex = 0;
-// Track exhausted keys with cooldown (avoid hammering a key that just hit quota)
-const exhaustedUntil = new Map<number, number>();
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown after quota hit
-
-function getActiveKeySet(keySets: LiveKitKeySet[]): { keySet: LiveKitKeySet; index: number } | null {
-  const now = Date.now();
-  const total = keySets.length;
-
-  // Try each key starting from activeKeyIndex
-  for (let attempt = 0; attempt < total; attempt++) {
-    const idx = (activeKeyIndex + attempt) % total;
-    const cooldownEnd = exhaustedUntil.get(idx);
-
-    if (!cooldownEnd || now > cooldownEnd) {
-      return { keySet: keySets[idx]!, index: idx };
-    }
-  }
-
-  // All keys exhausted — use the one with the shortest remaining cooldown
-  let bestIdx = 0;
-  let bestTime = Infinity;
-  for (const [idx, until] of exhaustedUntil) {
-    if (until < bestTime) {
-      bestTime = until;
-      bestIdx = idx;
-    }
-  }
-  return { keySet: keySets[bestIdx]!, index: bestIdx };
-}
-
-function markExhausted(index: number) {
-  exhaustedUntil.set(index, Date.now() + COOLDOWN_MS);
-  console.log(`[LiveKit] Key set #${index + 1} hit quota — cooldown for ${COOLDOWN_MS / 1000}s`);
-}
-
-function rotateToNext(keySets: LiveKitKeySet[], currentIndex: number) {
-  activeKeyIndex = (currentIndex + 1) % keySets.length;
-  console.log(`[LiveKit] Rotated to key set #${activeKeyIndex + 1}`);
-}
+// LiveKit token endpoint with Redis-backed key rotation.
+// See docs/IDEOLOGY.md for full architecture documentation.
 
 export async function GET(req: NextRequest) {
   try {
     const room = req.nextUrl.searchParams.get("room");
     const name = req.nextUrl.searchParams.get("name");
-    const keyHint = req.nextUrl.searchParams.get("keyHint"); // "next" to skip current key
+    const keyHint = req.nextUrl.searchParams.get("keyHint");
 
     if (!room || !name) {
       return NextResponse.json(
@@ -110,80 +26,61 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // If client reported a connect failure, rotate to next key
-    if (keyHint === "next" && keySets.length > 1) {
-      markExhausted(activeKeyIndex);
-      rotateToNext(keySets, activeKeyIndex);
+    // Get the key for this room (Redis-backed with fallback to hash)
+    const active = await getKeyForRoom(room, keySets, keyHint === "next");
+
+    if (!active) {
+      return NextResponse.json(
+        { error: "This room has hit its session limit. Ask people in the room to create a new one, or create your own." },
+        { status: 429 },
+      );
     }
 
-    // Try key sets with failover
-    let lastError: unknown = null;
-    for (let attempt = 0; attempt < keySets.length; attempt++) {
-      const active = getActiveKeySet(keySets);
-      if (!active) break;
+    const { keySet, index } = active;
+    const uniqueId = `${name}-${crypto.randomUUID().slice(0, 8)}`;
 
-      try {
-        const { keySet, index } = active;
+    const at = new AccessToken(keySet.apiKey, keySet.apiSecret, {
+      identity: uniqueId,
+      name: name,
+      ttl: 3600, // 1 hour
+    });
 
-        const uniqueId = `${name}-${crypto.randomUUID().slice(0, 8)}`;
+    at.addGrant({
+      room,
+      roomJoin: true,
+      roomCreate: true,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishSources: [TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE_AUDIO],
+    });
 
-        const at = new AccessToken(keySet.apiKey, keySet.apiSecret, {
-          identity: uniqueId,
-          name: name,
-          ttl: 3600, // 1 hour (default is 6h)
-        });
+    at.roomConfig = new RoomConfiguration({
+      emptyTimeout: 30,
+      departureTimeout: 15,
+      maxParticipants: 10,
+    });
 
-        at.addGrant({
-          room,
-          roomJoin: true,
-          roomCreate: true,
-          canPublish: true,
-          canSubscribe: true,
-          canPublishSources: [TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE_AUDIO],
-        });
+    const token = await at.toJwt();
 
-        at.roomConfig = new RoomConfiguration({
-          emptyTimeout: 30,
-          departureTimeout: 15,
-          maxParticipants: 10,
-        });
-
-        const token = await at.toJwt();
-
-        // Return token + the LiveKit URL for this key set
-        // (different keys might point to different LiveKit Cloud projects)
-        return NextResponse.json({
-          token,
-          url: keySet.url,
-        });
-      } catch (err) {
-        lastError = err;
-        const isQuotaError =
-          err instanceof Error &&
-          (err.message.includes("quota") ||
-           err.message.includes("limit") ||
-           err.message.includes("exceeded") ||
-           err.message.includes("429"));
-
-        if (isQuotaError) {
-          markExhausted(active.index);
-          rotateToNext(keySets, active.index);
-          continue; // try next key
-        }
-
-        // Non-quota error — don't rotate, just fail
-        throw err;
-      }
-    }
-
-    // All keys failed
-    console.error("All LiveKit key sets exhausted:", lastError);
-    return NextResponse.json(
-      { error: "All LiveKit accounts have reached quota. Try again later." },
-      { status: 429 },
-    );
+    return NextResponse.json({
+      token,
+      url: keySet.url,
+      keySet: index + 1, // 1-indexed for logging
+    });
   } catch (error) {
     console.error("Failed to generate LiveKit token:", error);
+
+    // Check if it's a quota error from JWT signing (unlikely but defensive)
+    const isQuota = error instanceof Error &&
+      (error.message.includes("quota") || error.message.includes("429"));
+
+    if (isQuota) {
+      return NextResponse.json(
+        { error: "All sessions are at capacity right now. Please try again in a few minutes." },
+        { status: 429 },
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to generate token" },
       { status: 500 },
