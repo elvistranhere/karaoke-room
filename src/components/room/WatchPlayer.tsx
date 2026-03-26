@@ -113,12 +113,14 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
       playerRef.current = null;
 
       const player = new YT.Player(containerId, {
+        host: "https://www.youtube-nocookie.com",
         videoId,
         playerVars: {
           // Privacy enhanced domain is handled by IFrame API internally, but rel=0 still applies.
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
+          origin: typeof window !== "undefined" ? window.location.origin : "",
         },
         events: {
           onReady: () => {
@@ -211,7 +213,11 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
     } catch {
       // ignore
     } finally {
-      isProcessingSyncRef.current = false;
+      // onStateChange can fire after our call stack unwinds, so keep the guard
+      // alive for a tick to avoid echo loops.
+      setTimeout(() => {
+        isProcessingSyncRef.current = false;
+      }, 0);
     }
   }, [videoId, watchSync]);
 
@@ -266,7 +272,9 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
                 try {
                   playerRef.current?.playVideo();
                 } finally {
-                  isProcessingSyncRef.current = false;
+                  setTimeout(() => {
+                    isProcessingSyncRef.current = false;
+                  }, 0);
                 }
               }}
               className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-xl"

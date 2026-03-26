@@ -18,6 +18,7 @@ declare namespace YT {
   };
 
   interface PlayerOptions {
+    host?: string;
     height?: string | number;
     width?: string | number;
     videoId?: string;
