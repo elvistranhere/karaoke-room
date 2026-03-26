@@ -1,18 +1,17 @@
 /**
  * LiveKit key rotation with Upstash Redis.
  *
- * Strategy: Hash-based distribution with room affinity and exhaustion tracking.
- * - New rooms hashed to a non-exhausted key (deterministic, even distribution)
+ * Strategy: Least-loaded with room affinity (as specified in docs/IDEOLOGY.md).
+ * - New rooms assigned to the key with fewest active rooms (TTL-based counting)
  * - Existing rooms always use their assigned key (room affinity, no split)
- * - Exhausted keys are marked in Redis and skipped for new room assignments
+ * - Exhausted keys are marked and skipped for new assignments
  * - Falls back to in-memory hash if Redis is unreachable
  *
- * Why hash instead of least-loaded: we can't track actual LiveKit quota usage
- * (no API on free plan), and room-count tracking drifts because PartyKit
- * room-close events don't notify our API. Hash gives even distribution
- * without maintenance, and exhaustion markers handle key failures.
+ * Room counts use TTL-based counting: each room:X:key mapping has a 1hr TTL.
+ * To find the least-loaded key, we count active mappings per key via SCAN.
+ * No INCR/DECR counters - expired TTLs self-clean. No drift.
  *
- * See docs/IDEOLOGY.md for architecture decisions and user workflows.
+ * See docs/IDEOLOGY.md for full architecture decisions.
  */
 
 import { Redis } from "@upstash/redis";
@@ -54,7 +53,7 @@ export function getKeySets(): LiveKitKeySet[] {
   return sets;
 }
 
-// Deterministic hash for room-to-key distribution
+// Deterministic hash fallback (no Redis)
 function hashRoomToKey(room: string, total: number): number {
   let hash = 0;
   for (let i = 0; i < room.length; i++) {
@@ -67,9 +66,41 @@ const ROOM_KEY_TTL = 3600;     // 1 hour - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
 
 /**
+ * Count active rooms per key using SCAN (TTL-based counting).
+ * Each room:X:key mapping has a TTL. We count non-expired ones per key index.
+ * Self-cleaning: expired mappings don't appear in SCAN results.
+ */
+async function countRoomsPerKey(r: Redis, totalKeys: number): Promise<number[]> {
+  const counts = new Array<number>(totalKeys).fill(0);
+
+  let cursor = 0;
+  do {
+    const [nextCursor, keys] = await r.scan(cursor, { match: "room:*:key", count: 100 });
+    cursor = typeof nextCursor === "string" ? parseInt(nextCursor, 10) : nextCursor;
+
+    if (keys.length > 0) {
+      // Batch GET all found room keys
+      const pipeline = r.pipeline();
+      for (const key of keys) {
+        pipeline.get(key);
+      }
+      const values = await pipeline.exec<(number | null)[]>();
+
+      for (const val of values) {
+        if (val !== null && val >= 0 && val < totalKeys) {
+          counts[val]!++;
+        }
+      }
+    }
+  } while (cursor !== 0);
+
+  return counts;
+}
+
+/**
  * Get the key set for a room.
  * - Existing rooms: use stored mapping (room affinity)
- * - New rooms: hash among non-exhausted keys, store with SET NX
+ * - New rooms: least-loaded non-exhausted key, assigned with SET NX (atomic)
  * - Exhausted key + existing mapping: return null (429, never split)
  * - Redis down: fall back to deterministic hash
  */
@@ -111,28 +142,39 @@ export async function getKeyForRoom(
       return null;
     }
 
-    // No mapping - new room or cleared mapping. Find a non-exhausted key.
-    // Check exhaustion state for all keys in one pipeline
+    // No mapping - new room. Find least-loaded non-exhausted key.
+
+    // 1. Check which keys are exhausted
     const pipeline = r.pipeline();
     for (let i = 0; i < keySets.length; i++) {
       pipeline.exists(`key:${i}:exhausted`);
     }
-    const results = await pipeline.exec<number[]>();
+    const exhaustionResults = await pipeline.exec<number[]>();
 
     const nonExhausted = keySets
       .map((_, i) => i)
-      .filter((i) => !results[i]);
+      .filter((i) => !exhaustionResults[i]);
 
     if (nonExhausted.length === 0) {
-      // All keys exhausted - return null (429)
+      // All keys exhausted
       return null;
     }
 
-    // Hash room to a non-exhausted key (even distribution, deterministic)
-    const bestIdx = nonExhausted[hashRoomToKey(room, nonExhausted.length)]!;
+    // 2. Count active rooms per key (TTL-based counting via SCAN)
+    const roomCounts = await countRoomsPerKey(r, keySets.length);
 
-    // Atomic SET NX - prevents race condition where two concurrent requests
-    // for the same new room get different keys
+    // 3. Pick the non-exhausted key with the fewest rooms (least-loaded)
+    let bestIdx = nonExhausted[0]!;
+    let bestCount = Infinity;
+    for (const idx of nonExhausted) {
+      if (roomCounts[idx]! < bestCount) {
+        bestCount = roomCounts[idx]!;
+        bestIdx = idx;
+      }
+    }
+
+    // 4. Atomic SET NX - prevents race where two concurrent requests
+    //    for the same new room get different keys
     const wasSet = await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
 
     if (!wasSet) {
