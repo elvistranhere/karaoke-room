@@ -71,7 +71,7 @@ export function VideoQueue({ myPeerId, current, queue, onRemove }: VideoQueuePro
               className="flex items-center gap-2 rounded-lg border p-2"
               style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-card)" }}
             >
-              <img src={thumb(q.videoId)} alt={q.title ?? "YouTube video thumbnail"} className="h-10 w-16 rounded-md object-cover" />
+              <img src={thumb(q.videoId)} alt={q.title ?? "YouTube video thumbnail"} className="h-10 w-16 rounded-md object-cover" loading="lazy" decoding="async" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold" style={{ color: "var(--color-text-primary)" }}>
                   {q.title}

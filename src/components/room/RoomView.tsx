@@ -335,8 +335,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         style={{
           background:
             roomState.roomMode === "watch"
-              ? "radial-gradient(ellipse 45% 45% at 18% 78%, rgba(212, 160, 23, 0.05), transparent), radial-gradient(ellipse 35% 35% at 78% 22%, rgba(245, 230, 200, 0.025), transparent)"
-              : "radial-gradient(ellipse 40% 40% at 20% 80%, rgba(139, 92, 246, 0.03), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, rgba(245, 158, 11, 0.02), transparent)",
+              ? "radial-gradient(ellipse 45% 45% at 18% 78%, var(--color-accent-dim), transparent), radial-gradient(ellipse 35% 35% at 78% 22%, var(--color-accent-dim), transparent)"
+              : "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-accent-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-accent-dim), transparent)",
         }}
       />
 
