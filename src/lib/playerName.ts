@@ -1,7 +1,7 @@
 const STORAGE_KEY = "karaoke-player-name";
 export const MAX_NAME_LENGTH = 20;
 
-/** Get saved name — returns null if empty, whitespace-only, or storage blocked. */
+/** Get saved name - returns null if empty, whitespace-only, or storage blocked. */
 export function getSavedName(): string | null {
   try {
     if (typeof window === "undefined") return null;
@@ -30,7 +30,7 @@ export function saveName(name: string): boolean {
   }
 }
 
-/** Sanitize name — trim, cap length, fallback to Anonymous */
+/** Sanitize name - trim, cap length, fallback to Anonymous */
 export function sanitizeName(raw: string | null): string {
   if (!raw) return "Anonymous";
   const trimmed = raw.trim().slice(0, MAX_NAME_LENGTH);
