@@ -142,6 +142,9 @@ export async function getKeyForRoom(
         return { keySet: keySets[existingKey]!, index: existingKey };
       }
       // Key is exhausted with active mapping - refuse (don't split room)
+      // TODO: if room is actually empty (all users left), we could reassign.
+      // This requires checking PartyKit participant count, which is a cross-service call.
+      // For now, the 1hr TTL on the mapping handles this: empty rooms expire naturally.
       return { error: "room-exhausted" as const };
     }
 
@@ -156,7 +159,7 @@ export async function getKeyForRoom(
 
     const nonExhausted = keySets
       .map((_, i) => i)
-      .filter((i) => !exhaustionResults[i]);
+      .filter((i) => exhaustionResults[i] === 0);
 
     if (nonExhausted.length === 0) {
       return { error: "all-exhausted" as const };
