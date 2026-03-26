@@ -24,11 +24,11 @@ jobs:
       - name: Check token endpoint
         run: |
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://karaoke-room.vercel.app/api/livekit-token")
-          if [ "$HTTP_CODE" -eq 500 ] || [ "$HTTP_CODE" -eq 502 ] || [ "$HTTP_CODE" -eq 000 ]; then
-            echo "::error::Token endpoint returned HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 400 ]; then
+            echo "::error::Token endpoint returned HTTP $HTTP_CODE (expected 400 for missing params)"
             exit 1
           fi
-          echo "OK ($HTTP_CODE - expected 400 for missing params)"
+          echo "OK ($HTTP_CODE)"
 
   partykit:
     name: PartyKit
@@ -106,9 +106,11 @@ jobs:
             echo "${{ matrix.name }}: not configured - skipping"
             exit 0
           fi
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$LK_URL")
+          # Convert wss:// to https:// for curl (WebSocket URLs return 000 with curl)
+          HTTP_URL=$(echo "$LK_URL" | sed 's|^wss://|https://|;s|^ws://|http://|')
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HTTP_URL")
           if [ "$STATUS" -eq 000 ]; then
-            echo "::error::${{ matrix.name }} (${{ matrix.secret_key }}) is unreachable"
+            echo "::error::${{ matrix.name }} is unreachable"
             exit 1
           fi
           echo "${{ matrix.name }}: OK (responded $STATUS)"
