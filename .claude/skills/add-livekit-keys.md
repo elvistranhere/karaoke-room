@@ -39,9 +39,10 @@ printf "API_SECRET_VALUE" | vercel env add LIVEKIT_API_SECRET_N production
 printf "WSS_URL_VALUE" | vercel env add LIVEKIT_URL_N production
 
 # Preview (use API to avoid CLI bug with preview)
-VERCEL_TOKEN=$(jq -r '.token' "/Users/elvistran/Library/Application Support/com.vercel.cli/auth.json")
-PROJECT_ID="prj_XkOLsianzym8z3kObRsCZJDEtXv5"
-TEAM_ID="team_riTqVL9VqbQMnBsQLVVj7sp7"
+# Read project/team IDs from .vercel/project.json and auth token from Vercel CLI config
+VERCEL_TOKEN=$(jq -r '.token' "$(find ~/Library -name auth.json -path '*com.vercel*' 2>/dev/null | head -1)")
+PROJECT_ID=$(jq -r '.projectId' .vercel/project.json)
+TEAM_ID=$(jq -r '.orgId' .vercel/project.json)
 
 for VAR_NAME in "LIVEKIT_API_KEY_N:API_KEY_VALUE" "LIVEKIT_API_SECRET_N:API_SECRET_VALUE" "LIVEKIT_URL_N:WSS_URL_VALUE"; do
   KEY="${VAR_NAME%%:*}"

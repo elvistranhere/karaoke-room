@@ -90,7 +90,7 @@ export default class KaraokeRoom implements Party.Server {
       status: "ok",
       participants: this.participants.size,
       queue: this.queue.length,
-      singer: this.currentSingerId !== null,
+      hasSinger: this.currentSingerId !== null,
     }), {
       headers: { "Content-Type": "application/json" },
     });

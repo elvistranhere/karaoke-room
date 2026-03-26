@@ -109,8 +109,8 @@ jobs:
           # Convert wss:// to https:// for curl (WebSocket URLs return 000 with curl)
           HTTP_URL=$(echo "$LK_URL" | sed 's|^wss://|https://|;s|^ws://|http://|')
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HTTP_URL")
-          if [ "$STATUS" -eq 000 ]; then
-            echo "::error::${{ matrix.name }} is unreachable"
+          if [ "$STATUS" -eq 000 ] || [ "$STATUS" -ge 500 ]; then
+            echo "::error::${{ matrix.name }} returned $STATUS"
             exit 1
           fi
           echo "${{ matrix.name }}: OK (responded $STATUS)"
