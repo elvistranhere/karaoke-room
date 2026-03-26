@@ -74,9 +74,13 @@ function RoomContent() {
 
   const handleConflictSubmit = (newName: string) => {
     const trimmed = newName.trim();
-    const clean = trimmed || "Anonymous";
-    setName(clean);
-    if (trimmed) saveName(trimmed);
+    if (!trimmed) {
+      // Dismissed (Escape/Skip) - keep current name, just close the modal
+      setNameConflict(null);
+      return;
+    }
+    setName(trimmed);
+    saveName(trimmed);
     setNameConflict(null); // clear conflict, join will retry with new name
   };
 
