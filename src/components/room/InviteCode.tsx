@@ -30,7 +30,7 @@ export function InviteCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    const url = `${window.location.origin}/room/${code}?name=`;
+    const url = `${window.location.origin}/room/${code}`;
     const ok = copyToClipboard(url);
     if (ok) {
       setCopied(true);
