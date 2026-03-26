@@ -43,6 +43,9 @@ jobs:
             echo "::error::PartyKit returned $HTTP_CODE"
             exit 1
           fi
+          if [ "$HTTP_CODE" -eq 429 ]; then
+            echo "::warning::PartyKit is rate-limited (429) - service is up but throttled"
+          fi
           echo "OK ($HTTP_CODE) - $BODY"
 
   upstash:
