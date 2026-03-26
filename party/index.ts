@@ -224,11 +224,28 @@ export default class KaraokeRoom implements Party.Server {
     // Skip check for existing participants updating their own name (rename flow)
     const existing = this.participants.get(sender.id);
     const isAnonymous = trimmedName.toLowerCase() === "anonymous";
-    const isDuplicate = !isAnonymous && Array.from(this.participants.values()).some(
-      (p) => p.name.toLowerCase() === trimmedName.toLowerCase() && p.ws.id !== sender.id
-    );
 
-    if (isDuplicate) {
+    // Find any existing participant with the same name (not this connection)
+    let duplicatePeerId: string | null = null;
+    if (!isAnonymous) {
+      const now = Date.now();
+      for (const [id, p] of this.participants) {
+        if (p.name.toLowerCase() === trimmedName.toLowerCase() && id !== sender.id) {
+          // Check if old connection is stale (no pong for >20s - likely a refresh)
+          const lastPong = this.lastPong.get(id) ?? 0;
+          if (now - lastPong > 20_000) {
+            // Stale ghost from refresh - evict and allow new connection
+            this.removeParticipant(id);
+          } else {
+            // Active connection - real duplicate
+            duplicatePeerId = id;
+          }
+          break;
+        }
+      }
+    }
+
+    if (duplicatePeerId) {
       const suggestions: string[] = [];
       for (let i = 2; i <= 10; i++) {
         const suffix = String(i);
