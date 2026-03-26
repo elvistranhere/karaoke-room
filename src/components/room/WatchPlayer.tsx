@@ -180,6 +180,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onAdv
       if (!p) return;
       try {
         const s = p.getPlayerState();
+        if (s !== YT.PlayerState.PLAYING && s !== YT.PlayerState.PAUSED) return;
         const state = s === YT.PlayerState.PAUSED ? "paused" : "playing";
         const t = p.getCurrentTime();
         // Leader heartbeat: state does not change in most cases, so server treats this as heartbeat.

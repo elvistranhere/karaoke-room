@@ -71,23 +71,63 @@ export function loadYouTubeIFrameAPI(): Promise<void> {
 
   if (youtubeIframeApiPromise) return youtubeIframeApiPromise;
 
-  youtubeIframeApiPromise = new Promise<void>((resolve) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
-    if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://www.youtube.com/iframe_api";
-      script.async = true;
-      document.head.appendChild(script);
+  youtubeIframeApiPromise = new Promise<void>((resolve, reject) => {
+    const hasPlayer = () => Boolean(w.YT && (w.YT as { Player?: unknown }).Player);
+    if (hasPlayer()) {
+      resolve();
+      return;
     }
+
+    let settled = false;
+    const settleResolve = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      resolve();
+    };
+    const settleReject = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      youtubeIframeApiPromise = null;
+      reject(err);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      settleReject(new Error("Timed out while loading YouTube IFrame API"));
+    }, 15_000);
 
     const prev = w.onYouTubeIframeAPIReady;
     w.onYouTubeIframeAPIReady = () => {
       try {
         prev?.();
       } finally {
-        resolve();
+        settleResolve();
       }
     };
+
+    let script = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+    if (!script) {
+      script = document.createElement("script");
+      script.src = "https://www.youtube.com/iframe_api";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    script.addEventListener(
+      "load",
+      () => {
+        if (hasPlayer()) settleResolve();
+      },
+      { once: true },
+    );
+    script.addEventListener(
+      "error",
+      () => {
+        settleReject(new Error("Failed to load YouTube IFrame API"));
+      },
+      { once: true },
+    );
   });
 
   return youtubeIframeApiPromise;

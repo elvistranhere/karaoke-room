@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mic, MicOff, Music, Globe } from "lucide-react";
 import type { Participant, ParticipantStatus, RoomState } from "~/types/room";
 
@@ -38,6 +38,10 @@ export function PeoplePanel({
   const isSinging = myPeerId !== null && roomState.currentSingerId === myPeerId;
   const isInQueueOrSinging = isInQueue || isSinging;
   const isWatchMode = roomState.roomMode === "watch";
+
+  useEffect(() => {
+    if (isWatchMode && tab === "queue") setTab("people");
+  }, [isWatchMode, tab]);
 
   // Build a unified list: participants with their queue position
   const queuePositions = new Map(roomState.queue.map((id, i) => [id, i + 1]));
@@ -321,7 +325,7 @@ export function PeoplePanel({
               value={songIntent}
               onChange={(e) => setSongIntent(e.target.value.slice(0, 60))}
               placeholder="Song name..."
-              className="mb-3 w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-(--color-primary)"
+              className="mb-3 w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
               style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {

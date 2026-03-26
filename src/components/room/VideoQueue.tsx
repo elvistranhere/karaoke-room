@@ -20,22 +20,22 @@ export function VideoQueue({ myPeerId, current, queue, onRemove }: VideoQueuePro
       className="rounded-xl border p-3"
       style={{
         background: "var(--color-dark-surface)",
-        borderColor: "rgba(212, 160, 23, 0.22)",
-        boxShadow: "0 0 0 1px rgba(212, 160, 23, 0.05) inset",
+        borderColor: "var(--color-dark-border)",
+        boxShadow: "0 0 0 1px rgb(var(--watch-glow-rgb) / 0.05) inset",
       }}
     >
-      <div className="-mx-3 mb-2 border-b px-3 pb-2" style={{ borderColor: "rgba(212, 160, 23, 0.14)" }}>
+      <div className="-mx-3 mb-2 border-b px-3 pb-2" style={{ borderColor: "var(--color-dark-border)" }}>
         <p className="text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--color-text-muted)" }}>
           Video Queue
         </p>
       </div>
 
       {current ? (
-        <div className="mb-3 overflow-hidden rounded-xl border" style={{ borderColor: "rgba(212, 160, 23, 0.18)", background: "var(--color-dark-card)" }}>
+        <div className="mb-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-card)" }}>
           <div className="relative">
-            <img src={thumb(current.videoId)} alt="" className="h-24 w-full object-cover opacity-90" />
+            <img src={thumb(current.videoId)} alt={current.title ?? "YouTube video thumbnail"} className="h-24 w-full object-cover opacity-90" />
             <div className="absolute left-2 top-2 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-              style={{ borderColor: "rgba(212, 160, 23, 0.25)", background: "rgba(9, 9, 11, 0.65)", color: "var(--color-accent)" }}
+              style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.65)", color: "var(--color-accent)" }}
             >
               Now playing
             </div>
@@ -71,7 +71,7 @@ export function VideoQueue({ myPeerId, current, queue, onRemove }: VideoQueuePro
               className="flex items-center gap-2 rounded-lg border p-2"
               style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.25)" }}
             >
-              <img src={thumb(q.videoId)} alt="" className="h-10 w-16 rounded-md object-cover" />
+              <img src={thumb(q.videoId)} alt={q.title ?? "YouTube video thumbnail"} className="h-10 w-16 rounded-md object-cover" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold" style={{ color: "var(--color-text-primary)" }}>
                   {q.title}

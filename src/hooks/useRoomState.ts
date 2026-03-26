@@ -64,6 +64,8 @@ const INITIAL_ROOM_STATE: RoomState = {
   watchQueue: [],
   watchCurrentVideoId: null,
   watchCurrentTitle: null,
+  watchCurrentAddedById: null,
+  watchCurrentAddedByName: null,
   watchLeaderId: null,
   watchState: null,
   watchTime: 0,
@@ -83,6 +85,7 @@ export function useRoomState({
   const [pendingMixAdjust, setPendingMixAdjust] = useState<{ fromName: string; voice: number; music: number } | null>(null);
   const [nameTaken, setNameTaken] = useState<{ name: string; suggestions: string[] } | null>(null);
   const [watchSync, setWatchSync] = useState<{ state: "playing" | "paused"; time: number; from: string } | null>(null);
+  const lastWatchVideoIdRef = useRef<string | null>(null);
   const reactionIdRef = useRef(0);
   const hasSentJoinRef = useRef(false);
   const onRawMessageRef = useRef(onRawMessage);
@@ -114,10 +117,16 @@ export function useRoomState({
           watchQueue: msg.state.watchQueue ?? [],
           watchCurrentVideoId: msg.state.watchCurrentVideoId ?? null,
           watchCurrentTitle: msg.state.watchCurrentTitle ?? null,
+          watchCurrentAddedById: msg.state.watchCurrentAddedById ?? null,
+          watchCurrentAddedByName: msg.state.watchCurrentAddedByName ?? null,
           watchLeaderId: msg.state.watchLeaderId ?? null,
           watchState: msg.state.watchState ?? null,
           watchTime: msg.state.watchTime ?? 0,
         };
+        if (lastWatchVideoIdRef.current !== state.watchCurrentVideoId) {
+          lastWatchVideoIdRef.current = state.watchCurrentVideoId;
+          setWatchSync(null);
+        }
         setRoomState(state);
         // Sync mutedBySinger from server state (persisted across reconnects)
         setMutedBySinger(state.mutedBySinger ?? null);

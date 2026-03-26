@@ -40,6 +40,8 @@ export interface RoomState {
   watchQueue: WatchQueueItem[];
   watchCurrentVideoId: string | null;
   watchCurrentTitle: string | null;
+  watchCurrentAddedById: string | null;
+  watchCurrentAddedByName: string | null;
   watchLeaderId: string | null;
   watchState: "playing" | "paused" | null;
   watchTime: number;

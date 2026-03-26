@@ -246,7 +246,7 @@ export function SoundProfileModal({
                 <select
                   value={selectedInputId}
                   onChange={(e) => onInputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-(--color-primary)"
+                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
                   style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
                 >
                   {inputDevices.length === 0 && <option value="">No devices found</option>}
@@ -259,7 +259,7 @@ export function SoundProfileModal({
                 <select
                   value={selectedOutputId}
                   onChange={(e) => onOutputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-(--color-primary)"
+                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
                   style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
                 >
                   {outputDevices.length === 0 && <option value="">Default</option>}

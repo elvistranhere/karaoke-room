@@ -191,7 +191,7 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a message..."
           maxLength={500}
-          className="flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm outline-none transition-all duration-200 focus:border-(--color-primary)"
+          className="flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm outline-none transition-all duration-200 focus:border-[var(--color-primary)]"
           style={{
             borderColor: "var(--color-dark-border)",
             color: "var(--color-text-primary)",

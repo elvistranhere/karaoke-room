@@ -29,6 +29,8 @@ export default class KaraokeRoom implements Party.Server {
   watchQueue: WatchQueueItem[] = [];
   watchCurrentVideoId: string | null = null;
   watchCurrentTitle: string | null = null;
+  watchCurrentAddedById: string | null = null;
+  watchCurrentAddedByName: string | null = null;
   watchLeaderId: string | null = null; // peerId
   watchState: "playing" | "paused" | null = null;
   watchTime = 0;
@@ -481,7 +483,7 @@ export default class KaraokeRoom implements Party.Server {
       this.wipeWatchState();
     } else {
       // Prevent switching while a video is playing
-      if (this.watchCurrentVideoId !== null) {
+      if (this.watchCurrentVideoId !== null && this.watchState === "playing") {
         this.send(sender, { type: "error", message: "Cannot switch modes while a video is playing" });
         return;
       }
@@ -504,7 +506,7 @@ export default class KaraokeRoom implements Party.Server {
 
     const trimmedVideoId = String(videoId ?? "").trim();
     const trimmedTitle = String(title ?? "").trim().slice(0, 120);
-    if (!trimmedVideoId) return;
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(trimmedVideoId)) return;
     if (!trimmedTitle) return;
 
     if (this.watchQueue.length >= WATCH_MAX_QUEUE_ITEMS) {
@@ -783,6 +785,8 @@ export default class KaraokeRoom implements Party.Server {
       watchQueue: [...this.watchQueue],
       watchCurrentVideoId: this.watchCurrentVideoId,
       watchCurrentTitle: this.watchCurrentTitle,
+      watchCurrentAddedById: this.watchCurrentAddedById,
+      watchCurrentAddedByName: this.watchCurrentAddedByName,
       watchLeaderId: this.watchLeaderId,
       watchState: this.watchState,
       watchTime: this.watchTime,
@@ -793,6 +797,8 @@ export default class KaraokeRoom implements Party.Server {
     this.watchQueue = [];
     this.watchCurrentVideoId = null;
     this.watchCurrentTitle = null;
+    this.watchCurrentAddedById = null;
+    this.watchCurrentAddedByName = null;
     this.watchLeaderId = null;
     this.watchState = null;
     this.watchTime = 0;
@@ -815,6 +821,8 @@ export default class KaraokeRoom implements Party.Server {
     }
     this.watchCurrentVideoId = next.videoId;
     this.watchCurrentTitle = next.title;
+    this.watchCurrentAddedById = next.addedBy;
+    this.watchCurrentAddedByName = next.addedByName;
     this.watchLeaderId = this.participants.has(next.addedBy) ? next.addedBy : this.pickFallbackWatchLeaderId();
     this.watchState = "playing";
     this.watchTime = 0;

@@ -375,8 +375,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 background: roomState.roomMode === "karaoke" ? "var(--color-primary-dim)" : "transparent",
                 color: roomState.roomMode === "karaoke" ? "var(--color-primary)" : "var(--color-text-muted)",
               }}
-              disabled={roomState.roomMode === "watch" && roomState.watchCurrentVideoId !== null}
-              title={roomState.roomMode === "watch" && roomState.watchCurrentVideoId !== null ? "Stop the video to switch modes" : "Karaoke Mode"}
+              disabled={roomState.roomMode === "watch" && roomState.watchState === "playing"}
+              title={roomState.roomMode === "watch" && roomState.watchState === "playing" ? "Pause/stop the video to switch modes" : "Karaoke Mode"}
               onClick={() => sendModeSwitch("karaoke")}
             >
               Karaoke
@@ -413,7 +413,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           {/* Settings */}
           <button
             onClick={() => setSettingsOpen(true)}
-            className="cursor-pointer rounded-lg border p-2 transition-all hover:border-(--color-primary) hover:scale-105"
+            className="cursor-pointer rounded-lg border p-2 transition-all hover:border-[var(--color-primary)] hover:scale-105"
             style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
             title="Settings"
           >
@@ -611,9 +611,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                   ? {
                       videoId: roomState.watchCurrentVideoId,
                       title: roomState.watchCurrentTitle,
-                      addedByName: roomState.watchLeaderId
-                        ? roomState.participants.find((p) => p.id === roomState.watchLeaderId)?.name ?? null
-                        : null,
+                      addedByName: roomState.watchCurrentAddedByName ?? null,
                     }
                   : null
               }
@@ -757,7 +755,7 @@ function EditableName({ name, onRename }: { name: string; onRename?: (n: string)
     return (
       <button
         onClick={() => { setDraft(name); setEditing(true); }}
-        className="flex cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all hover:border-(--color-primary) hover:scale-105"
+        className="flex cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all hover:border-[var(--color-primary)] hover:scale-105"
         style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
         title="Click to change name"
       >

@@ -32,6 +32,12 @@
   --color-primary-dim: rgba(212, 160, 23, 0.12);
   --color-accent: #F5E6C8;
   --color-accent-dim: rgba(245, 230, 200, 0.10);
+  --watch-glow-rgb: 212 160 23;
+}
+
+/* Fallback value (in case watch-glow renders outside watch mode). */
+@theme {
+  --watch-glow-rgb: 212 160 23;
 }
 
 main[data-mode] {
@@ -49,9 +55,9 @@ main[data-mode] {
 }
 
 @keyframes watch-glow {
-  0% { box-shadow: 0 0 0 rgba(212, 160, 23, 0.0); }
-  50% { box-shadow: 0 0 22px rgba(212, 160, 23, 0.16); }
-  100% { box-shadow: 0 0 0 rgba(212, 160, 23, 0.0); }
+  0% { box-shadow: 0 0 0 rgb(var(--watch-glow-rgb) / 0); }
+  50% { box-shadow: 0 0 22px rgb(var(--watch-glow-rgb) / 0.16); }
+  100% { box-shadow: 0 0 0 rgb(var(--watch-glow-rgb) / 0); }
 }
 
 @keyframes float-up {
@@ -88,7 +94,7 @@ body {
 }
 
 .watch-glow {
-  border: 1px solid rgba(212, 160, 23, 0.22);
+  border: 1px solid rgb(var(--watch-glow-rgb) / 0.22);
   animation: watch-glow 6s ease-in-out infinite;
 }
 
