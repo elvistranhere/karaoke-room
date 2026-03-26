@@ -29,9 +29,10 @@ function RoomContent() {
   // Treat empty/whitespace-only ?name= as no name (don't persist "Anonymous")
   const rawUrlName = searchParams.get("name");
   const urlName = rawUrlName?.trim() || null;
-  // Determine if we need the name modal synchronously (before first render)
-  const needsNamePrompt = !urlName && !getSavedName();
-  const [name, setName] = useState(() => needsNamePrompt ? "Anonymous" : sanitizeName(urlName ?? getSavedName()));
+  // Read localStorage once, derive both modal state and initial name
+  const savedName = getSavedName();
+  const needsNamePrompt = !urlName && !savedName;
+  const [name, setName] = useState(() => needsNamePrompt ? "Anonymous" : sanitizeName(urlName ?? savedName));
   const [showNameModal, setShowNameModal] = useState(needsNamePrompt);
 
   // If name came from URL param, save to localStorage and clean URL
