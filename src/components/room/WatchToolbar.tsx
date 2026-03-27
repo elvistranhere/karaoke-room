@@ -21,7 +21,7 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
   const [isValidating, setIsValidating] = useState(false);
 
   const canControl = roomState.roomMode === "watch" && roomState.watchCurrentVideoId !== null;
-  const queueCount = roomState.watchQueue.length + (roomState.watchCurrentVideoId ? 1 : 0);
+  const queueCount = roomState.watchQueue.length;
   const isLeader = myPeerId !== null && roomState.watchLeaderId === myPeerId;
 
   const statusLabel = useMemo(() => {

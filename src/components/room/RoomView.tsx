@@ -93,6 +93,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const [sessionStartTime] = useState(() => Date.now());
   const [mobileSection, setMobileSection] = useState<"stage" | "chat" | "people">("stage");
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  // Default chat to collapsed in watch mode (video takes priority), expanded in karaoke
+  const prevModeRef = useRef(roomState.roomMode);
+  if (prevModeRef.current !== roomState.roomMode) {
+    prevModeRef.current = roomState.roomMode;
+    setChatCollapsed(roomState.roomMode === "watch");
+  }
 
   const {
     room,
@@ -336,7 +342,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           background:
             roomState.roomMode === "watch"
               ? "radial-gradient(ellipse 45% 45% at 18% 78%, var(--color-accent-dim), transparent), radial-gradient(ellipse 35% 35% at 78% 22%, var(--color-accent-dim), transparent)"
-              : "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-accent-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-accent-dim), transparent)",
+              : "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-primary-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-primary-dim), transparent)",
         }}
       />
 
