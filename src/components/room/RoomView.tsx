@@ -125,6 +125,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     mixMicStream,
     autoMix,
     autoMixDuckedValue,
+    autoMixBoostedVoice,
     setAutoMix,
     recordingState,
     recordingDuration,
@@ -572,7 +573,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                     }}
                     onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v, mixMusicValue / 100); }}
                     onMixMusicGain={(v) => { setMixMusicGain(v); setMixMusicValue(Math.round(v * 100)); broadcastMix(mixVoiceValue / 100, v); }}
-                    mixVoiceValue={mixVoiceValue}
+                    mixVoiceValue={autoMixBoostedVoice ?? mixVoiceValue}
                     mixMusicValue={autoMixDuckedValue ?? mixMusicValue}
                     ambientId="ambient-bg"
                     ambientColor="violet"

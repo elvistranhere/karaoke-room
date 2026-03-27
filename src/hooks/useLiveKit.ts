@@ -59,6 +59,7 @@ interface UseLiveKitReturn {
   // Auto-mix (sidechain ducking)
   autoMix: boolean;
   autoMixDuckedValue: number | null;
+  autoMixBoostedVoice: number | null;
   setAutoMix: (on: boolean) => void;
   // Recording
   recordingState: RecordingState;
@@ -1027,10 +1028,12 @@ export function useLiveKit({
   // Reads music gain from the live GainNode (not a snapshot) so slider changes are respected.
   const [autoMix, setAutoMixState] = useState(false);
   const [autoMixDuckedValue, setAutoMixDuckedValue] = useState<number | null>(null);
+  const [autoMixBoostedVoice, setAutoMixBoostedVoice] = useState<number | null>(null);
   const autoMixRef = useRef(false);
   const autoMixTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoMixAnalyserRef = useRef<AnalyserNode | null>(null);
   const autoMixBaseGainRef = useRef(0.7); // tracks the user's music slider position
+  const autoMixBaseVoiceRef = useRef(1.0); // tracks the user's voice slider position
 
   // Called by setMixMusicGain to keep base gain in sync with slider
   const updateAutoMixBaseGain = useCallback((val: number) => {
@@ -1062,11 +1065,16 @@ export function useLiveKit({
       autoMixAnalyserRef.current?.disconnect();
       autoMixAnalyserRef.current = null;
       setAutoMixDuckedValue(null);
-      // Restore music gain to slider value
+      setAutoMixBoostedVoice(null);
+      // Restore music + voice gain to slider values
       const musicGain = mixSystemGainRef.current;
+      const micGain = mixMicGainRef.current;
       const ctx = mixCtxRef.current;
       if (musicGain && ctx) {
         musicGain.gain.setTargetAtTime(autoMixBaseGainRef.current, ctx.currentTime, 0.15);
+      }
+      if (micGain && ctx) {
+        micGain.gain.setTargetAtTime(autoMixBaseVoiceRef.current, ctx.currentTime, 0.15);
       }
       return;
     }
@@ -1106,15 +1114,31 @@ export function useLiveKit({
       // Smooth to avoid pumping
       smoothedLevel = smoothedLevel * 0.7 + rms * 0.3;
 
-      // Duck: voice loud → music at 30% of slider, voice quiet → 100% of slider
+      // Duck music + boost voice when singing
       const voiceThreshold = 0.08;
-      const duckRatio = smoothedLevel > voiceThreshold
+      const isSinging = smoothedLevel > voiceThreshold;
+      const duckRatio = isSinging
         ? Math.max(0.3, 1 - (smoothedLevel - voiceThreshold) * 3)
         : 1.0;
+      // Boost voice up to 1.3x when singing (caps at 150% slider max)
+      const boostRatio = isSinging
+        ? Math.min(1.3, 1.0 + (smoothedLevel - voiceThreshold) * 1.5)
+        : 1.0;
 
-      // Update visual slider position (throttled to ~10fps to avoid excessive re-renders)
+      // Apply voice boost
+      const currentMicGain = mixMicGainRef.current;
+      if (currentMicGain) {
+        currentMicGain.gain.setTargetAtTime(
+          Math.min(autoMixBaseVoiceRef.current * boostRatio, 1.5),
+          currentCtx.currentTime,
+          0.15,
+        );
+      }
+
+      // Update visual slider positions (throttled to ~10fps)
       if (++tickCounter % 5 === 0) {
         setAutoMixDuckedValue(Math.round(autoMixBaseGainRef.current * duckRatio * 100));
+        setAutoMixBoostedVoice(isSinging ? Math.round(autoMixBaseVoiceRef.current * boostRatio * 100) : null);
       }
 
       currentMusicGain.gain.setTargetAtTime(
@@ -1149,6 +1173,7 @@ export function useLiveKit({
   // Expose gain controls for the singer to adjust mix balance
   const setMixMicGain = useCallback((val: number) => {
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
+    autoMixBaseVoiceRef.current = val;
   }, []);
   const setMixMusicGain = useCallback((val: number) => {
     if (mixSystemGainRef.current) mixSystemGainRef.current.gain.value = val;
@@ -1503,6 +1528,7 @@ export function useLiveKit({
     mixMicStream: mixMicStreamState,
     autoMix,
     autoMixDuckedValue,
+    autoMixBoostedVoice,
     setAutoMix,
     recordingState,
     recordingDuration,
