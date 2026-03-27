@@ -3,6 +3,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { loadYouTubeIFrameAPI } from "~/lib/youtube";
 
+// Extend YouTube IFrame types for methods not in @types/youtube
+interface YTPlayerExtended extends YT.Player {
+  setPlaybackRate(rate: number): void;
+  getPlaybackRate(): number;
+  addEventListener(event: string, listener: (data: number) => void): void;
+}
+
 export interface WatchPlayerApi {
   getCurrentTime: () => number | null;
   getState: () => "playing" | "paused" | null;
@@ -154,8 +161,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onSpe
       playerRef.current = player;
 
       // Listen for playback rate changes (any participant can change speed)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (player as any).addEventListener("onPlaybackRateChange", (rate: number) => {
+      (player as YTPlayerExtended).addEventListener("onPlaybackRateChange", (rate: number) => {
         if (isProcessingSyncRef.current) return;
         if (onSpeedChange) onSpeedChange(rate);
       });
@@ -239,8 +245,7 @@ export function WatchPlayer({ videoId, title, isLeader, watchSync, onSync, onSpe
     if (!p) return;
     isProcessingSyncRef.current = true;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (p as any).setPlaybackRate(watchSpeed);
+      (p as YTPlayerExtended).setPlaybackRate(watchSpeed);
     } catch { /* ignore */ }
     setTimeout(() => { isProcessingSyncRef.current = false; }, 0);
   }, [watchSpeed]);
