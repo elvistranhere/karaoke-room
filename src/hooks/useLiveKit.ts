@@ -286,7 +286,9 @@ export function useLiveKit({
         if (!res.ok) {
           const body = await res.json().catch(() => null) as { error?: string; reason?: string } | null;
           if (res.status === 429) {
-            throw new Error(body?.error ?? "This room has hit its session limit. Ask people in the room to create a new one, or create your own.");
+            const err = new Error(body?.error ?? "This room has hit its session limit. Ask people in the room to create a new one, or create your own.");
+            (err as Error & { reason?: string }).reason = body?.reason;
+            throw err;
           }
           throw new Error(body?.error ?? "Failed to get token. Please try again.");
         }
@@ -314,8 +316,12 @@ export function useLiveKit({
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : "Connection failed";
+        const reason = (err as Error & { reason?: string }).reason;
         console.error("[LiveKit] Error:", err);
         setError(msg);
+
+        // Don't retry on quota/exhaustion errors - these are terminal
+        if (reason === "room-exhausted" || reason === "all-exhausted") return;
 
         // On connect failure, retry with a different key set first, then exponential backoff
         if (attempt < 3) {

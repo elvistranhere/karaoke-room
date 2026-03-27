@@ -7,18 +7,18 @@
  * - Exhausted keys are marked and skipped for new assignments
  * - Falls back to deterministic hash if Redis is unreachable
  *
- * Room counts use TTL-based counting: each room:X:key mapping has a 1hr TTL.
+ * Room counts use TTL-based counting: each room:X:key mapping has a TTL.
  * To find the least-loaded key, we count active mappings per key via SCAN.
  * Expired TTLs self-clean via SCAN (only non-expired keys appear in results).
  *
  * Exhaustion tracking uses a Redis Set per key (SADD) to count distinct rooms
- * reporting failures within a fixed time window. This prevents a single client
- * from marking a key exhausted via repeated retries. The window TTL is set once
- * when the first room reports (not reset on subsequent reports).
+ * reporting failures. Global exhaustion requires EXHAUST_THRESHOLD distinct rooms.
+ * A separate quota_hit marker (1hr TTL) allows single-report re-exhaustion for
+ * keys that have recently been marked exhausted (handles the 5-min cooldown cycle).
  *
- * Known limitation: an attacker with 3+ valid mapped room codes can still
- * exhaust keys. Full mitigation requires authenticated forceNext or server-side
- * LiveKit error detection (webhook integration), which is out of scope.
+ * On forceNext: if the key is already exhausted (or has recent quota_hit), return
+ * room-exhausted immediately. Otherwise, record the report and return a valid token
+ * so network blips don't produce false positives.
  *
  * See docs/IDEOLOGY.md for full architecture decisions.
  */
@@ -72,10 +72,13 @@ function hashRoomToKey(room: string, total: number): number {
   return Math.abs(hash) % total;
 }
 
-const ROOM_KEY_TTL = 3600;     // 1 hour - room-to-key mapping
+// C1 fix: 4 hours - long enough to cover any reasonable session without new joins.
+// Aligned with the fact that LiveKit tokens are 1hr, so users reconnect within this window.
+const ROOM_KEY_TTL = 14400;    // 4 hours - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
-const EXHAUST_THRESHOLD = 3;   // require 3+ distinct rooms to report before marking key exhausted
-const EXHAUST_WINDOW = 60;     // fixed window from first report (not reset on subsequent reports)
+const QUOTA_HIT_TTL = 3600;    // 1 hour - "this key had quota issues recently" marker
+const EXHAUST_THRESHOLD = 3;   // 3 distinct rooms to mark key globally exhausted (DoS resistance)
+const EXHAUST_WINDOW = 60;     // fixed window from first report
 
 /**
  * Count active rooms per key using SCAN (TTL-based counting).
@@ -131,66 +134,58 @@ export async function getKeyForRoom(
 
   try {
     // Room code validation is done at the API boundary (route.ts uses validateRoomCode).
-    // Here we just construct the Redis key from the already-validated, uppercased room code.
     const roomKey = `room:${room}:key`;
 
     // Read room's current key mapping once (reused by both forceNext and affinity check)
     const currentKey = await r.get<number>(roomKey);
 
-    // Client reported connect failure - track distinct rooms reporting this key.
-    // Uses SADD (Redis Set) so the same room reporting multiple times only counts once.
-    // TTL is set via ttl < 0 check (covers both new keys and keys that lost their TTL),
-    // so the window is fixed from first report, not sliding.
+    // C2 fix: forceNext now has two behaviors based on key state:
+    // - Key already exhausted or has recent quota_hit: return room-exhausted immediately
+    // - Key appears healthy: record the report via SADD but return a valid token (no false positive)
     if (forceNext && currentKey !== null && currentKey >= 0 && currentKey < keySets.length) {
       const reportSetKey = `key:${currentKey}:report_rooms`;
-      // SADD the room to the set so the same room only counts once
+      // Always record the report
       await r.sadd(reportSetKey, room);
-      // Ensure the window has a fixed TTL. We only set TTL when the key currently has
-      // no TTL (either newly created or TTL was lost), which avoids a sliding window.
       const ttl = await r.ttl(reportSetKey);
       if (ttl < 0) {
         await r.expire(reportSetKey, EXHAUST_WINDOW);
       }
       const distinctCount = await r.scard(reportSetKey);
-      if (distinctCount >= EXHAUST_THRESHOLD) {
-        // Only set exhaustion if not already set (NX) to avoid resetting the TTL
-        await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
-      }
-      // This room's key just failed. Try to reassign to a different healthy key
-      // so the user auto-connects without manual intervention.
-      // Find any non-exhausted key that ISN'T the failed one.
-      const altPipeline = r.pipeline();
-      for (let i = 0; i < keySets.length; i++) {
-        altPipeline.exists(`key:${i}:exhausted`);
-      }
-      const altResults = await altPipeline.exec<number[]>();
-      const altKeys = keySets
-        .map((_, i) => i)
-        .filter((i) => i !== currentKey && (altResults[i] ?? 1) === 0);
 
-      if (altKeys.length > 0) {
-        // Reassign room to first available healthy key
-        const newIdx = altKeys[0]!;
-        await r.set(roomKey, newIdx, { ex: ROOM_KEY_TTL });
-        return { keySet: keySets[newIdx]!, index: newIdx };
+      // Check if threshold met - mark globally exhausted
+      if (distinctCount >= EXHAUST_THRESHOLD) {
+        await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
+        // S1 fix: also set quota_hit marker (1hr) so single reports re-exhaust quickly
+        await r.set(`key:${currentKey}:quota_hit`, "1", { ex: QUOTA_HIT_TTL, nx: true });
       }
-      // No healthy keys available - all exhausted
-      await r.expire(roomKey, ROOM_KEY_TTL);
-      return { error: "all-exhausted" as const };
+
+      // S1 fix: if key had quota issues recently, single report re-exhausts immediately
+      const [isExhausted, hadQuotaHit] = await Promise.all([
+        r.exists(`key:${currentKey}:exhausted`),
+        r.exists(`key:${currentKey}:quota_hit`),
+      ]);
+
+      if (isExhausted || hadQuotaHit) {
+        // Key is known-bad. Re-mark exhausted if not already, and return room-exhausted.
+        if (!isExhausted && hadQuotaHit) {
+          await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
+        }
+        await r.expire(roomKey, ROOM_KEY_TTL);
+        return { error: "room-exhausted" as const };
+      }
+
+      // C2 fix: key appears healthy (no exhaustion, no recent quota_hit).
+      // Don't return room-exhausted - it might be a network blip.
+      // Fall through to the normal affinity path and return a valid token.
     }
 
     // Check existing room-to-key mapping (reuse the GET we already did)
     if (currentKey !== null) {
       if (!keySets[currentKey]) {
-        // Mapping points to a key index that no longer exists in env config.
-        // This is a server configuration error (key removed), not a quota issue.
-        // Return null so the route can respond with 500 instead of misleading 429.
         console.error(
           "[KeyRotation] Redis mapping references missing key index",
           { room, currentKey, configuredKeyCount: keySets.length },
         );
-        // Still refresh TTL so the mapping does not expire while the room is active.
-        // Preserves room affinity once the server configuration is corrected.
         await r.expire(roomKey, ROOM_KEY_TTL);
         return null;
       }
@@ -201,12 +196,7 @@ export async function getKeyForRoom(
         return { keySet: keySets[currentKey]!, index: currentKey };
       }
       // Key is exhausted with active mapping - refuse (don't split room)
-      // Still refresh TTL so the mapping doesn't expire while the room is active,
-      // which would cause a late joiner to get a different key and split the room.
       await r.expire(roomKey, ROOM_KEY_TTL);
-      // TODO: if room is actually empty (all users left), we could reassign.
-      // This requires checking PartyKit participant count, which is a cross-service call.
-      // For now, the 1hr TTL on the mapping handles this: empty rooms expire naturally.
       return { error: "room-exhausted" as const };
     }
 
@@ -219,8 +209,6 @@ export async function getKeyForRoom(
     }
     const exhaustionResults = await pipeline.exec<number[]>();
 
-    // Treat undefined pipeline results as exhausted (fail-closed) to avoid
-    // routing to a potentially bad key on partial pipeline failure
     const nonExhausted = keySets
       .map((_, i) => i)
       .filter((i) => (exhaustionResults[i] ?? 1) === 0);
@@ -233,11 +221,13 @@ export async function getKeyForRoom(
     const roomCounts = await countRoomsPerKey(r, keySets.length);
 
     // 3. Pick the non-exhausted key with the fewest rooms (least-loaded)
+    // S3 fix: random tie-breaking to avoid burst skew toward lowest index
     let bestIdx = nonExhausted[0]!;
     let bestCount = Infinity;
     for (const idx of nonExhausted) {
-      if (roomCounts[idx]! < bestCount) {
-        bestCount = roomCounts[idx]!;
+      const count = roomCounts[idx]!;
+      if (count < bestCount || (count === bestCount && Math.random() > 0.5)) {
+        bestCount = count;
         bestIdx = idx;
       }
     }
@@ -247,29 +237,20 @@ export async function getKeyForRoom(
     const wasSet = await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
 
     if (!wasSet) {
-      // Another instance assigned this room first - read their assignment
       const assignedKey = await r.get<number>(roomKey);
       if (assignedKey !== null && keySets[assignedKey]) {
         return { keySet: keySets[assignedKey]!, index: assignedKey };
       }
-      // Winner's key vanished (theoretically impossible with 1hr TTL).
-      // Try SET NX to avoid clobbering a concurrent write, then read back
-      // whatever Redis has to ensure we return the actual stored value.
       await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
       const finalKey = await r.get<number>(roomKey);
       if (finalKey !== null && keySets[finalKey]) {
         return { keySet: keySets[finalKey]!, index: finalKey };
       }
-      // Inconsistent Redis state: we could not confirm any stored mapping.
-      // Fail closed so the caller can return a 500 rather than breaking affinity.
       return null;
     }
 
     return { keySet: keySets[bestIdx]!, index: bestIdx };
   } catch (err) {
-    // Redis error - fall back to deterministic hash function.
-    // Note: this can break room affinity for rooms previously pinned via Redis,
-    // but availability is preferred over perfect affinity during outages.
     console.error("[KeyRotation] Redis error, falling back to hash:", err);
     const idx = hashRoomToKey(room, keySets.length);
     return { keySet: keySets[idx]!, index: idx };

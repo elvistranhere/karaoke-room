@@ -329,6 +329,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     });
   }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser, lkIdentity, autoMix]);
 
+  // Broadcast to room when quota is hit so existing users know
+  const quotaBroadcastedRef = useRef(false);
+  useEffect(() => {
+    if (liveKitError?.includes("session limit") && !quotaBroadcastedRef.current && isPartyConnected) {
+      quotaBroadcastedRef.current = true;
+      sendChat("[System] This room's session quota has been reached. New people can't join. If you need more people, create a new room.");
+    }
+  }, [liveKitError, isPartyConnected, sendChat]);
 
   return (
     <main data-mode={roomState.roomMode} className="relative flex h-dvh flex-col overflow-hidden">
@@ -445,24 +453,22 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
         >
           <p>{liveKitError}</p>
-          {(liveKitError.includes("session limit") || liveKitError.includes("Disconnected")) && (
+          <div className="mt-2 flex gap-2">
             <button
               onClick={() => router.push("/")}
-              className="mt-2 cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+              className="cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
               style={{ background: "var(--color-danger)", color: "var(--color-text-primary)" }}
             >
               Create New Room
             </button>
-          )}
-          {liveKitError.includes("capacity") && (
             <button
               onClick={() => window.location.reload()}
-              className="mt-2 cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-              style={{ background: "var(--color-danger)", color: "var(--color-text-primary)" }}
+              className="cursor-pointer rounded-md border px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+              style={{ borderColor: "var(--color-danger)", color: "var(--color-danger)" }}
             >
               Try Again
             </button>
-          )}
+          </div>
         </div>
       )}
 
