@@ -51,33 +51,33 @@ jobs:
             exit 1
           fi
 
-          # Step 2: Generate a test JWT and validate against LiveKit (detects quota exhaustion)
+          # Step 2: Generate a proper JWT via Node.js and validate against LiveKit
           if [ -n "$LK_KEY" ] && [ -n "$LK_SEC" ]; then
-            # Create a minimal JWT: header.payload.signature
-            HEADER=$(echo -n '{"alg":"HS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
-            NOW=$(date +%s)
-            EXP=$((NOW + 60))
-            PAYLOAD=$(echo -n "{\"iss\":\"$LK_KEY\",\"exp\":$EXP,\"nbf\":0,\"sub\":\"health-check\",\"video\":{\"room\":\"HEALTHCHECK\",\"roomJoin\":true,\"roomCreate\":true}}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
-            SIG=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -hmac "$LK_SEC" -binary | base64 -w0 | tr '+/' '-_' | tr -d '=')
-            TOKEN="$HEADER.$PAYLOAD.$SIG"
+            V_CODE=$(LK_KEY="$LK_KEY" LK_SEC="$LK_SEC" HTTP_URL="$HTTP_URL" node -e "
+              const crypto = require('crypto');
+              const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
+              const now = Math.floor(Date.now()/1000);
+              const payload = Buffer.from(JSON.stringify({
+                iss: process.env.LK_KEY,
+                exp: now+60,
+                nbf: 0,
+                sub: 'health-check',
+                video: {room:'HEALTHCHECK',roomJoin:true,roomCreate:true}
+              })).toString('base64url');
+              const sig = crypto.createHmac('sha256', process.env.LK_SEC)
+                .update(header+'.'+payload).digest('base64url');
+              const token = header+'.'+payload+'.'+sig;
+              fetch(process.env.HTTP_URL+'/rtc/v1/validate?access_token='+token)
+                .then(r => { console.log(r.status); process.exit(0); })
+                .catch(() => { console.log('000'); process.exit(0); });
+            " 2>/dev/null)
 
-            VALIDATE_URL="$HTTP_URL/rtc/v1/validate?access_token=$TOKEN"
-            RESPONSE=$(curl -s -w "\n%{http_code}" "$VALIDATE_URL")
-            V_CODE=$(echo "$RESPONSE" | tail -1)
-            V_BODY=$(echo "$RESPONSE" | head -1)
-
-            if [ "$V_CODE" -eq 429 ]; then
-              echo "::error::${{ matrix.name }} QUOTA EXHAUSTED: $V_BODY"
+            if [ "$V_CODE" = "429" ]; then
+              echo "::error::${{ matrix.name }} QUOTA EXHAUSTED"
               echo "status=down" >> "$GITHUB_OUTPUT"
               exit 1
             fi
-            if [ "$V_CODE" -eq 400 ]; then
-              # 400 = JWT accepted but join request malformed (expected) OR JWT itself malformed.
-              # Either way, server is alive and key is not quota-blocked (quota returns 429).
-              echo "${{ matrix.name }}: Server OK ($STATUS), Key active (validate $V_CODE)"
-            else
-              echo "${{ matrix.name }}: Server OK ($STATUS), Validate response ($V_CODE)"
-            fi
+            echo "${{ matrix.name }}: Server OK ($STATUS), Quota check ($V_CODE)"
           else
             echo "${{ matrix.name }}: Server OK ($STATUS) (no API key to validate quota)"
           fi
