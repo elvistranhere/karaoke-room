@@ -29,11 +29,17 @@ function RoomContent() {
   // Treat empty/whitespace-only ?name= as no name (don't persist "Anonymous")
   const rawUrlName = searchParams.get("name");
   const urlName = rawUrlName?.trim() || null;
-  // Read localStorage once, derive both modal state and initial name
-  const savedName = getSavedName();
-  const needsNamePrompt = !urlName && !savedName;
-  const [name, setName] = useState(() => needsNamePrompt ? "Anonymous" : sanitizeName(urlName ?? savedName));
-  const [showNameModal, setShowNameModal] = useState(needsNamePrompt);
+  // Defer localStorage read to avoid hydration mismatch (server has no localStorage)
+  const [mounted, setMounted] = useState(false);
+  const [name, setName] = useState("Anonymous");
+  const [showNameModal, setShowNameModal] = useState(false);
+  useEffect(() => {
+    const savedName = getSavedName();
+    const needsPrompt = !urlName && !savedName;
+    setName(needsPrompt ? "Anonymous" : sanitizeName(urlName ?? savedName));
+    setShowNameModal(needsPrompt);
+    setMounted(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If name came from URL param, save to localStorage and clean URL
   useEffect(() => {
@@ -41,6 +47,16 @@ function RoomContent() {
     const persisted = saveName(urlName);
     if (persisted) router.replace(`/room/${code}`);
   }, [urlName, code, router]);
+
+  if (!mounted) {
+    return (
+      <div className="flex h-dvh items-center justify-center">
+        <div className="text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--color-primary)", animation: "fade-in 0.5s ease-out" }}>
+          Loading room...
+        </div>
+      </div>
+    );
+  }
 
   if (!code) {
     return (
