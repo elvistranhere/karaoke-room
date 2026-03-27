@@ -586,7 +586,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                       sendChat(`adjusted mix - Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
                     } : undefined}
                     autoMix={autoMix}
-                    onAutoMixChange={(on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); }}
+                    onAutoMixChange={isSharing ? (on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); } : undefined}
                     recordingState={recordingState}
                     recordingDuration={recordingDuration}
                     onStartRecording={startRecording}

@@ -1120,31 +1120,32 @@ export function useLiveKit({
       const duckRatio = isSinging
         ? Math.max(0.3, 1 - (smoothedLevel - voiceThreshold) * 3)
         : 1.0;
-      // Boost voice up to 1.3x when singing (caps at 150% slider max)
+      // Boost voice up to 1.2x when singing (gentle, avoids clipping)
       const boostRatio = isSinging
-        ? Math.min(1.3, 1.0 + (smoothedLevel - voiceThreshold) * 1.5)
+        ? Math.min(1.2, 1.0 + (smoothedLevel - voiceThreshold) * 1.0)
         : 1.0;
 
       // Apply voice boost
       const currentMicGain = mixMicGainRef.current;
       if (currentMicGain) {
         currentMicGain.gain.setTargetAtTime(
-          Math.min(autoMixBaseVoiceRef.current * boostRatio, 1.5),
+          Math.min(autoMixBaseVoiceRef.current * boostRatio, 1.3),
           currentCtx.currentTime,
-          0.15,
+          0.2,
         );
       }
 
-      // Update visual slider positions (throttled to ~10fps)
-      if (++tickCounter % 5 === 0) {
+      // Update visual slider positions (throttled to ~20fps for responsive feel)
+      if (++tickCounter % 2 === 0) {
         setAutoMixDuckedValue(Math.round(autoMixBaseGainRef.current * duckRatio * 100));
         setAutoMixBoostedVoice(isSinging ? Math.round(autoMixBaseVoiceRef.current * boostRatio * 100) : null);
       }
 
+      // Smoother music restoration (0.3s) to avoid pumping between vocal phrases
       currentMusicGain.gain.setTargetAtTime(
         autoMixBaseGainRef.current * duckRatio,
         currentCtx.currentTime,
-        0.15,
+        0.3,
       );
     }, 50);
   }, [connectAutoMixAnalyser]);

@@ -244,10 +244,10 @@ export function StageBanner({
                     background: autoMix ? "var(--color-primary-dim)" : "transparent",
                     color: autoMix ? "var(--color-primary)" : "var(--color-text-muted)",
                   }}
-                  title="Automatically lower music when you sing"
+                  title="Automatically lowers music and boosts your voice when you sing. Turn off to adjust sliders manually."
                 >
                   <Wand2 size={10} />
-                  {autoMix ? "Auto Mix ON" : "Auto Mix"}
+                  {autoMix ? "Disable Auto Mix" : "Enable Auto Mix"}
                 </button>
               )}
             </div>
@@ -325,9 +325,9 @@ function formatDuration(s: number) {
 
 function MixSlider({ label, icon, value, onChange, disabled }: { label: string; icon: React.ReactNode; value: number; onChange: (val: number) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-center gap-2" style={disabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
+    <div className="flex items-center gap-2" style={disabled ? { opacity: 0.6, pointerEvents: "none" } : undefined}>
       {icon}
-      <span className="w-10 text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>{label}</span>
+      <span className="w-10 text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>{disabled ? "auto" : label}</span>
       <input type="range" min="0" max="150" value={value} onChange={(e) => onChange(Number(e.target.value))} className="volume-slider flex-1" disabled={disabled} />
       <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{value}</span>
     </div>
