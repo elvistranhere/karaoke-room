@@ -1012,7 +1012,10 @@ export function useLiveKit({
     // Connect analyser to raw mic source (before effects) to avoid reverb tails
     const ctx = mixCtxRef.current;
     const micSource = mixMicSourceRef.current;
-    if (!ctx || !micSource) return;
+    if (!ctx || !micSource) {
+      console.warn("[AutoMix] connectAnalyser: missing", { ctx: !!ctx, micSource: !!micSource });
+      return;
+    }
 
     autoMixAnalyserRef.current?.disconnect();
     const analyser = ctx.createAnalyser();
@@ -1043,18 +1046,26 @@ export function useLiveKit({
 
     const ctx = mixCtxRef.current;
     const musicGain = mixSystemGainRef.current;
-    if (!ctx || !musicGain) return;
+    if (!ctx || !musicGain) {
+      console.warn("[AutoMix] Cannot start: missing", { ctx: !!ctx, musicGain: !!musicGain });
+      return;
+    }
 
     // Snapshot current slider position as base
     autoMixBaseGainRef.current = musicGain.gain.value;
 
     connectAutoMixAnalyser();
-    if (!autoMixAnalyserRef.current) return;
+    if (!autoMixAnalyserRef.current) {
+      console.warn("[AutoMix] Cannot start: analyser failed to connect (no mic source?)");
+      return;
+    }
+    console.log("[AutoMix] Started, base gain:", autoMixBaseGainRef.current);
 
     const analyser = autoMixAnalyserRef.current;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     let smoothedLevel = 0;
 
+    let logCounter = 0;
     autoMixTimerRef.current = setInterval(() => {
       if (!autoMixRef.current) return;
       const currentAnalyser = autoMixAnalyserRef.current;
@@ -1080,6 +1091,11 @@ export function useLiveKit({
       const duckRatio = smoothedLevel > voiceThreshold
         ? Math.max(0.3, 1 - (smoothedLevel - voiceThreshold) * 3)
         : 1.0;
+
+      // Log every ~2s (40 ticks at 50ms)
+      if (++logCounter % 40 === 0) {
+        console.log("[AutoMix] level:", smoothedLevel.toFixed(3), "duck:", duckRatio.toFixed(2));
+      }
 
       currentMusicGain.gain.setTargetAtTime(
         autoMixBaseGainRef.current * duckRatio,
