@@ -33,6 +33,7 @@ function RoomContent() {
   const [mounted, setMounted] = useState(false);
   const [name, setName] = useState("Anonymous");
   const [showNameModal, setShowNameModal] = useState(false);
+  const [nameConflict, setNameConflict] = useState<{ name: string; suggestions: string[] } | null>(null);
   useEffect(() => {
     const savedName = getSavedName();
     const needsPrompt = !urlName && !savedName;
@@ -81,8 +82,6 @@ function RoomContent() {
     if (trimmed) saveName(trimmed);
     setShowNameModal(false);
   };
-
-  const [nameConflict, setNameConflict] = useState<{ name: string; suggestions: string[] } | null>(null);
 
   const handleNameRejected = (info: { name: string; suggestions: string[] }) => {
     setNameConflict(info);
