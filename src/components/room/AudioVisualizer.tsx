@@ -109,7 +109,7 @@ export function AudioVisualizer({ room, isActive, children, ambientId, ambientCo
       // Reset glow + ambient background
       if (wrapperRef.current) {
         wrapperRef.current.style.boxShadow = "";
-        wrapperRef.current.style.borderColor = "";
+        wrapperRef.current.style.borderColor = "var(--color-dark-border)";
       }
       if (ambientId) {
         const ambientEl = document.getElementById(ambientId);
@@ -151,7 +151,7 @@ export function AudioVisualizer({ room, isActive, children, ambientId, ambientCo
         el.style.boxShadow = `${violetGlow}, ${amberGlow}, ${innerGlow}`;
         el.style.borderColor = intensity > 0.08
           ? `rgba(139, 92, 246, ${0.5 + intensity * 0.5})`
-          : "";
+          : "var(--color-dark-border)";
       }
 
       if (ambientId) {
@@ -185,7 +185,7 @@ export function AudioVisualizer({ room, isActive, children, ambientId, ambientCo
       cleanupViz();
       if (wrapperRef.current) {
         wrapperRef.current.style.boxShadow = "";
-        wrapperRef.current.style.borderColor = "";
+        wrapperRef.current.style.borderColor = "var(--color-dark-border)";
       }
       if (ambientId) {
         const ambientEl = document.getElementById(ambientId);
