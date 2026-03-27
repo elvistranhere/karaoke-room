@@ -72,10 +72,10 @@ function hashRoomToKey(room: string, total: number): number {
   return Math.abs(hash) % total;
 }
 
-// Room mapping TTL: 1 hour. Kept alive indefinitely by the client-side token refresh
-// (every 30min in useLiveKit.ts). Only expires if ALL users in the room disconnect
-// and nobody new joins for 1 hour - at which point the room is truly dead.
-const ROOM_KEY_TTL = 3600;     // 1 hour - room-to-key mapping
+// Room mapping TTL: 2 hours. Kept alive by the client-side token refresh (every 30min
+// in useLiveKit.ts). With 4 refresh windows per TTL, 3 consecutive failures needed
+// to expire - resilient to transient network issues.
+const ROOM_KEY_TTL = 7200;     // 2 hours - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
 const QUOTA_HIT_TTL = 3600;    // 1 hour - "this key had quota issues recently" marker
 const EXHAUST_THRESHOLD = 3;   // 3 distinct rooms to mark key globally exhausted (DoS resistance)

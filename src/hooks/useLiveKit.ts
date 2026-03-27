@@ -1135,8 +1135,9 @@ export function useLiveKit({
         );
       }
 
-      // Update visual slider positions (throttled to ~20fps for responsive feel)
-      if (++tickCounter % 2 === 0) {
+      // Update visual slider positions (throttled to ~4fps to limit re-renders;
+      // audio gain changes happen every 50ms for smooth sound regardless)
+      if (++tickCounter % 12 === 0) {
         setAutoMixDuckedValue(Math.round(autoMixBaseGainRef.current * duckRatio * 100));
         setAutoMixBoostedVoice(isSinging ? Math.round(autoMixBaseVoiceRef.current * boostRatio * 100) : null);
       }
