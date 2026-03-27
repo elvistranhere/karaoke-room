@@ -156,12 +156,27 @@ export async function getKeyForRoom(
         // Only set exhaustion if not already set (NX) to avoid resetting the TTL
         await r.set(`key:${currentKey}:exhausted`, "1", { ex: EXHAUSTED_TTL, nx: true });
       }
-      // Even if threshold not met, this room's key just failed - return exhausted
-      // immediately so the user gets 429 instead of looping with the same broken key.
-      // The threshold gates the global exhaustion marker (affects new rooms), but
-      // this room should not retry the same key.
+      // This room's key just failed. Try to reassign to a different healthy key
+      // so the user auto-connects without manual intervention.
+      // Find any non-exhausted key that ISN'T the failed one.
+      const altPipeline = r.pipeline();
+      for (let i = 0; i < keySets.length; i++) {
+        altPipeline.exists(`key:${i}:exhausted`);
+      }
+      const altResults = await altPipeline.exec<number[]>();
+      const altKeys = keySets
+        .map((_, i) => i)
+        .filter((i) => i !== currentKey && (altResults[i] ?? 1) === 0);
+
+      if (altKeys.length > 0) {
+        // Reassign room to first available healthy key
+        const newIdx = altKeys[0]!;
+        await r.set(roomKey, newIdx, { ex: ROOM_KEY_TTL });
+        return { keySet: keySets[newIdx]!, index: newIdx };
+      }
+      // No healthy keys available - all exhausted
       await r.expire(roomKey, ROOM_KEY_TTL);
-      return { error: "room-exhausted" as const };
+      return { error: "all-exhausted" as const };
     }
 
     // Check existing room-to-key mapping (reuse the GET we already did)
