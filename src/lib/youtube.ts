@@ -82,6 +82,103 @@ export function extractYouTubePlaylistId(input: string): string | null {
   return null;
 }
 
+/**
+ * Fetch video IDs from a YouTube playlist using the IFrame API.
+ * Creates a hidden player, loads the playlist, reads getPlaylist(), destroys it.
+ * No API key needed - uses YouTube's own client-side infrastructure.
+ */
+export async function fetchPlaylistVideoIds(playlistId: string, max: number = 20): Promise<string[]> {
+  await loadYouTubeIFrameAPI();
+
+  return new Promise<string[]>((resolve) => {
+    // Create an off-screen container for the temp player
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-9999px";
+    container.style.top = "-9999px";
+    container.style.width = "1px";
+    container.style.height = "1px";
+    document.body.appendChild(container);
+
+    const playerId = `yt-playlist-probe-${Date.now()}`;
+    const div = document.createElement("div");
+    div.id = playerId;
+    container.appendChild(div);
+
+    let settled = false;
+    const cleanup = (ids: string[]) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      try { player.destroy(); } catch { /* ignore */ }
+      container.remove();
+      resolve(ids);
+    };
+
+    const timeoutId = setTimeout(() => cleanup([]), 10_000);
+
+    const player = new YT.Player(playerId, {
+      height: "1",
+      width: "1",
+      playerVars: {
+        listType: "playlist",
+        list: playlistId,
+      },
+      events: {
+        onReady: () => {
+          // getPlaylist() may not be available immediately - poll briefly
+          let attempts = 0;
+          const poll = setInterval(() => {
+            attempts++;
+            try {
+              const playlist = (player as unknown as { getPlaylist?: () => string[] | null }).getPlaylist?.();
+              if (playlist && playlist.length > 0) {
+                clearInterval(poll);
+                cleanup(playlist.slice(0, max));
+                return;
+              }
+            } catch { /* ignore */ }
+            // Try cueing the playlist if it hasn't loaded
+            if (attempts === 1) {
+              try {
+                (player as unknown as { cuePlaylist: (opts: Record<string, unknown>) => void }).cuePlaylist({
+                  listType: "playlist",
+                  list: playlistId,
+                });
+              } catch { /* ignore */ }
+            }
+            if (attempts > 20) {
+              clearInterval(poll);
+              cleanup([]);
+            }
+          }, 300);
+        },
+        onError: () => cleanup([]),
+      },
+    });
+  });
+}
+
+/**
+ * Fetch playlist items (videoId + title) with no API key.
+ * Uses IFrame API for video IDs, then oEmbed for titles (parallel).
+ */
+export async function fetchPlaylistItems(playlistId: string, max: number = 20): Promise<{ videoId: string; title: string }[]> {
+  const ids = await fetchPlaylistVideoIds(playlistId, max);
+  if (ids.length === 0) return [];
+
+  // Fetch titles in parallel via oEmbed
+  const results = await Promise.all(
+    ids.map(async (videoId) => {
+      const { valid, title } = await validateYouTubeVideo(videoId);
+      if (!valid) return null;
+      return { videoId, title: title || "YouTube video" };
+    }),
+  );
+
+  return results.filter((r): r is { videoId: string; title: string } => r !== null);
+}
+
 export function loadYouTubeIFrameAPI(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   const w = window as unknown as { YT?: unknown; onYouTubeIframeAPIReady?: () => void };

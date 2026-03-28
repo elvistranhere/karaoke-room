@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Mic, MicOff, SkipForward, Link as LinkIcon, MessageSquare, X } from "lucide-react";
-import { extractYouTubeVideoId, extractYouTubePlaylistId, validateYouTubeVideo } from "~/lib/youtube";
+import { extractYouTubeVideoId, extractYouTubePlaylistId, validateYouTubeVideo, fetchPlaylistItems } from "~/lib/youtube";
 import type { RoomState } from "~/types/room";
 
 interface WatchToolbarProps {
@@ -48,18 +48,12 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
     if (playlistId) {
       setIsValidating(true);
       try {
-        const res = await fetch(`/api/youtube-playlist?id=${encodeURIComponent(playlistId)}&max=${remaining}`);
-        if (!res.ok) {
-          const body = await res.json().catch(() => null) as { error?: string } | null;
-          setError(body?.error ?? "Failed to load playlist");
-          return;
-        }
-        const data = (await res.json()) as { items: { videoId: string; title: string }[] };
-        if (!data.items?.length) {
+        const items = await fetchPlaylistItems(playlistId, remaining);
+        if (!items.length) {
           setError("Playlist is empty or unavailable");
           return;
         }
-        for (const item of data.items) {
+        for (const item of items) {
           onQueueAdd(item.videoId, item.title);
         }
         setUrl("");
