@@ -61,6 +61,27 @@ export async function validateYouTubeVideo(videoId: string): Promise<{ valid: bo
   }
 }
 
+export function extractYouTubePlaylistId(input: string): string | null {
+  const raw = (input ?? "").trim();
+  if (!raw) return null;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^www\./, "");
+  if (host !== "youtube.com" && host !== "m.youtube.com" && host !== "music.youtube.com") return null;
+
+  // /playlist?list=PLAYLIST_ID or /watch?v=...&list=PLAYLIST_ID
+  const list = url.searchParams.get("list");
+  if (list && /^[a-zA-Z0-9_-]+$/.test(list)) return list;
+
+  return null;
+}
+
 export function loadYouTubeIFrameAPI(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   const w = window as unknown as { YT?: unknown; onYouTubeIframeAPIReady?: () => void };

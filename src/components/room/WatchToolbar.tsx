@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Mic, MicOff, SkipForward, Link as LinkIcon, MessageSquare, X } from "lucide-react";
-import { extractYouTubeVideoId, validateYouTubeVideo } from "~/lib/youtube";
+import { extractYouTubeVideoId, extractYouTubePlaylistId, validateYouTubeVideo } from "~/lib/youtube";
 import type { RoomState } from "~/types/room";
 
 interface WatchToolbarProps {
@@ -37,28 +37,42 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
     const trimmed = url.trim();
     if (!trimmed) return;
 
-    // Soft-block playlists for now (YouTube playlist links, or watch URLs with `list=`)
-    try {
-      const u = new URL(trimmed);
-      const host = u.hostname.replace(/^www\./, "");
-      const hasList = Boolean(u.searchParams.get("list"));
-      const isPlaylistPath = u.pathname.startsWith("/playlist");
-      if ((host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") && (hasList || isPlaylistPath)) {
-        setError("Playlists are not supported yet - paste a single video URL.");
-        return;
-      }
-    } catch {
-      // ignore URL parse failures here - extractYouTubeVideoId handles them
-    }
-
-    const videoId = extractYouTubeVideoId(trimmed);
-    if (!videoId) {
-      setError("Not a valid YouTube URL");
+    const remaining = 20 - roomState.watchQueue.length;
+    if (remaining <= 0) {
+      setError("Queue is full (max 20)");
       return;
     }
 
-    if (roomState.watchQueue.length >= 20) {
-      setError("Queue is full");
+    // Check if it's a playlist URL
+    const playlistId = extractYouTubePlaylistId(trimmed);
+    if (playlistId) {
+      setIsValidating(true);
+      try {
+        const res = await fetch(`/api/youtube-playlist?id=${encodeURIComponent(playlistId)}&max=${remaining}`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => null) as { error?: string } | null;
+          setError(body?.error ?? "Failed to load playlist");
+          return;
+        }
+        const data = (await res.json()) as { items: { videoId: string; title: string }[] };
+        if (!data.items?.length) {
+          setError("Playlist is empty or unavailable");
+          return;
+        }
+        for (const item of data.items) {
+          onQueueAdd(item.videoId, item.title);
+        }
+        setUrl("");
+      } finally {
+        setIsValidating(false);
+      }
+      return;
+    }
+
+    // Single video
+    const videoId = extractYouTubeVideoId(trimmed);
+    if (!videoId) {
+      setError("Not a valid YouTube or playlist URL");
       return;
     }
 
@@ -159,7 +173,7 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
               value={url}
               onChange={(e) => { setUrl(e.target.value); if (error) setError(null); }}
               onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
-              placeholder="Paste YouTube URL..."
+              placeholder="Paste YouTube URL or playlist..."
               className="w-full rounded-lg border px-3 py-2 pl-9 text-xs outline-none transition-colors"
               style={{
                 background: "var(--color-dark-card)",
@@ -197,7 +211,7 @@ export function WatchToolbar({ roomState, myPeerId, isMicEnabled, toggleMic, onS
             title="Add to queue"
           >
             <LinkIcon size={14} />
-            {isValidating ? "Checking..." : "Add"}
+            {isValidating ? "Loading..." : "Add"}
           </button>
         </div>
       </div>
