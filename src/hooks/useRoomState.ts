@@ -56,6 +56,10 @@ interface UseRoomStateReturn {
   kicked: string | null;
   authRequired: boolean;
   authFailed: boolean;
+  sendKick: (peerId: string) => void;
+  sendTransferAdmin: (peerId: string) => void;
+  sendSetPassword: (password: string | null) => void;
+  sendAuth: (password: string) => void;
 }
 
 const INITIAL_ROOM_STATE: RoomState = {
@@ -348,6 +352,22 @@ export function useRoomState({
     setNameTaken(null);
   }, []);
 
+  const sendKick = useCallback((peerId: string) => {
+    send({ type: "kick", peerId });
+  }, [send]);
+
+  const sendTransferAdmin = useCallback((peerId: string) => {
+    send({ type: "transfer-admin", peerId });
+  }, [send]);
+
+  const sendSetPassword = useCallback((password: string | null) => {
+    send({ type: "set-password", password });
+  }, [send]);
+
+  const sendAuth = useCallback((password: string) => {
+    send({ type: "auth", password });
+  }, [send]);
+
   const isMyTurn = myPeerId !== null && roomState.currentSingerId === myPeerId;
 
   return {
@@ -386,5 +406,9 @@ export function useRoomState({
     kicked,
     authRequired,
     authFailed,
+    sendKick,
+    sendTransferAdmin,
+    sendSetPassword,
+    sendAuth,
   };
 }
