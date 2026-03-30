@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Users, Music, ArrowRight, Lock } from "lucide-react";
+import { Mic, Users, Music, ArrowRight, Lock, Search } from "lucide-react";
 import { getSavedName, saveName, MAX_NAME_LENGTH } from "~/lib/playerName";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -182,8 +182,18 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Browse link */}
+      <button
+        onClick={() => router.push("/browse")}
+        className="mt-6 flex items-center gap-1.5 text-sm transition-colors hover:brightness-125"
+        style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-display)" }}
+      >
+        <Search size={14} />
+        Browse active rooms
+      </button>
+
       {/* Footer */}
-      <p className="mt-6 text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+      <p className="mt-4 text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
         Works on all browsers. Singing requires Chromium (Chrome, Edge, Brave, Arc).
       </p>
     </main>

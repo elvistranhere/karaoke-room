@@ -45,6 +45,9 @@ export default class KaraokeRoom implements Party.Server {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   // Singer timeout: auto-advance if singer goes inactive
   private singerTimer: ReturnType<typeof setTimeout> | null = null;
+  // Registry reporting (debounced - max once per 30s)
+  private lastRegistryReport = 0;
+  private registryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly room: Party.Room) {}
 
@@ -294,6 +297,9 @@ export default class KaraokeRoom implements Party.Server {
       this.stopHeartbeat();
       if (this.singerTimer) clearTimeout(this.singerTimer);
       this.singerTimer = null;
+      if (this.registryTimer) clearTimeout(this.registryTimer);
+      this.registryTimer = null;
+      this.deleteFromRegistry();
       return; // no one to broadcast to
     }
 
@@ -994,6 +1000,7 @@ export default class KaraokeRoom implements Party.Server {
       state: this.buildRoomState(),
     };
     this.broadcast(msg);
+    this.reportToRegistry();
   }
 
   private isBroadcasting = false;
@@ -1031,5 +1038,63 @@ export default class KaraokeRoom implements Party.Server {
     } catch {
       // Connection is dead, will be cleaned up on onClose/onError
     }
+  }
+
+  // ── Registry reporting ──────────────────────────────────────
+
+  private reportToRegistry() {
+    const now = Date.now();
+    const elapsed = now - this.lastRegistryReport;
+    if (elapsed < 30_000) {
+      // Debounce: schedule a report after the remaining cooldown
+      if (!this.registryTimer) {
+        this.registryTimer = setTimeout(() => {
+          this.registryTimer = null;
+          this.doRegistryReport();
+        }, 30_000 - elapsed);
+      }
+      return;
+    }
+    this.doRegistryReport();
+  }
+
+  private doRegistryReport() {
+    this.lastRegistryReport = Date.now();
+    const singerEntry = this.currentSingerId
+      ? this.participants.get(this.currentSingerId)
+      : undefined;
+    const singerStatus = this.currentSingerId
+      ? this.participantStatus.get(this.currentSingerId)
+      : undefined;
+
+    const currentSong = this.roomMode === "watch"
+      ? this.watchCurrentTitle
+      : (singerStatus?.currentSong ?? null);
+
+    const body = JSON.stringify({
+      participantCount: this.participants.size,
+      mode: this.roomMode,
+      currentSinger: singerEntry?.name ?? null,
+      currentSong,
+      isLocked: this.passwordHash !== null,
+    });
+
+    const registry = this.room.parties.registry;
+    if (!registry) return;
+    const stub = registry.get("global");
+    void stub.fetch(`?room=${encodeURIComponent(this.room.id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    }).catch(() => {});
+  }
+
+  private deleteFromRegistry() {
+    const registry = this.room.parties.registry;
+    if (!registry) return;
+    const stub = registry.get("global");
+    void stub.fetch(`?room=${encodeURIComponent(this.room.id)}`, {
+      method: "DELETE",
+    }).catch(() => {});
   }
 }
