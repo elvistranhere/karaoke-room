@@ -226,7 +226,8 @@ export default class KaraokeRoom implements Party.Server {
   }
 
   onClose(conn: Party.Connection) {
-    // Clean up lastPong for pre-join connections that never called handleJoin
+    // Clean up pending auth and lastPong for pre-join connections
+    this.pendingAuth.delete(conn.id);
     if (!this.participants.has(conn.id)) {
       this.lastPong.delete(conn.id);
     }
@@ -235,6 +236,7 @@ export default class KaraokeRoom implements Party.Server {
 
   onError(conn: Party.Connection, _error: Error) {
     console.error(`[KaraokeRoom] Connection error for ${conn.id}`);
+    this.pendingAuth.delete(conn.id);
     if (!this.participants.has(conn.id)) {
       this.lastPong.delete(conn.id);
     }

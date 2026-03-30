@@ -53,6 +53,9 @@ interface UseRoomStateReturn {
   sendWatchAdvance: () => void;
   watchSync: { state: "playing" | "paused"; time: number; from: string } | null;
   watchSpeed: number | null;
+  kicked: string | null;
+  authRequired: boolean;
+  authFailed: boolean;
 }
 
 const INITIAL_ROOM_STATE: RoomState = {
@@ -90,6 +93,9 @@ export function useRoomState({
   const [nameTaken, setNameTaken] = useState<{ name: string; suggestions: string[] } | null>(null);
   const [watchSync, setWatchSync] = useState<{ state: "playing" | "paused"; time: number; from: string } | null>(null);
   const [watchSpeed, setWatchSpeed] = useState<number | null>(null);
+  const [kicked, setKicked] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
   const lastWatchVideoIdRef = useRef<string | null>(null);
   const reactionIdRef = useRef(0);
   const hasSentJoinRef = useRef(false);
@@ -127,6 +133,8 @@ export function useRoomState({
           watchLeaderId: msg.state.watchLeaderId ?? null,
           watchState: msg.state.watchState ?? null,
           watchTime: msg.state.watchTime ?? 0,
+          adminPeerId: msg.state.adminPeerId ?? null,
+          isLocked: msg.state.isLocked ?? false,
         };
         if (lastWatchVideoIdRef.current !== state.watchCurrentVideoId) {
           lastWatchVideoIdRef.current = state.watchCurrentVideoId;
@@ -205,6 +213,23 @@ export function useRoomState({
       case "you-joined":
         console.log("[RoomState] My peer ID:", msg.peerId);
         setMyPeerId(msg.peerId);
+        break;
+      case "kicked":
+        console.log("[RoomState] Kicked by:", msg.by);
+        setKicked(msg.by);
+        break;
+      case "auth-required":
+        console.log("[RoomState] Auth required for room");
+        setAuthRequired(true);
+        setAuthFailed(false);
+        break;
+      case "auth-failed":
+        console.log("[RoomState] Auth failed");
+        setAuthFailed(true);
+        break;
+      case "admin-changed":
+        console.log("[RoomState] Admin changed to:", msg.name);
+        setRoomState((prev) => ({ ...prev, adminPeerId: msg.peerId }));
         break;
       case "error":
         console.error("[RoomState] Server error:", msg.message);
@@ -358,5 +383,8 @@ export function useRoomState({
     sendWatchAdvance,
     watchSync,
     watchSpeed,
+    kicked,
+    authRequired,
+    authFailed,
   };
 }
