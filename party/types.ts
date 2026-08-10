@@ -61,7 +61,6 @@ export type ClientMessage =
   | { type: "reaction"; emoji: string }
   | { type: "mute-all" }
   | { type: "unmute-all" }
-  | { type: "add-to-queue"; targetPeerId: string }
   | { type: "mix-adjust"; voice: number; music: number }
   | { type: "mode-switch"; mode: "karaoke" | "watch" }
   | { type: "watch-queue-add"; videoId: string; title: string }

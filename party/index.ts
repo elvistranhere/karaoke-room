@@ -184,9 +184,6 @@ export default class KaraokeRoom implements Party.Server {
       case "unmute-all":
         this.handleUnmuteAll(sender);
         break;
-      case "add-to-queue":
-        this.handleAddToQueue(sender, msg.targetPeerId);
-        break;
       case "mix-adjust":
         this.handleMixAdjust(sender, msg.voice, msg.music);
         break;
@@ -781,28 +778,6 @@ export default class KaraokeRoom implements Party.Server {
       if (!singer) return;
       this.send(singer.ws, { type: "mix-adjust", fromName: participant.name, voice: clampedVoice, music: clampedMusic });
     }
-  }
-
-  private handleAddToQueue(sender: Party.Connection, targetPeerId: string) {
-    // Anyone can add someone to the queue
-    if (!this.participants.has(targetPeerId)) {
-      this.send(sender, { type: "error", message: "Target participant not found" });
-      return;
-    }
-    if (this.queue.includes(targetPeerId)) {
-      return; // already in queue
-    }
-    if (this.currentSingerId === targetPeerId) {
-      return; // already singing
-    }
-
-    this.queue.push(targetPeerId);
-
-    if (this.currentSingerId === null) {
-      this.promoteNextSinger();
-    }
-
-    this.broadcastState();
   }
 
   // ── Admin Handlers ──────────────────────────────────────────

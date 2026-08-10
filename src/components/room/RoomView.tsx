@@ -8,7 +8,6 @@ import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { Settings as SettingsIcon } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageBanner } from "./StageBanner";
-import { RandomWheel } from "./RandomWheel";
 import { Toolbar } from "./Toolbar";
 import { PeoplePanel } from "./PeoplePanel";
 import { ChatPanel } from "./ChatPanel";
@@ -63,7 +62,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendReaction,
     sendMuteAll,
     sendUnmuteAll,
-    addToQueue,
     sendMixAdjust,
     clearPendingMixAdjust,
     mutedBySinger,
@@ -698,7 +696,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           </div>
         </div>
 
-        {/* Right: People panel + Random Wheel */}
+        {/* Right: People panel */}
         <div className={`w-full flex-col gap-3 pb-1 lg:flex lg:w-72 lg:min-h-0 lg:overflow-auto lg:pb-0 ${mobileSection === "people" ? "flex" : "hidden"}`}>
           {roomState.roomMode === "watch" ? (
             <VideoQueue
@@ -739,30 +737,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             onKick={isAdmin ? sendKick : undefined}
             onTransferAdmin={isAdmin ? sendTransferAdmin : undefined}
           />
-
-          {roomState.roomMode !== "watch" ? (
-            <div
-              className="rounded-xl border p-3"
-              style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-            >
-              <div className="-mx-3 mb-2 border-b px-3 pb-2" style={{ borderColor: "var(--color-dark-border)" }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--color-text-muted)" }}>
-                  Get someone to sing
-                </p>
-              </div>
-              <RandomWheel
-                participants={roomState.participants}
-                queue={roomState.queue}
-                currentSingerId={roomState.currentSingerId}
-                myName={playerName}
-                onPick={(p) => {
-                  if (p.id === myPeerId) joinQueue();
-                  else addToQueue(p.id);
-                  sendChat(`spun the wheel - ${p.name} is up next!`);
-                }}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
 

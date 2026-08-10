@@ -33,7 +33,6 @@ interface UseRoomStateReturn {
   sendReaction: (emoji: string) => void;
   sendMuteAll: () => void;
   sendUnmuteAll: () => void;
-  addToQueue: (targetPeerId: string) => void;
   sendMixAdjust: (voice: number, music: number) => void;
   clearPendingMixAdjust: () => void;
   mutedBySinger: string | null;
@@ -308,10 +307,6 @@ export function useRoomState({
     send({ type: "unmute-all" });
   }, [send]);
 
-  const addToQueue = useCallback((targetPeerId: string) => {
-    send({ type: "add-to-queue", targetPeerId });
-  }, [send]);
-
   const sendMixAdjust = useCallback((voice: number, music: number) => {
     send({ type: "mix-adjust", voice, music });
   }, [send]);
@@ -384,7 +379,6 @@ export function useRoomState({
     sendReaction,
     sendMuteAll,
     sendUnmuteAll,
-    addToQueue,
     sendMixAdjust,
     clearPendingMixAdjust,
     mutedBySinger,
