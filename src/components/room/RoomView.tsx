@@ -603,7 +603,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               setMixMicGain(gain);
               if (isMyTurn) broadcastMix(gain, mixMusicValue / 100);
             }}
-            micMode={micMode}
+            voiceEffect={voiceEffect}
+            onVoiceEffectChange={setVoiceEffect}
+            onEffectWetDry={setEffectWetDry}
             noiseCancellationMode={noiseCancellationMode}
             onNoiseCancellationModeChange={setNoiseCancellationMode}
             onSoundProfileOpen={() => setSoundProfileOpen(true)}

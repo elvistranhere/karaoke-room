@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mic, MicOff, Settings, Waves, MessageSquare, Music } from "lucide-react";
+import { Mic, MicOff, Settings, Waves, AudioLines } from "lucide-react";
 import type { Room } from "livekit-client";
-import type { MicMode } from "~/hooks/useAudioDevices";
+import type { VoiceEffect } from "~/lib/voiceEffects";
 
 export type NoiseCancellationMode = "auto" | "on" | "off";
 
@@ -13,7 +13,9 @@ interface ToolbarProps {
   toggleMic: () => Promise<void>;
   micVolume: number;
   onMicVolumeChange: (volume: number) => void;
-  micMode: MicMode;
+  voiceEffect: VoiceEffect;
+  onVoiceEffectChange: (effect: VoiceEffect) => void;
+  onEffectWetDry: (wet: number) => void;
   noiseCancellationMode: NoiseCancellationMode;
   onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
   onSoundProfileOpen: () => void;
@@ -25,12 +27,25 @@ export function Toolbar({
   toggleMic,
   micVolume,
   onMicVolumeChange,
-  micMode,
+  voiceEffect,
+  onVoiceEffectChange,
+  onEffectWetDry,
   noiseCancellationMode,
   onNoiseCancellationModeChange,
   onSoundProfileOpen,
 }: ToolbarProps) {
   const [micLevel, setMicLevel] = useState(0);
+  const echoEnabled = voiceEffect === "echo";
+
+  const toggleEcho = () => {
+    if (echoEnabled) {
+      onVoiceEffectChange("none");
+      return;
+    }
+
+    onEffectWetDry(0.2);
+    onVoiceEffectChange("echo");
+  };
 
   useEffect(() => {
     if (!room || !isMicEnabled) {
@@ -112,7 +127,7 @@ export function Toolbar({
         />
       </div>
 
-      <div className="grid w-full grid-cols-2 gap-2 border-t pt-3 sm:flex sm:w-auto sm:border-0 sm:pt-0" style={{ borderColor: "var(--color-dark-border)" }}>
+      <div className="grid w-full grid-cols-3 gap-2 border-t pt-3 sm:flex sm:w-auto sm:border-0 sm:pt-0" style={{ borderColor: "var(--color-dark-border)" }}>
         <div className="min-w-0">
           <label htmlFor="noise-cancellation" className="mb-1.5 block truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
             Noise cancellation
@@ -136,17 +151,45 @@ export function Toolbar({
         </div>
 
         <div className="min-w-0">
-          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Sound profile</p>
+          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Echo</p>
           <button
-            onClick={onSoundProfileOpen}
-            className="flex h-8 w-full min-w-28 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
-            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-            title="Open sound profile"
+            type="button"
+            role="switch"
+            aria-checked={echoEnabled}
+            onClick={toggleEcho}
+            className="flex h-8 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
+            style={{
+              background: echoEnabled ? "var(--color-primary-dim)" : "var(--color-dark-card)",
+              borderColor: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)",
+              color: echoEnabled ? "#d7bbff" : "var(--color-text-primary)",
+            }}
+            title="Toggle a 20% echo effect"
           >
             <span className="flex items-center gap-1.5">
-              {micMode === "voice" ? <MessageSquare size={13} style={{ color: "#c9a7ff" }} /> : <Music size={13} style={{ color: "#c9a7ff" }} />}
-              <span>{micMode === "voice" ? "Talk" : "Sing"}</span>
+              <AudioLines size={13} style={{ color: echoEnabled ? "#c9a7ff" : "var(--color-text-muted)" }} />
+              <span>{echoEnabled ? "On" : "Off"}</span>
             </span>
+            <span
+              className="relative h-4 w-7 rounded-full transition-colors"
+              style={{ background: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)" }}
+            >
+              <span
+                className="absolute top-0.5 size-3 rounded-full bg-white transition-transform"
+                style={{ left: 2, transform: echoEnabled ? "translateX(12px)" : "translateX(0)" }}
+              />
+            </span>
+          </button>
+        </div>
+
+        <div className="min-w-0">
+          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Effects</p>
+          <button
+            onClick={onSoundProfileOpen}
+            className="flex h-8 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
+            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+            title="Open advanced sound effects and settings"
+          >
+            <span>Advanced</span>
             <Settings size={12} style={{ color: "var(--color-text-muted)" }} />
           </button>
         </div>

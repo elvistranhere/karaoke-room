@@ -79,12 +79,6 @@ export function SoundProfileModal({
     }
   }, [open, micCheckState, onStopMicCheck]);
 
-  // Apply wet/dry when effect changes
-  useEffect(() => {
-    if (voiceEffect !== "none") onEffectWetDry(wetDry / 100);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceEffect]); // intentionally only fires on effect change, not on wetDry/callback change
-
   const handleWetDry = (val: number) => {
     setWetDry(val);
     onEffectWetDry(val / 100);
@@ -157,14 +151,20 @@ export function SoundProfileModal({
             </div>
 
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              {/* Voice effect selector */}
+              {/* Advanced voice effect selector */}
               <div>
-                <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Voice Effect</p>
+                <p className="mb-1 text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Advanced effects</p>
+                <p className="mb-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                  Echo can be toggled from the main sound toolbar at 20% intensity.
+                </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {VOICE_EFFECTS.map((fx) => (
+                  {VOICE_EFFECTS.filter((fx) => fx.id !== "none" && fx.id !== "echo").map((fx) => (
                     <button
                       key={fx.id}
-                      onClick={() => onVoiceEffectChange(fx.id)}
+                      onClick={() => {
+                        onEffectWetDry(wetDry / 100);
+                        onVoiceEffectChange(fx.id);
+                      }}
                       className="cursor-pointer rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 active:scale-95"
                       style={{
                         background: voiceEffect === fx.id ? "var(--color-primary)" : "var(--color-dark-card)",
