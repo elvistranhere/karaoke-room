@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Copy, LockKeyhole } from "lucide-react";
 
 function copyToClipboard(text: string): boolean {
   // Try modern API first
@@ -41,20 +42,18 @@ export function InviteCode({ code }: { code: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-sm tracking-[0.2em] transition-all duration-200 hover:scale-105 active:scale-95"
+      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-all duration-200 hover:bg-[var(--color-dark-card)] active:scale-[0.98]"
       style={{
-        borderColor: copied
-          ? "var(--color-neon-cyan)"
-          : "var(--color-dark-border)",
         color: copied ? "var(--color-neon-cyan)" : "var(--color-text-primary)",
-        background: "var(--color-dark-card)",
       }}
       title="Click to copy invite link"
     >
-      <span>{code}</span>
-      <span className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-        {copied ? "Copied!" : "Copy"}
-      </span>
+      <LockKeyhole size={14} style={{ color: "var(--color-text-muted)" }} />
+      <span className="hidden sm:inline" style={{ color: "var(--color-text-secondary)" }}>Room:</span>
+      <span className="font-mono tracking-[0.08em]">{code}</span>
+      {copied
+        ? <Check size={13} style={{ color: "var(--color-neon-cyan)" }} />
+        : <Copy size={12} style={{ color: "var(--color-text-muted)" }} />}
     </button>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
-import { Mic, Music, VolumeX, Volume2, Circle, Square, Wand2 } from "lucide-react";
+import { Mic, Music, VolumeX, Volume2, Circle, Square, Wand2, Plus } from "lucide-react";
 import type { RecordingState } from "~/hooks/useLiveKit";
 import { AudioVisualizer } from "./AudioVisualizer";
 
@@ -18,6 +18,7 @@ interface StageBannerProps {
   audioError: string | null;
   singerSongName: string | null;
   canSing: boolean;
+  onAddToQueue?: () => void;
   musicVolume?: number;
   onMusicVolumeChange?: (vol: number) => void;
   onMixMicGain?: (val: number) => void;
@@ -54,6 +55,7 @@ export function StageBanner({
   audioError,
   singerSongName,
   canSing,
+  onAddToQueue,
   musicVolume = 1,
   onMusicVolumeChange,
   onMixMicGain,
@@ -84,14 +86,37 @@ export function StageBanner({
   // No one singing — compact idle state
   if (!isSomeoneSinging) {
     return (
-      <div
-        className="flex items-center gap-3 rounded-xl border px-4 py-3"
-        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-      >
-        <Mic size={18} style={{ opacity: 0.4, color: "var(--color-text-muted)" }} />
-        <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Nobody singing — join the queue!
-        </span>
+      <div className="flex flex-col items-center justify-center px-6 py-8 text-center">
+        <div
+          className="mb-4 flex size-16 items-center justify-center rounded-full border"
+          style={{
+            background: "var(--color-primary-dim)",
+            borderColor: "color-mix(in srgb, var(--color-primary) 30%, var(--color-dark-border))",
+            color: "#c9a7ff",
+          }}
+        >
+          <Music size={24} />
+        </div>
+        <h2 className="text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+          The stage is ready
+        </h2>
+        <p className="mt-2 max-w-sm text-sm leading-6" style={{ color: "var(--color-text-muted)" }}>
+          Add a song to the queue when you&apos;re ready to sing.
+        </p>
+        {onAddToQueue && (
+          <button
+            onClick={onAddToQueue}
+            className="mt-5 flex cursor-pointer items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{ background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)", color: "#fff", boxShadow: "0 0 20px rgba(157, 92, 255, 0.25)" }}
+          >
+            <Plus size={16} />
+            Add to queue
+          </button>
+        )}
+        <div className="mt-5 flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}>
+          <Mic size={13} />
+          Nobody is singing right now
+        </div>
       </div>
     );
   }
@@ -99,37 +124,46 @@ export function StageBanner({
   // Someone else singing — informational banner with volume
   if (!isMyTurn) {
     return (
-      <AudioVisualizer room={room} isActive={isSomeoneSinging} ambientId={ambientId} ambientColor={ambientColor}>
+      <AudioVisualizer room={room} isActive={isSomeoneSinging} ambientId={ambientId} ambientColor={ambientColor} className="h-full w-full">
       <div
-        className="relative overflow-hidden rounded-xl px-4 py-3"
+        className="relative flex h-full flex-col justify-center overflow-hidden rounded-2xl p-5 sm:p-8"
         style={{ background: "var(--color-dark-surface)" }}
       >
-        <div className="flex items-center gap-3">
-          <Mic size={18} style={{ color: "var(--color-primary)" }} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-                {currentSinger?.name ?? "Unknown"}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-primary)" }}>singing</span>
-            </div>
-            {singerSongName && (
-              <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-accent)" }}>
-                {singerSongName}
-              </p>
-            )}
+        <div className="absolute left-0 top-0 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
+        <div className="flex items-center gap-4">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--color-primary-dim)", color: "#c9a7ff" }}>
+            <Mic size={23} />
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-primary)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
-            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Live</span>
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-success)" }}>Live performance</span>
+            </div>
+            <h2 className="truncate text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+              {currentSinger?.name ?? "Unknown"} is singing
+            </h2>
+            <p className="mt-0.5 truncate text-sm" style={{ color: singerSongName ? "#c9a7ff" : "var(--color-text-muted)" }}>
+              {singerSongName || "Song unknown"}
+            </p>
+          </div>
+          <div className="hidden h-10 items-center gap-1 sm:flex" aria-hidden="true">
+            {[12, 22, 34, 26, 38, 20, 12].map((height, index) => (
+              <span key={`${height}-${index}`} className="w-1 rounded-full" style={{ height, background: "#9d5cff", opacity: 0.5 + index * 0.05 }} />
+            ))}
           </div>
         </div>
+
         {/* Local volume control */}
         {onMusicVolumeChange && (
-          <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: "var(--color-dark-border)" }}>
-            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Volume</span>
-            <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider flex-1" />
-            <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}</span>
+          <div className="mt-5 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-white">Room volume</span>
+              <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Volume2 size={14} style={{ color: "var(--color-text-muted)" }} />
+              <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider flex-1" aria-label="Room volume" />
+            </div>
           </div>
         )}
         {/* Collaborative mix — adjust singer's voice/music balance for everyone */}
@@ -149,10 +183,10 @@ export function StageBanner({
 
   // My turn — expanded with controls
   return (
-    <AudioVisualizer room={room} isActive={isSharing} ambientId={ambientId} ambientColor={ambientColor}>
+    <AudioVisualizer room={room} isActive={isSharing} ambientId={ambientId} ambientColor={ambientColor} framed={isSharing} className="h-full w-full">
     <div
-      className="relative overflow-hidden rounded-xl p-4"
-      style={{ background: "var(--color-dark-surface)" }}
+      className={`relative flex h-full flex-col overflow-hidden rounded-2xl border ${isSharing ? "p-4" : "justify-center p-6 sm:p-8"}`}
+      style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
     >
       <div
         className="absolute left-0 top-0 h-0.5 w-full"
@@ -166,38 +200,44 @@ export function StageBanner({
       )}
 
       {!isSharing ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <Mic size={20} style={{ color: "var(--color-primary)" }} />
-            <div>
-              <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-                Your Turn to Sing
-              </p>
-              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Open a karaoke tab, then share its audio
-              </p>
-            </div>
+        <div className="mx-auto w-full max-w-lg text-center">
+          <div
+            className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full border"
+            style={{ background: "var(--color-primary-dim)", borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-dark-border))", color: "#c9a7ff" }}
+          >
+            <Mic size={26} />
           </div>
+          <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: "var(--color-primary-dim)", color: "#d7bbff" }}>
+            You&apos;re up
+          </span>
+          <h2 className="mt-3 text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+            Your turn to sing
+          </h2>
+          {singerSongName && <p className="mt-1 text-sm" style={{ color: "#c9a7ff" }}>{singerSongName}</p>}
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6" style={{ color: "var(--color-text-muted)" }}>
+            Open your karaoke song in another tab, then share that tab&apos;s audio with the room.
+          </p>
 
           {canSing ? (
-            <div className="flex items-center gap-2">
+            <div className="mt-6 space-y-2">
               <button
                 onClick={onStartSharing}
-                className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-                style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+                style={{ fontFamily: "var(--font-display)", background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)", color: "#fff", boxShadow: "0 0 20px rgba(157, 92, 255, 0.25)" }}
               >
-                Share Tab Audio
+                <Music size={16} />
+                Share tab audio
               </button>
               <button
                 onClick={onFinishSinging}
-                className="cursor-pointer rounded-lg border px-3 py-2.5 text-xs transition-all hover:brightness-110"
-                style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
+                className="w-full cursor-pointer rounded-lg px-4 py-2 text-xs transition-colors hover:bg-white/5"
+                style={{ color: "var(--color-text-muted)" }}
               >
-                Skip
+                Leave stage
               </button>
             </div>
           ) : (
-            <p className="rounded-lg py-2 text-center text-xs" style={{ color: "var(--color-text-muted)", background: "var(--color-dark-card)" }}>
+            <p className="mt-6 rounded-lg py-3 text-center text-xs" style={{ color: "var(--color-text-muted)", background: "var(--color-dark-card)" }}>
               Singing requires a Chromium browser (Chrome, Edge, Brave, Arc...)
             </p>
           )}
@@ -400,11 +440,11 @@ function ListenerMixControl({ voiceValue, musicValue, onAdjust, onDone }: { voic
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[10px] font-medium transition-all hover:brightness-110"
+        className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium transition-all hover:border-[var(--color-primary)] hover:brightness-110"
         style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
       >
-        <Wand2 size={10} />
-        Help Mix
+        <Wand2 size={12} />
+        Adjust room mix
       </button>
     );
   }
@@ -427,4 +467,3 @@ function ListenerMixControl({ voiceValue, musicValue, onAdjust, onDone }: { voic
     </div>
   );
 }
-

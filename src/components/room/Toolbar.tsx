@@ -1,137 +1,155 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Settings, MessageSquare, Music, Smile, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Mic, MicOff, Settings, Waves, MessageSquare, Music } from "lucide-react";
+import type { Room } from "livekit-client";
 import type { MicMode } from "~/hooks/useAudioDevices";
 
+export type NoiseCancellationMode = "auto" | "on" | "off";
+
 interface ToolbarProps {
+  room: Room | null;
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
+  micVolume: number;
+  onMicVolumeChange: (volume: number) => void;
   micMode: MicMode;
+  noiseCancellationMode: NoiseCancellationMode;
+  onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
   onSoundProfileOpen: () => void;
-  onReact: (emoji: string) => void;
 }
 
-import { REACTION_EMOJIS } from "~/lib/reactions";
-
 export function Toolbar({
+  room,
   isMicEnabled,
   toggleMic,
+  micVolume,
+  onMicVolumeChange,
   micMode,
+  noiseCancellationMode,
+  onNoiseCancellationModeChange,
   onSoundProfileOpen,
-  onReact,
 }: ToolbarProps) {
-  const cooldownRef = useRef(false);
-  const reactionsRef = useRef<HTMLDivElement>(null);
-  const [showMobileReactions, setShowMobileReactions] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
 
   useEffect(() => {
-    if (!showMobileReactions) return;
+    if (!room || !isMicEnabled) {
+      setMicLevel(0);
+      return;
+    }
 
-    const handleClickOutside = (e: PointerEvent) => {
-      if (reactionsRef.current && !reactionsRef.current.contains(e.target as Node)) {
-        setShowMobileReactions(false);
-      }
+    const updateLevel = () => {
+      const liveLevel = Math.min(1, Math.max(0, room.localParticipant.audioLevel || 0));
+      setMicLevel((previous) => previous * 0.55 + liveLevel * 0.45);
     };
-    document.addEventListener("pointerdown", handleClickOutside);
-    return () => document.removeEventListener("pointerdown", handleClickOutside);
-  }, [showMobileReactions]);
+    updateLevel();
+    const interval = window.setInterval(updateLevel, 75);
+    return () => window.clearInterval(interval);
+  }, [room, isMicEnabled]);
 
-  const handleReact = useCallback((emoji: string) => {
-    if (cooldownRef.current) return;
-    cooldownRef.current = true;
-    onReact(emoji);
-    setShowMobileReactions(false);
-    setTimeout(() => { cooldownRef.current = false; }, 500);
-  }, [onReact]);
+  const meterBars = [0.35, 0.55, 0.78, 1, 0.78, 0.55, 0.35];
 
   return (
     <div
-      className="flex items-center gap-2 overflow-visible rounded-xl border px-3 py-2.5 lg:overflow-x-auto"
+      className="flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 sm:gap-4"
       style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
     >
-      {/* Mic toggle */}
       <button
         onClick={toggleMic}
-        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all duration-150 hover:scale-105 active:scale-95"
+        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 sm:size-16"
         style={{
-          fontFamily: "var(--font-display)",
-          background: isMicEnabled ? "var(--color-primary-dim)" : "var(--color-primary)",
-          color: isMicEnabled ? "var(--color-primary)" : "#fff",
-          border: isMicEnabled ? "1px solid var(--color-primary)" : "none",
+          background: isMicEnabled ? "#c9a7ff" : "var(--color-dark-card)",
+          color: isMicEnabled ? "#4c00af" : "var(--color-text-muted)",
+          border: isMicEnabled ? "none" : "1px solid var(--color-dark-border)",
+          boxShadow: isMicEnabled ? "0 8px 24px rgba(166, 110, 255, 0.18)" : "none",
         }}
         title={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
+        aria-label={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
       >
-        {isMicEnabled ? <Mic size={14} /> : <MicOff size={14} />}
-        {isMicEnabled ? "Mute" : "Unmute"}
+        {isMicEnabled ? <Mic className="size-6 sm:size-7" strokeWidth={2.3} /> : <MicOff className="size-6 sm:size-7" strokeWidth={2.3} />}
       </button>
 
-      {/* Mode indicator (click opens Sound Profile) */}
-      <button
-        onClick={onSoundProfileOpen}
-        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 hover:border-[var(--color-primary)]"
-        style={{
-          borderColor: "var(--color-dark-border)",
-          color: micMode === "voice" ? "var(--color-primary)" : "var(--color-accent)",
-          background: micMode === "voice" ? "var(--color-primary-dim)" : "var(--color-accent-dim)",
-        }}
-        title="Open Sound Profile — configure voice effects, mic settings, and devices"
+      <div
+        className="hidden h-10 items-center gap-1 md:flex"
+        role="meter"
+        aria-label="Live microphone level"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(micLevel * 100)}
+        title={isMicEnabled ? `Microphone level ${Math.round(micLevel * 100)}%` : "Microphone muted"}
       >
-        {micMode === "voice" ? <><MessageSquare size={12} /> Talk</> : <><Music size={12} /> Sing</>}
-        <Settings size={10} style={{ opacity: 0.5 }} />
-      </button>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Desktop reactions */}
-      <div className="hidden items-center gap-0.5 lg:flex">
-        {REACTION_EMOJIS.map((emoji) => (
-          <button
-            key={emoji}
-            onClick={() => handleReact(emoji)}
-            className="shrink-0 cursor-pointer rounded-md px-1 py-0.5 text-base transition-transform hover:scale-125 active:scale-90"
-            title={`React with ${emoji}`}
-          >
-            {emoji}
-          </button>
+        {meterBars.map((shape, index) => (
+          <span
+            key={`${shape}-${index}`}
+            className="w-0.5 rounded-full"
+            style={{
+              height: `${Math.max(5, Math.min(38, 5 + micLevel * 40 * shape))}px`,
+              background: isMicEnabled ? "#b78cff" : "var(--color-text-muted)",
+              opacity: isMicEnabled ? 0.55 + micLevel * 0.45 : 0.25,
+              transition: "height 90ms ease-out, opacity 120ms ease-out",
+            }}
+          />
         ))}
       </div>
 
-      {/* Mobile reactions toggle */}
-      <div ref={reactionsRef} className="relative lg:hidden">
-        <button
-          onClick={() => setShowMobileReactions((v) => !v)}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all hover:border-[var(--color-primary)]"
-          style={{
-            borderColor: showMobileReactions ? "var(--color-primary)" : "var(--color-dark-border)",
-            color: showMobileReactions ? "var(--color-primary)" : "var(--color-text-muted)",
-            background: showMobileReactions ? "var(--color-primary-dim)" : "transparent",
-          }}
-          title="Open reactions"
-        >
-          <Smile size={12} />
-          React
-          <ChevronDown size={10} style={{ transform: showMobileReactions ? "rotate(180deg)" : "none", transition: "transform 120ms ease" }} />
-        </button>
+      <div className="hidden h-10 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
 
-        {showMobileReactions && (
-          <div
-            className="absolute right-0 top-[calc(100%+6px)] z-20 flex w-52 flex-wrap gap-1 rounded-lg border p-2"
-            style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-          >
-            {REACTION_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => handleReact(emoji)}
-                className="cursor-pointer rounded-md px-1.5 py-1 text-base transition-transform active:scale-90"
-                title={`React with ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
+      <div className="min-w-32 flex-1">
+        <label htmlFor="mic-volume" className="sr-only">Mic volume</label>
+        <input
+          id="mic-volume"
+          type="range"
+          min={0}
+          max={100}
+          value={micVolume}
+          onChange={(event) => onMicVolumeChange(Number(event.target.value))}
+          className="volume-slider h-2 w-full cursor-pointer rounded-full disabled:cursor-not-allowed disabled:opacity-40"
+          style={{
+            background: `linear-gradient(to right, #c9a7ff 0%, #c9a7ff ${micVolume}%, var(--color-dark-border) ${micVolume}%, var(--color-dark-border) 100%)`,
+          }}
+          aria-label="Microphone volume"
+          disabled={!isMicEnabled}
+        />
+      </div>
+
+      <div className="grid w-full grid-cols-2 gap-2 border-t pt-3 sm:flex sm:w-auto sm:border-0 sm:pt-0" style={{ borderColor: "var(--color-dark-border)" }}>
+        <div className="min-w-0">
+          <label htmlFor="noise-cancellation" className="mb-1.5 block truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
+            Noise cancellation
+          </label>
+          <div className="relative">
+            <Waves className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" size={13} style={{ color: "#c9a7ff" }} />
+            <select
+              id="noise-cancellation"
+              value={noiseCancellationMode}
+              onChange={(event) => onNoiseCancellationModeChange(event.target.value as NoiseCancellationMode)}
+              className="h-8 w-full min-w-28 cursor-pointer appearance-none rounded-lg border pl-8 pr-7 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)]"
+              style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+              title="Choose noise cancellation behavior"
+            >
+              <option value="auto">Auto</option>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>⌄</span>
           </div>
-        )}
+        </div>
+
+        <div className="min-w-0">
+          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Sound profile</p>
+          <button
+            onClick={onSoundProfileOpen}
+            className="flex h-8 w-full min-w-28 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
+            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+            title="Open sound profile"
+          >
+            <span className="flex items-center gap-1.5">
+              {micMode === "voice" ? <MessageSquare size={13} style={{ color: "#c9a7ff" }} /> : <Music size={13} style={{ color: "#c9a7ff" }} />}
+              <span>{micMode === "voice" ? "Talk" : "Sing"}</span>
+            </span>
+            <Settings size={12} style={{ color: "var(--color-text-muted)" }} />
+          </button>
+        </div>
       </div>
     </div>
   );

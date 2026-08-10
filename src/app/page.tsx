@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Users, Music, ArrowRight, Lock, Search } from "lucide-react";
-import { getSavedName, saveName, MAX_NAME_LENGTH } from "~/lib/playerName";
+import { Mic, Users, Music, Lock, Search, Plus, LogIn } from "lucide-react";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -17,41 +16,24 @@ function generateRoomCode(): string {
 export default function Home() {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [roomPassword, setRoomPassword] = useState("");
-  const normalizedName = name.trim();
-  const canProceedWithName = normalizedName.length > 0;
   const joinCodeClean = joinCode.toUpperCase().trim();
-  const canJoin = canProceedWithName && joinCodeClean.length === CODE_LENGTH;
-
-  // Pre-fill name from localStorage (already normalized by getSavedName)
-  useEffect(() => {
-    const saved = getSavedName();
-    if (saved) setName(saved);
-  }, []);
+  const canJoin = joinCodeClean.length === CODE_LENGTH;
 
   const handleCreate = () => {
-    if (!canProceedWithName) { setError("Enter your name first"); return; }
-    const trimmed = normalizedName.slice(0, MAX_NAME_LENGTH);
-    const persisted = saveName(trimmed);
-    const param = persisted ? "" : `?name=${encodeURIComponent(trimmed)}`;
     const code = generateRoomCode();
     if (passwordEnabled && roomPassword.trim()) {
       sessionStorage.setItem(`room-password-${code}`, roomPassword.trim());
     }
-    router.push(`/room/${code}${param}`);
+    router.push(`/room/${code}`);
   };
 
   const handleJoin = () => {
-    if (!canProceedWithName) { setError("Enter your name first"); return; }
     const code = joinCodeClean;
     if (code.length !== CODE_LENGTH) { setError("Code must be 6 characters"); return; }
-    const trimmed = normalizedName.slice(0, MAX_NAME_LENGTH);
-    const persisted = saveName(trimmed);
-    const param = persisted ? "" : `?name=${encodeURIComponent(trimmed)}`;
-    router.push(`/room/${code}${param}`);
+    router.push(`/room/${code}`);
   };
 
   return (
@@ -92,104 +74,118 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Card */}
+      {/* Entry actions */}
       <div
-        className="w-full max-w-sm rounded-2xl border p-6"
+        className="grid w-full max-w-2xl gap-3 sm:grid-cols-2 sm:gap-4"
         style={{
           animation: "fade-in 0.7s ease-out 0.2s both",
-          background: "var(--color-dark-surface)",
-          borderColor: "var(--color-dark-border)",
         }}
       >
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--color-text-muted)" }}>
-          Step 1 - Enter your name
-        </p>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => { setName(e.target.value); setError(""); }}
-          placeholder="Display name"
-          maxLength={20}
-          className="mb-4 w-full rounded-lg border px-4 py-3 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-        />
-
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--color-text-muted)" }}>
-          Step 2 - Choose how to enter
-        </p>
-
-        {error && (
-          <p className="mb-3 text-xs" style={{ color: "var(--color-danger)" }}>{error}</p>
-        )}
-
-        {/* Create */}
-        <button
-          onClick={handleCreate}
-          disabled={!canProceedWithName}
-          className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg py-3 text-sm font-bold transition-all enabled:cursor-pointer enabled:hover:brightness-110 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-          style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
+        <section
+          className="group flex min-h-[280px] flex-col rounded-2xl border p-5 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-dark-border))] sm:p-6"
+          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))", borderColor: "var(--color-dark-border)" }}
         >
-          Create new room
-          <ArrowRight size={14} />
-        </button>
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "color-mix(in srgb, var(--color-primary) 14%, transparent)", color: "var(--color-primary)" }}>
+              <Plus size={18} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                Create a room
+              </h2>
+              <p className="mt-0.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
+                Start a session and invite your friends.
+              </p>
+            </div>
+          </div>
 
-        {/* Password toggle */}
-        <label className="mb-1 flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            checked={passwordEnabled}
-            onChange={(e) => { setPasswordEnabled(e.target.checked); if (!e.target.checked) setRoomPassword(""); }}
-            className="accent-[var(--color-primary)]"
-          />
-          <Lock size={12} style={{ color: "var(--color-text-muted)" }} />
-          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Set room password</span>
-        </label>
-        {passwordEnabled && (
-          <input
-            type="password"
-            value={roomPassword}
-            onChange={(e) => setRoomPassword(e.target.value)}
-            placeholder="Room password"
-            className="mb-1 w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-          />
-        )}
+          <div className="mt-7 rounded-xl border p-3" style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)" }}>
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={passwordEnabled}
+                onChange={(e) => { setPasswordEnabled(e.target.checked); if (!e.target.checked) setRoomPassword(""); }}
+                className="accent-[var(--color-primary)]"
+              />
+              <Lock size={14} style={{ color: "var(--color-text-muted)" }} />
+              <span className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Require a password</span>
+            </label>
+            {passwordEnabled && (
+              <input
+                aria-label="Room password"
+                type="password"
+                value={roomPassword}
+                onChange={(e) => setRoomPassword(e.target.value)}
+                placeholder="Room password"
+                className="mt-3 w-full rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
+                style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+              />
+            )}
+          </div>
 
-        <p className="mb-3 mt-2 text-center text-xs" style={{ color: "var(--color-text-muted)" }}>
-          or join with a 6-character room code
-        </p>
+          <button
+            onClick={handleCreate}
+            className="mt-auto flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
+          >
+            Create room
+          </button>
+        </section>
 
-        {/* Join */}
-        <div className="flex gap-2">
+        <section
+          className="group flex min-h-[280px] flex-col rounded-2xl border p-5 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-dark-border))] sm:p-6"
+          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))", borderColor: "var(--color-dark-border)" }}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "color-mix(in srgb, var(--color-accent) 14%, transparent)", color: "var(--color-accent)" }}>
+              <LogIn size={17} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                Join a room
+              </h2>
+              <p className="mt-0.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
+                Enter the code shared by your host.
+              </p>
+            </div>
+          </div>
+
+          <label htmlFor="room-code" className="mt-7 text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room code</label>
           <input
+            id="room-code"
             type="text"
             value={joinCode}
             onChange={(e) => { setJoinCode(e.target.value.toUpperCase().slice(0, CODE_LENGTH)); setError(""); }}
-            placeholder="Room code"
+            placeholder="XXXXXX"
             maxLength={CODE_LENGTH}
-            className="min-w-0 flex-1 rounded-lg border px-3 py-3 text-center font-mono text-sm uppercase tracking-[0.2em] outline-none transition-all focus:border-[var(--color-primary)]"
+            autoComplete="off"
+            className="mt-2 w-full rounded-xl border px-3 py-3.5 text-center font-mono text-lg font-bold uppercase tracking-[0.3em] outline-none transition-all placeholder:opacity-30 focus:border-[var(--color-primary)]"
             style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
             onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
           />
+          {error && (
+            <p className="mt-2 text-xs" role="alert" style={{ color: "var(--color-danger)" }}>{error}</p>
+          )}
+
           <button
             onClick={handleJoin}
             disabled={!canJoin}
-            className="shrink-0 rounded-lg border px-4 py-3 text-sm font-bold transition-all enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:brightness-110 enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+            className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-bold transition-all enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:brightness-110 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ fontFamily: "var(--font-display)", background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
           >
             Join
           </button>
-        </div>
+        </section>
       </div>
 
       {/* Browse link */}
       <button
         onClick={() => router.push("/browse")}
-        className="mt-6 flex items-center gap-1.5 text-sm transition-colors hover:brightness-125"
-        style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-display)" }}
+        className="mt-7 flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-all hover:border-[var(--color-primary)] hover:brightness-125"
+        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)", color: "color-mix(in srgb, var(--color-primary) 65%, white)", fontFamily: "var(--font-display)" }}
       >
         <Search size={14} />
-        Browse active rooms
+        Browse Public Rooms
       </button>
 
       {/* Footer */}

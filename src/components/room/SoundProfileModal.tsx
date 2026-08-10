@@ -1,26 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageSquare, Mic, Volume2 } from "lucide-react";
+import { Mic, Volume2 } from "lucide-react";
 import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 import type { MicCheckState } from "~/hooks/useLiveKit";
 import { VOICE_EFFECTS, type VoiceEffect, createEffectChain, type EffectChain } from "~/lib/voiceEffects";
+import type { NoiseCancellationMode } from "./Toolbar";
 
 interface SoundProfileModalProps {
   open: boolean;
   onClose: () => void;
   // Mic state
   micMode: MicMode;
-  onMicModeChange: (mode: MicMode) => void;
   // Voice effect
   voiceEffect: VoiceEffect;
   onVoiceEffectChange: (effect: VoiceEffect) => void;
   onEffectWetDry: (wet: number) => void;
-  // Noise cancellation per mode
-  talkingNoiseCancellation: boolean;
-  onTalkingNoiseCancellationChange: (on: boolean) => void;
-  singingNoiseCancellation: boolean;
-  onSingingNoiseCancellationChange: (on: boolean) => void;
+  noiseCancellationMode: NoiseCancellationMode;
+  onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
   // Devices
   inputDevices: AudioDevice[];
   outputDevices: AudioDevice[];
@@ -39,14 +36,11 @@ export function SoundProfileModal({
   open,
   onClose,
   micMode,
-  onMicModeChange,
   voiceEffect,
   onVoiceEffectChange,
   onEffectWetDry,
-  talkingNoiseCancellation,
-  onTalkingNoiseCancellationChange,
-  singingNoiseCancellation,
-  onSingingNoiseCancellationChange,
+  noiseCancellationMode,
+  onNoiseCancellationModeChange,
   inputDevices,
   outputDevices,
   selectedInputId,
@@ -59,6 +53,11 @@ export function SoundProfileModal({
   micCheckState,
 }: SoundProfileModalProps) {
   const [wetDry, setWetDry] = useState(70);
+  const [micCheckProfile, setMicCheckProfile] = useState<MicMode>(micMode);
+
+  useEffect(() => {
+    if (open && micCheckState === "idle") setMicCheckProfile(micMode);
+  }, [open, micMode, micCheckState]);
 
   // Close modal — auto-stop effect below handles mic check cleanup
   const handleClose = () => {
@@ -116,40 +115,35 @@ export function SoundProfileModal({
         </div>
 
         <div className="max-h-[70vh] space-y-5 overflow-auto p-5">
-          {/* === TALKING MODE === */}
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <MessageSquare size={16} style={{ color: "var(--color-primary)" }} />
-              <h3 className="text-xs font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-primary)" }}>
-                Talking Mode
+              <h3 className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
+                Noise cancellation
               </h3>
             </div>
-
-            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              {/* Noise cancellation toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
-                  <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    {talkingNoiseCancellation ? "Echo cancel + noise suppression ON" : "Raw audio, no processing"}
-                  </p>
-                </div>
-                <ToggleSwitch on={talkingNoiseCancellation} onChange={onTalkingNoiseCancellationChange} color="var(--color-primary)" />
+            <div className="rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
+              <div className="grid grid-cols-3 gap-1 rounded-lg border p-1" style={{ borderColor: "var(--color-dark-border)" }}>
+                {(["auto", "on", "off"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => onNoiseCancellationModeChange(mode)}
+                    className="cursor-pointer rounded-md px-3 py-2 text-xs font-medium capitalize transition-colors"
+                    style={{
+                      background: noiseCancellationMode === mode ? "var(--color-primary-dim)" : "transparent",
+                      color: noiseCancellationMode === mode ? "#d7bbff" : "var(--color-text-muted)",
+                    }}
+                  >
+                    {mode}
+                  </button>
+                ))}
               </div>
-
-              {/* Talking mic check — real-time toggle */}
-              <button
-                onClick={onTalkingMicCheck}
-                disabled={micCheckState === "monitoring-sing"}
-                className="w-full cursor-pointer rounded-lg border py-2 text-xs font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{
-                  borderColor: micCheckState === "monitoring-talk" ? "var(--color-primary)" : "var(--color-dark-border)",
-                  background: micCheckState === "monitoring-talk" ? "var(--color-primary-dim)" : "transparent",
-                  color: micCheckState === "monitoring-talk" ? "var(--color-primary)" : "var(--color-text-primary)",
-                }}
-              >
-                {micCheckState === "monitoring-talk" ? "Listening... (click to stop)" : micCheckState === "error" ? "Mic access denied" : "Talking Mic Check"}
-              </button>
+              <p className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                {noiseCancellationMode === "auto"
+                  ? "Recommended — on while talking and off while singing."
+                  : noiseCancellationMode === "on"
+                    ? "Enabled for both talking and singing."
+                    : "Disabled for both talking and singing."}
+              </p>
             </div>
           </section>
 
@@ -199,34 +193,55 @@ export function SoundProfileModal({
                 </div>
               )}
 
-              {/* Noise cancellation toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Noise Cancellation</p>
-                  <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    {singingNoiseCancellation ? "Processing ON (may reduce voice quality)" : "OFF — raw stereo 48kHz (recommended)"}
-                  </p>
-                </div>
-                <ToggleSwitch on={singingNoiseCancellation} onChange={onSingingNoiseCancellationChange} color="var(--color-primary)" />
-              </div>
+            </div>
+          </section>
 
-              {/* Singing mic check — real-time toggle */}
+          {/* === MIC CHECK === */}
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <Mic size={16} style={{ color: "var(--color-primary)" }} />
+              <h3 className="text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
+                Mic check
+              </h3>
+            </div>
+            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border p-1" style={{ borderColor: "var(--color-dark-border)" }}>
+                {(["voice", "raw"] as const).map((profile) => (
+                  <button
+                    key={profile}
+                    onClick={() => setMicCheckProfile(profile)}
+                    disabled={micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing"}
+                    className="cursor-pointer rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed"
+                    style={{
+                      background: micCheckProfile === profile ? "var(--color-primary-dim)" : "transparent",
+                      color: micCheckProfile === profile ? "#d7bbff" : "var(--color-text-muted)",
+                    }}
+                  >
+                    {profile === "voice" ? "Talk profile" : "Sing profile"}
+                  </button>
+                ))}
+              </div>
               <button
-                onClick={onSingingMicCheck}
-                disabled={micCheckState === "monitoring-talk"}
-                className="w-full cursor-pointer rounded-lg border py-2 text-xs font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => {
+                  if (micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing") onStopMicCheck();
+                  else if (micCheckProfile === "voice") onTalkingMicCheck();
+                  else onSingingMicCheck();
+                }}
+                className="w-full cursor-pointer rounded-lg border py-2.5 text-xs font-medium transition-all hover:brightness-110"
                 style={{
-                  borderColor: micCheckState === "monitoring-sing" ? "var(--color-primary)" : "var(--color-dark-border)",
-                  background: micCheckState === "monitoring-sing" ? "var(--color-primary-dim)" : "transparent",
-                  color: micCheckState === "monitoring-sing" ? "var(--color-primary)" : "var(--color-text-primary)",
+                  borderColor: micCheckState.startsWith("monitoring") ? "var(--color-primary)" : "var(--color-dark-border)",
+                  background: micCheckState.startsWith("monitoring") ? "var(--color-primary-dim)" : "transparent",
+                  color: micCheckState.startsWith("monitoring") ? "#d7bbff" : "var(--color-text-primary)",
                 }}
               >
-                {micCheckState === "monitoring-sing" ? "Listening... (click to stop)" : micCheckState === "error" ? "Mic access denied" : "Singing Mic Check"}
+                {micCheckState.startsWith("monitoring") ? "Stop mic check" : micCheckState === "error" ? "Try mic check again" : "Start mic check"}
               </button>
               <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                {micCheckState === "monitoring-sing" || micCheckState === "monitoring-talk"
-                  ? "Others are muted while you listen to yourself"
-                  : "Hear yourself live with the selected voice effect"}
+                {micCheckState.startsWith("monitoring")
+                  ? `Listening to your ${micCheckState === "monitoring-talk" ? "Talk" : "Sing"} profile.`
+                  : micCheckProfile === "raw"
+                    ? "Includes your selected singing voice effect."
+                    : "Uses your talking audio settings."}
               </p>
             </div>
           </section>
@@ -271,20 +286,5 @@ export function SoundProfileModal({
         </div>
       </div>
     </>
-  );
-}
-
-function ToggleSwitch({ on, onChange, color }: { on: boolean; onChange: (on: boolean) => void; color: string }) {
-  return (
-    <button
-      onClick={() => onChange(!on)}
-      className="relative h-6 w-11 cursor-pointer rounded-full transition-all duration-200"
-      style={{ background: on ? color : "var(--color-dark-border)" }}
-    >
-      <span
-        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-200"
-        style={{ left: on ? "calc(100% - 22px)" : "2px" }}
-      />
-    </button>
   );
 }

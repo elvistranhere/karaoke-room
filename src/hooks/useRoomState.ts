@@ -42,16 +42,6 @@ interface UseRoomStateReturn {
   chatMessages: ChatMessage[];
   participantStatus: Record<string, ParticipantStatus>;
   reactions: Reaction[];
-  // Watch mode helpers
-  sendModeSwitch: (mode: "karaoke" | "watch") => void;
-  sendWatchQueueAdd: (videoId: string, title: string) => void;
-  sendWatchQueueRemove: (videoId: string) => void;
-  sendWatchSync: (state: "playing" | "paused", time: number) => void;
-  sendWatchSpeed: (rate: number) => void;
-  sendWatchSkip: () => void;
-  sendWatchAdvance: () => void;
-  watchSync: { state: "playing" | "paused"; time: number; from: string } | null;
-  watchSpeed: number | null;
   kicked: string | null;
   authRequired: boolean;
   authFailed: boolean;
@@ -68,15 +58,6 @@ const INITIAL_ROOM_STATE: RoomState = {
   chatMessages: [],
   participantStatus: {},
   mutedBySinger: null,
-  roomMode: "karaoke",
-  watchQueue: [],
-  watchCurrentVideoId: null,
-  watchCurrentTitle: null,
-  watchCurrentAddedById: null,
-  watchCurrentAddedByName: null,
-  watchLeaderId: null,
-  watchState: null,
-  watchTime: 0,
   adminPeerId: null,
   isLocked: false,
 };
@@ -94,12 +75,9 @@ export function useRoomState({
   const [mutedBySinger, setMutedBySinger] = useState<string | null>(null);
   const [pendingMixAdjust, setPendingMixAdjust] = useState<{ fromName: string; voice: number; music: number } | null>(null);
   const [nameTaken, setNameTaken] = useState<{ name: string; suggestions: string[] } | null>(null);
-  const [watchSync, setWatchSync] = useState<{ state: "playing" | "paused"; time: number; from: string } | null>(null);
-  const [watchSpeed, setWatchSpeed] = useState<number | null>(null);
   const [kicked, setKicked] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
-  const lastWatchVideoIdRef = useRef<string | null>(null);
   const reactionIdRef = useRef(0);
   const hasSentJoinRef = useRef(false);
   const onRawMessageRef = useRef(onRawMessage);
@@ -127,22 +105,9 @@ export function useRoomState({
           participantStatus: msg.state.participantStatus ?? {},
           queue: msg.state.queue ?? [],
           participants: msg.state.participants ?? [],
-          roomMode: msg.state.roomMode ?? "karaoke",
-          watchQueue: msg.state.watchQueue ?? [],
-          watchCurrentVideoId: msg.state.watchCurrentVideoId ?? null,
-          watchCurrentTitle: msg.state.watchCurrentTitle ?? null,
-          watchCurrentAddedById: msg.state.watchCurrentAddedById ?? null,
-          watchCurrentAddedByName: msg.state.watchCurrentAddedByName ?? null,
-          watchLeaderId: msg.state.watchLeaderId ?? null,
-          watchState: msg.state.watchState ?? null,
-          watchTime: msg.state.watchTime ?? 0,
           adminPeerId: msg.state.adminPeerId ?? null,
           isLocked: msg.state.isLocked ?? false,
         };
-        if (lastWatchVideoIdRef.current !== state.watchCurrentVideoId) {
-          lastWatchVideoIdRef.current = state.watchCurrentVideoId;
-          setWatchSync(null);
-        }
         setRoomState(state);
         // Sync mutedBySinger from server state (persisted across reconnects)
         setMutedBySinger(state.mutedBySinger ?? null);
@@ -155,13 +120,6 @@ export function useRoomState({
         }
         break;
       }
-      case "watch-sync":
-        setWatchSync({ state: msg.state, time: msg.time, from: msg.from });
-        setRoomState((prev) => ({ ...prev, watchState: msg.state, watchTime: msg.time }));
-        break;
-      case "watch-speed":
-        setWatchSpeed(msg.rate);
-        break;
       case "participant-status":
         setParticipantStatus((prev) => ({
           ...prev,
@@ -311,34 +269,6 @@ export function useRoomState({
     send({ type: "mix-adjust", voice, music });
   }, [send]);
 
-  const sendModeSwitch = useCallback((mode: "karaoke" | "watch") => {
-    send({ type: "mode-switch", mode });
-  }, [send]);
-
-  const sendWatchQueueAdd = useCallback((videoId: string, title: string) => {
-    send({ type: "watch-queue-add", videoId, title });
-  }, [send]);
-
-  const sendWatchQueueRemove = useCallback((videoId: string) => {
-    send({ type: "watch-queue-remove", videoId });
-  }, [send]);
-
-  const sendWatchSync = useCallback((state: "playing" | "paused", time: number) => {
-    send({ type: "watch-sync", state, time });
-  }, [send]);
-
-  const sendWatchSpeed = useCallback((rate: number) => {
-    send({ type: "watch-speed", rate });
-  }, [send]);
-
-  const sendWatchSkip = useCallback(() => {
-    send({ type: "watch-skip" });
-  }, [send]);
-
-  const sendWatchAdvance = useCallback(() => {
-    send({ type: "watch-advance" });
-  }, [send]);
-
   const clearPendingMixAdjust = useCallback(() => {
     setPendingMixAdjust(null);
   }, []);
@@ -388,15 +318,6 @@ export function useRoomState({
     chatMessages,
     participantStatus,
     reactions,
-    sendModeSwitch,
-    sendWatchQueueAdd,
-    sendWatchQueueRemove,
-    sendWatchSync,
-    sendWatchSpeed,
-    sendWatchSkip,
-    sendWatchAdvance,
-    watchSync,
-    watchSpeed,
     kicked,
     authRequired,
     authFailed,

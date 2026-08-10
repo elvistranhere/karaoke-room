@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ChatMessage } from "~/types/room";
+import { REACTION_EMOJIS } from "~/lib/reactions";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -10,6 +11,7 @@ interface ChatPanelProps {
   myPeerId: string | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
 function formatTime(timestamp: number): string {
@@ -36,10 +38,11 @@ function nameColor(peerId: string): string {
   return colors[Math.abs(hash) % colors.length]!;
 }
 
-export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleCollapse }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleCollapse, onReact }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const reactionCooldownRef = useRef(false);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -54,6 +57,13 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
     setInput("");
   };
 
+  const handleReact = (emoji: string) => {
+    if (!onReact || reactionCooldownRef.current) return;
+    reactionCooldownRef.current = true;
+    onReact(emoji);
+    setTimeout(() => { reactionCooldownRef.current = false; }, 500);
+  };
+
   return (
     <div
       className="flex h-full flex-col rounded-2xl border"
@@ -64,33 +74,23 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between border-b px-5 py-3"
+        className="flex items-center justify-between border-b px-4 py-4"
         style={{ borderColor: "var(--color-dark-border)" }}
       >
         <h3
-          className="text-sm uppercase tracking-widest"
+          className="text-base font-medium"
           style={{
             fontFamily: "var(--font-display)",
-            color: "var(--color-primary)",
-            fontSize: "0.75rem",
+            color: "var(--color-text-primary)",
           }}
         >
-          Chat
+          Room chat
         </h3>
         <div className="flex items-center gap-2">
-          <span
-            className="rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-              background: "var(--color-primary-dim)",
-              color: "var(--color-primary)",
-            }}
-          >
-            {messages.length}
-          </span>
           {onToggleCollapse ? (
             <button
               onClick={onToggleCollapse}
-              className="cursor-pointer inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-all hover:scale-105 active:scale-95"
+              className="cursor-pointer inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-all hover:scale-105 active:scale-95"
               style={{
                 fontFamily: "var(--font-display)",
                 borderColor: "var(--color-dark-border)",
@@ -218,6 +218,27 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
           Send
         </button>
       </form>
+
+      {onReact && !collapsed ? (
+        <div
+          className="flex items-center justify-around border-t px-4 py-2.5"
+          style={{ borderColor: "var(--color-dark-border)", background: "color-mix(in srgb, var(--color-dark-card) 45%, transparent)" }}
+          aria-label="Room reactions"
+        >
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => handleReact(emoji)}
+              className="cursor-pointer rounded-lg px-2 py-1 text-lg transition-all hover:scale-125 hover:bg-[var(--color-primary-dim)] active:scale-90"
+              title={`React with ${emoji}`}
+              aria-label={`React with ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,7 +2,6 @@ import type * as Party from "partykit/server";
 
 interface RoomEntry {
   participantCount: number;
-  mode: "karaoke" | "watch";
   currentSinger: string | null;
   currentSong: string | null;
   isLocked: boolean;

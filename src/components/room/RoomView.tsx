@@ -5,24 +5,19 @@ import { useRouter } from "next/navigation";
 import { useRoomState } from "~/hooks/useRoomState";
 import { useLiveKit } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
-import { Settings as SettingsIcon } from "lucide-react";
+import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageBanner } from "./StageBanner";
-import { Toolbar } from "./Toolbar";
+import { Toolbar, type NoiseCancellationMode } from "./Toolbar";
 import { PeoplePanel } from "./PeoplePanel";
 import { ChatPanel } from "./ChatPanel";
 import { InviteCode } from "./InviteCode";
-import { StatusBar } from "./StatusBar";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { RecordingModal } from "./RecordingModal";
 import { playReactionSound } from "./ReactionBar";
-import { WatchPlayer } from "./WatchPlayer";
-import { WatchToolbar } from "./WatchToolbar";
-import { VideoQueue } from "./VideoQueue";
 import { AuthModal } from "./AuthModal";
-import { AdminModal } from "./AdminModal";
-import { Shield } from "lucide-react";
+import { JoinQueueModal } from "./JoinQueueModal";
 
 interface RoomViewProps {
   roomCode: string;
@@ -41,12 +36,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundProfileOpen, setSoundProfileOpen] = useState(false);
-  // Per-mode noise cancellation state — independent of micMode
-  // These control the constraints used during mic check and sharing
-  const [talkingNC, setTalkingNC] = useState(true);   // ON by default for talking
-  const [singingNC, setSingingNC] = useState(false);   // OFF by default for singing
+  const [joinQueueModalOpen, setJoinQueueModalOpen] = useState(false);
+  const [noiseCancellationMode, setNoiseCancellationMode] = useState<NoiseCancellationMode>("auto");
+  const talkingNC = noiseCancellationMode !== "off";
+  const singingNC = noiseCancellationMode === "on";
   const [singerMutedAll, setSingerMutedAll] = useState(false);
-  const [adminModalOpen, setAdminModalOpen] = useState(false);
   const authAutoSubmittedRef = useRef(false);
 
   const {
@@ -71,15 +65,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     chatMessages,
     participantStatus,
     reactions,
-    sendModeSwitch,
-    sendWatchQueueAdd,
-    sendWatchQueueRemove,
-    sendWatchSync,
-    sendWatchSpeed,
-    sendWatchSkip,
-    sendWatchAdvance,
-    watchSync,
-    watchSpeed,
     kicked,
     authRequired,
     authFailed,
@@ -102,19 +87,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     setMicMode,
   } = useAudioDevices();
 
-  const [sessionStartTime] = useState(() => Date.now());
   const [mobileSection, setMobileSection] = useState<"stage" | "chat" | "people">("stage");
-  const [chatCollapsed, setChatCollapsed] = useState(false);
-  // Default chat to collapsed in watch mode (video takes priority), expanded in karaoke
-  const prevModeRef = useRef(roomState.roomMode);
-  if (prevModeRef.current !== roomState.roomMode) {
-    prevModeRef.current = roomState.roomMode;
-    setChatCollapsed(roomState.roomMode === "watch");
-  }
 
   const {
     room,
-    isConnected: isLiveKitConnected,
     error: liveKitError,
     isMicEnabled,
     toggleMic,
@@ -127,7 +103,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     startSharing,
     stopSharing,
     sharingError,
-    remoteParticipantCount,
     currentSong,
     activeSpeakers,
     setMixMicGain,
@@ -135,7 +110,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     voiceEffect,
     setVoiceEffect,
     setEffectWetDry,
-    mixMicStream,
     autoMix,
     autoMixDuckedValue,
     autoMixBoostedVoice,
@@ -156,8 +130,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     talkingNC,
     singingNC,
   });
-
-  const isConnected = isPartyConnected && isLiveKitConnected;
 
   // Volume controls
   const [musicVolume, setMusicVolume] = useState(1);
@@ -407,7 +379,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   }
 
   return (
-    <main data-mode={roomState.roomMode} className="relative flex h-dvh flex-col overflow-hidden">
+    <main className="relative flex h-dvh flex-col overflow-hidden">
       {/* Audio unlock prompt — dismisses on first click to satisfy autoplay policy */}
       <AudioUnlockOverlay />
 
@@ -416,19 +388,16 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         id="ambient-bg"
         className="pointer-events-none fixed inset-0 transition-[background] duration-150"
         style={{
-          background:
-            roomState.roomMode === "watch"
-              ? "radial-gradient(ellipse 45% 45% at 18% 78%, var(--color-accent-dim), transparent), radial-gradient(ellipse 35% 35% at 78% 22%, var(--color-accent-dim), transparent)"
-              : "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-primary-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-primary-dim), transparent)",
+          background: "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-primary-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-primary-dim), transparent)",
         }}
       />
 
       {/* Header */}
       <header
-        className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-b px-2 py-2 sm:px-3 lg:flex-nowrap lg:px-6 lg:py-3"
-        style={{ borderColor: "var(--color-dark-border)" }}
+        className="relative z-10 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-3 sm:px-5 lg:px-7"
+        style={{ borderColor: "var(--color-dark-border)", background: "color-mix(in srgb, var(--color-dark-surface) 82%, transparent)" }}
       >
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
           <h1
             className="text-lg font-extrabold lg:text-xl"
             style={{
@@ -440,88 +409,31 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           >
             KaraOK
           </h1>
+          <div className="hidden h-7 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
           <div className="min-w-0">
             <InviteCode code={roomCode} />
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-          {/* Mode toggle */}
-          <div
-            className="flex items-center rounded-full border p-1"
-            style={{ borderColor: "var(--color-dark-border)", background: "rgba(9, 9, 11, 0.25)" }}
-          >
-            <button
-              className="cursor-pointer rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              style={{
-                fontFamily: "var(--font-display)",
-                background: roomState.roomMode === "karaoke" ? "var(--color-primary-dim)" : "transparent",
-                color: roomState.roomMode === "karaoke" ? "var(--color-primary)" : "var(--color-text-muted)",
-              }}
-              disabled={roomState.roomMode === "watch" && roomState.watchState === "playing"}
-              title={roomState.roomMode === "watch" && roomState.watchState === "playing" ? "Pause/stop the video to switch modes" : "Karaoke Mode"}
-              onClick={() => sendModeSwitch("karaoke")}
-            >
-              Karaoke
-            </button>
-            <button
-              className="cursor-pointer rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              style={{
-                fontFamily: "var(--font-display)",
-                background: roomState.roomMode === "watch" ? "var(--color-primary-dim)" : "transparent",
-                color: roomState.roomMode === "watch" ? "var(--color-primary)" : "var(--color-text-muted)",
-              }}
-              disabled={roomState.roomMode === "karaoke" && roomState.currentSingerId !== null}
-              title={roomState.roomMode === "karaoke" && roomState.currentSingerId !== null ? "Wait for the stage to be empty to switch modes" : "Watch Mode"}
-              onClick={() => sendModeSwitch("watch")}
-            >
-              Watch
-            </button>
-          </div>
-
-          {/* Connection status */}
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-            <div
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: isConnected ? "var(--color-success)" : "var(--color-accent)" }}
-            />
-            <span className="hidden sm:inline">
-              {isConnected ? "Connected" : "Connecting..."}
-            </span>
-          </div>
-
-          {/* Name */}
-          <EditableName name={playerName} onRename={onRename} />
-
-          {/* Admin settings */}
-          {isAdmin && (
-            <button
-              onClick={() => setAdminModalOpen(true)}
-              className="cursor-pointer rounded-lg border p-2 transition-all hover:border-[var(--color-primary)] hover:scale-105"
-              style={{ borderColor: "var(--color-dark-border)", color: "var(--color-accent)" }}
-              title="Room admin settings"
-            >
-              <Shield size={13} />
-            </button>
-          )}
-
           {/* Settings */}
           <button
             onClick={() => setSettingsOpen(true)}
-            className="cursor-pointer rounded-lg border p-2 transition-all hover:border-[var(--color-primary)] hover:scale-105"
-            style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-all hover:brightness-125 active:scale-95 sm:h-10 sm:w-10"
+            style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
             title="Settings"
           >
-            <SettingsIcon size={13} />
+            <SettingsIcon size={18} />
           </button>
 
           {/* Leave */}
           <button
             onClick={() => router.push("/")}
-            className="cursor-pointer rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 active:scale-95 sm:px-3 sm:text-xs"
-            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all hover:brightness-110 active:scale-95 sm:px-4 sm:text-sm"
+            style={{ fontFamily: "var(--font-display)", background: "#b40712", color: "#fff" }}
           >
-            Leave
+            <LogOut size={16} />
+            <span className="hidden sm:inline">Exit Room</span>
           </button>
         </div>
       </header>
@@ -576,10 +488,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
       {/* Main content */}
       <div
-        className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-4 lg:flex-row lg:gap-4 lg:overflow-hidden lg:p-4"
+        className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden p-2 lg:flex-row lg:gap-3 lg:p-4 xl:gap-4"
       >
         {/* Mobile section switcher */}
-        <div className="grid grid-cols-3 gap-1 rounded-lg border p-1 lg:hidden" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-surface)" }}>
+        <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border p-1 lg:hidden" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-surface)" }}>
           {[
             { key: "stage", label: "Stage" },
             { key: "chat", label: "Chat" },
@@ -600,135 +512,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           ))}
         </div>
 
-        {/* Left: Stage + Toolbar + Chat */}
-        <div className={`min-h-0 flex-1 flex-col gap-2 lg:flex lg:min-w-0 lg:gap-3 ${mobileSection === "people" ? "hidden" : "flex"}`}>
-          <div className={`flex-col gap-2 lg:flex lg:gap-3 ${roomState.roomMode === "watch" && roomState.watchCurrentVideoId ? "flex-1 min-h-0" : ""} ${mobileSection === "stage" ? "flex" : "hidden"}`}>
-              {roomState.roomMode === "watch" ? (
-                <>
-                  <WatchPlayer
-                    videoId={roomState.watchCurrentVideoId}
-                    title={roomState.watchCurrentTitle}
-                    isLeader={myPeerId !== null && roomState.watchLeaderId === myPeerId}
-                    watchSync={watchSync}
-                    watchSpeed={watchSpeed}
-                    onSync={sendWatchSync}
-                    onSpeedChange={sendWatchSpeed}
-                    onAdvance={sendWatchAdvance}
-                  />
-                  <WatchToolbar
-                    roomState={roomState}
-                    myPeerId={myPeerId}
-                    isMicEnabled={isMicEnabled}
-                    toggleMic={toggleMic}
-                    onSoundProfileOpen={() => setSoundProfileOpen(true)}
-                    onQueueAdd={sendWatchQueueAdd}
-                    onSkip={sendWatchSkip}
-                  />
-                </>
-              ) : (
-                <>
-                  <StageBanner
-                    room={room}
-                    roomState={roomState}
-                    isMyTurn={isMyTurn}
-                    isSharing={isSharing}
-                    onStartSharing={startSharing}
-                    onStopSharing={stopSharing}
-                    onFinishSinging={finishSinging}
-                    audioError={sharingError}
-                    singerSongName={
-                      roomState.currentSingerId
-                        ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
-                        : null
-                    }
-                    canSing={browser.canSing}
-                    musicVolume={musicVolume}
-                    onMusicVolumeChange={(vol: number) => {
-                      setMusicVolume(vol);
-                      if (roomState.currentSingerId) {
-                        const singerStatus = participantStatus[roomState.currentSingerId];
-                        const singerId = singerStatus?.lkIdentity ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name ?? "";
-                        if (singerId) setPersonVolumes((prev) => ({ ...prev, [singerId]: vol }));
-                      }
-                    }}
-                    onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v, mixMusicValue / 100); }}
-                    onMixMusicGain={(v) => { setMixMusicGain(v); setMixMusicValue(Math.round(v * 100)); broadcastMix(mixVoiceValue / 100, v); }}
-                    mixVoiceValue={autoMixBoostedVoice ?? mixVoiceValue}
-                    mixMusicValue={autoMixDuckedValue ?? mixMusicValue}
-                    ambientId="ambient-bg"
-                    ambientColor="violet"
-                    onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
-                    onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
-                    isMutedAll={singerMutedAll}
-                    singerAutoMix={roomState.currentSingerId ? participantStatus[roomState.currentSingerId]?.autoMix : false}
-                    onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
-                    onMixAdjustDone={!isMyTurn ? (voice, music) => {
-                      sendChat(`adjusted mix - Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
-                    } : undefined}
-                    autoMix={autoMix}
-                    onAutoMixChange={isSharing ? (on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); } : undefined}
-                    recordingState={recordingState}
-                    recordingDuration={recordingDuration}
-                    onStartRecording={startRecording}
-                    onStopRecording={stopRecording}
-                  />
-
-                  <Toolbar
-                    isMicEnabled={isMicEnabled}
-                    toggleMic={toggleMic}
-                    micMode={micMode}
-                    onSoundProfileOpen={() => setSoundProfileOpen(true)}
-                    onReact={sendReaction}
-                  />
-                </>
-              )}
-          </div>
-
-          {/* Chat - gets the most space */}
-          <div className={`lg:block lg:min-h-0 ${chatCollapsed ? "flex-none" : "flex-1 min-h-[200px]"} ${mobileSection === "chat" ? "block" : "hidden"}`}>
-            <ChatPanel
-              messages={chatMessages}
-              onSend={sendChat}
-              myPeerId={myPeerId}
-              collapsed={chatCollapsed}
-              onToggleCollapse={() => setChatCollapsed((c) => !c)}
-            />
-          </div>
-        </div>
-
-        {/* Right: People panel */}
-        <div className={`w-full flex-col gap-3 pb-1 lg:flex lg:w-72 lg:min-h-0 lg:overflow-auto lg:pb-0 ${mobileSection === "people" ? "flex" : "hidden"}`}>
-          {roomState.roomMode === "watch" ? (
-            <VideoQueue
-              myPeerId={myPeerId}
-              current={
-                roomState.watchCurrentVideoId
-                  ? {
-                      videoId: roomState.watchCurrentVideoId,
-                      title: roomState.watchCurrentTitle,
-                      addedByName: roomState.watchCurrentAddedByName ?? null,
-                    }
-                  : null
-              }
-              queue={roomState.watchQueue}
-              onRemove={sendWatchQueueRemove}
-            />
-          ) : null}
+        {/* Left rail: participants and singer queue */}
+        <aside className={`min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72 ${mobileSection === "people" ? "flex" : "hidden"}`}>
           <PeoplePanel
             roomState={roomState}
             myPeerId={myPeerId}
-            onJoinQueue={joinQueue}
+            onRequestJoinQueue={() => setJoinQueueModalOpen(true)}
             onLeaveQueue={leaveQueue}
-            onSetSongIntent={(song) => {
-              sendStatusUpdate({
-                isMuted: !isMicEnabled,
-                isSharingAudio: isSharing,
-                currentSong: song,
-                browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
-                lkIdentity: lkIdentity ?? undefined,
-                autoMix,
-              });
-            }}
             canSing={browser.canSing}
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
@@ -737,7 +527,98 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             onKick={isAdmin ? sendKick : undefined}
             onTransferAdmin={isAdmin ? sendTransferAdmin : undefined}
           />
-        </div>
+        </aside>
+
+        {/* Center stage */}
+        <section className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${mobileSection === "stage" ? "flex" : "hidden"} lg:flex`}>
+          <div
+            className={`flex min-h-0 flex-1 flex-col justify-center overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
+            style={{
+              background: roomState.currentSingerId
+                ? "transparent"
+                : "radial-gradient(circle at 50% 10%, var(--color-primary-dim), transparent 55%), var(--color-dark-surface)",
+              borderColor: roomState.currentSingerId ? "transparent" : "var(--color-dark-border)",
+            }}
+          >
+            <StageBanner
+              room={room}
+              roomState={roomState}
+              isMyTurn={isMyTurn}
+              isSharing={isSharing}
+              onStartSharing={startSharing}
+              onStopSharing={stopSharing}
+              onFinishSinging={finishSinging}
+              audioError={sharingError}
+              singerSongName={
+                roomState.currentSingerId
+                  ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
+                  : null
+              }
+              canSing={browser.canSing}
+              onAddToQueue={
+                roomState.queue.length === 0 && !isMyTurn && browser.canSing
+                  ? () => setJoinQueueModalOpen(true)
+                  : undefined
+              }
+              musicVolume={musicVolume}
+              onMusicVolumeChange={(vol: number) => {
+                setMusicVolume(vol);
+                if (roomState.currentSingerId) {
+                  const singerStatus = participantStatus[roomState.currentSingerId];
+                  const singerId = singerStatus?.lkIdentity ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name ?? "";
+                  if (singerId) setPersonVolumes((prev) => ({ ...prev, [singerId]: vol }));
+                }
+              }}
+              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v, mixMusicValue / 100); }}
+              onMixMusicGain={(v) => { setMixMusicGain(v); setMixMusicValue(Math.round(v * 100)); broadcastMix(mixVoiceValue / 100, v); }}
+              mixVoiceValue={autoMixBoostedVoice ?? mixVoiceValue}
+              mixMusicValue={autoMixDuckedValue ?? mixMusicValue}
+              ambientId="ambient-bg"
+              ambientColor="violet"
+              onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
+              onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
+              isMutedAll={singerMutedAll}
+              singerAutoMix={roomState.currentSingerId ? participantStatus[roomState.currentSingerId]?.autoMix : false}
+              onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
+              onMixAdjustDone={!isMyTurn ? (voice, music) => {
+                sendChat(`adjusted mix - Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
+              } : undefined}
+              autoMix={autoMix}
+              onAutoMixChange={isSharing ? (on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); } : undefined}
+              recordingState={recordingState}
+              recordingDuration={recordingDuration}
+              onStartRecording={startRecording}
+              onStopRecording={stopRecording}
+            />
+          </div>
+
+          <Toolbar
+            room={room}
+            isMicEnabled={isMicEnabled}
+            toggleMic={toggleMic}
+            micVolume={mixVoiceValue}
+            onMicVolumeChange={(volume) => {
+              const gain = volume / 100;
+              setMixVoiceValue(volume);
+              setMixMicGain(gain);
+              if (isMyTurn) broadcastMix(gain, mixMusicValue / 100);
+            }}
+            micMode={micMode}
+            noiseCancellationMode={noiseCancellationMode}
+            onNoiseCancellationModeChange={setNoiseCancellationMode}
+            onSoundProfileOpen={() => setSoundProfileOpen(true)}
+          />
+        </section>
+
+        {/* Right rail: room chat */}
+        <aside className={`min-h-0 w-full flex-1 overflow-hidden lg:block lg:w-72 lg:flex-none lg:shrink-0 xl:w-80 ${mobileSection === "chat" ? "block" : "hidden"}`}>
+          <ChatPanel
+            messages={chatMessages}
+            onSend={sendChat}
+            myPeerId={myPeerId}
+            onReact={sendReaction}
+          />
+        </aside>
       </div>
 
       {/* Floating reactions */}
@@ -759,15 +640,21 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       ) : null}
 
-      {/* Status bar */}
-      <StatusBar
-        room={room}
-        isConnected={isConnected}
-        isMicEnabled={isMicEnabled}
-        isSharing={isSharing}
-        remoteParticipantCount={remoteParticipantCount}
-        sessionStartTime={sessionStartTime}
-        mixMicStream={mixMicStream}
+      {/* Shared join-queue flow */}
+      <JoinQueueModal
+        open={joinQueueModalOpen}
+        onClose={() => setJoinQueueModalOpen(false)}
+        onJoin={joinQueue}
+        onSetSongIntent={(song) => {
+          sendStatusUpdate({
+            isMuted: !isMicEnabled,
+            isSharingAudio: isSharing,
+            currentSong: song,
+            browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
+            lkIdentity: lkIdentity ?? undefined,
+            autoMix,
+          });
+        }}
       />
 
       {/* Settings drawer */}
@@ -776,6 +663,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         onClose={() => setSettingsOpen(false)}
         voiceVolume={voiceVolume}
         onVoiceVolumeChange={setVoiceVolume}
+        displayName={playerName}
+        onRename={onRename}
+        isAdmin={isAdmin}
+        isLocked={roomState.isLocked}
+        onSetPassword={isAdmin ? sendSetPassword : undefined}
       />
 
       {/* Sound Profile Modal */}
@@ -783,14 +675,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         open={soundProfileOpen}
         onClose={() => setSoundProfileOpen(false)}
         micMode={micMode}
-        onMicModeChange={setMicMode}
         voiceEffect={voiceEffect}
         onVoiceEffectChange={setVoiceEffect}
         onEffectWetDry={setEffectWetDry}
-        talkingNoiseCancellation={talkingNC}
-        onTalkingNoiseCancellationChange={setTalkingNC}
-        singingNoiseCancellation={singingNC}
-        onSingingNoiseCancellationChange={setSingingNC}
+        noiseCancellationMode={noiseCancellationMode}
+        onNoiseCancellationModeChange={setNoiseCancellationMode}
 
         inputDevices={inputDevices}
         outputDevices={outputDevices}
@@ -815,55 +704,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         />
       )}
 
-      {/* Admin settings modal */}
-      <AdminModal
-        open={adminModalOpen}
-        onClose={() => setAdminModalOpen(false)}
-        isLocked={roomState.isLocked}
-        onSetPassword={sendSetPassword}
-      />
     </main>
-  );
-}
-
-function EditableName({ name, onRename }: { name: string; onRename?: (n: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
-
-  if (!onRename) return null;
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { setDraft(name); setEditing(true); }}
-        className="flex cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all hover:border-[var(--color-primary)] hover:scale-105"
-        style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-        title="Click to change name"
-      >
-        {name}
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-        </svg>
-      </button>
-    );
-  }
-
-  const submit = () => {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== name) onRename(trimmed);
-    setEditing(false);
-  };
-
-  return (
-    <input
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value.slice(0, 20))}
-      onBlur={submit}
-      onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setEditing(false); }}
-      className="w-24 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-      style={{ background: "var(--color-dark-card)", borderColor: "var(--color-primary)", color: "var(--color-text-primary)" }}
-    />
   );
 }
 

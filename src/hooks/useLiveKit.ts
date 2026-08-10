@@ -47,7 +47,6 @@ interface UseLiveKitReturn {
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   sharingError: string | null;
-  remoteParticipantCount: number;
   currentSong: string | null;
   activeSpeakers: Set<string>;
   setMixMicGain: (val: number) => void;
@@ -86,7 +85,6 @@ export function useLiveKit({
   const [isMicEnabled, setIsMicEnabled] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [sharingError, setSharingError] = useState<string | null>(null);
-  const [remoteParticipantCount, setRemoteParticipantCount] = useState(0);
   const [currentSong, setCurrentSong] = useState<string | null>(null);
 
   const [micCheckState, setMicCheckState] = useState<MicCheckState>("idle");
@@ -228,14 +226,6 @@ export function useLiveKit({
       },
     );
 
-    // Participant count
-    const updateCount = () => {
-      if (cancelled) return;
-      setRemoteParticipantCount(room.remoteParticipants.size);
-    };
-    room.on(RoomEvent.ParticipantConnected, updateCount);
-    room.on(RoomEvent.ParticipantDisconnected, updateCount);
-
     // Active speakers — highlight who is talking
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       if (cancelled) return;
@@ -264,7 +254,6 @@ export function useLiveKit({
       if (!cancelled) {
         setIsConnected(true);
         setError(null);
-        updateCount();
       }
     });
 
@@ -309,7 +298,6 @@ export function useLiveKit({
         console.log("[LiveKit] Connected! Local participant:", room.localParticipant.identity);
         setIsConnected(true);
         setError(null);
-        updateCount();
 
         // Token refresh: re-fetch token every 30min to keep the LiveKit session alive
         // past the 1hr token TTL, and refresh the Redis room mapping TTL (prevents
@@ -542,6 +530,40 @@ export function useLiveKit({
       }
     })();
   }, [micMode, isConnected, isMicEnabled, talkingNC, singingNC]);
+
+  // Re-publish the normal microphone when noise cancellation changes for the
+  // active profile. The singing mix has its own hot-swap path below.
+  const prevTalkingNCRef = useRef(talkingNC);
+  const prevPublishedSingingNCRef = useRef(singingNC);
+  useEffect(() => {
+    const talkingChanged = prevTalkingNCRef.current !== talkingNC;
+    const singingChanged = prevPublishedSingingNCRef.current !== singingNC;
+    prevTalkingNCRef.current = talkingNC;
+    prevPublishedSingingNCRef.current = singingNC;
+
+    const activeProfileChanged = micMode === "voice" ? talkingChanged : singingChanged;
+    const room = roomRef.current;
+    if (!activeProfileChanged || !room || !isConnected || !isMicEnabled || mixPubRef.current) return;
+
+    const isRaw = micMode === "raw";
+    const nc = isRaw ? singingNC : talkingNC;
+    void (async () => {
+      try {
+        await room.localParticipant.setMicrophoneEnabled(false);
+        room.options.audioCaptureDefaults = {
+          ...room.options.audioCaptureDefaults,
+          echoCancellation: nc,
+          noiseSuppression: nc,
+          autoGainControl: nc,
+          channelCount: isRaw ? 2 : 1,
+          sampleRate: isRaw ? 48000 : undefined,
+        };
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch (err) {
+        console.error("[LiveKit] Error updating noise cancellation:", err);
+      }
+    })();
+  }, [talkingNC, singingNC, micMode, isConnected, isMicEnabled]);
 
   // --- Hot-swap NC during sharing ---
   // When NC toggle changes while sharing, re-capture mic with new constraints
@@ -1544,7 +1566,6 @@ export function useLiveKit({
     startSharing,
     stopSharing,
     sharingError,
-    remoteParticipantCount,
     currentSong,
     activeSpeakers,
     setMixMicGain,

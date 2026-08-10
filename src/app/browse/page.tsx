@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Mic, Tv, Lock, ArrowLeft, RefreshCw } from "lucide-react";
+import { Users, Mic, Lock, ArrowLeft, RefreshCw } from "lucide-react";
 
 interface RoomEntry {
   code: string;
   participantCount: number;
-  mode: "karaoke" | "watch";
   currentSinger: string | null;
   currentSong: string | null;
   isLocked: boolean;
@@ -138,11 +137,7 @@ export default function BrowsePage() {
                     {room.isLocked && (
                       <Lock size={14} style={{ color: "var(--color-accent)" }} />
                     )}
-                    {room.mode === "karaoke" ? (
-                      <Mic size={14} style={{ color: "var(--color-primary)" }} />
-                    ) : (
-                      <Tv size={14} style={{ color: "var(--color-primary)" }} />
-                    )}
+                    <Mic size={14} style={{ color: "var(--color-primary)" }} />
                   </div>
                 </div>
 

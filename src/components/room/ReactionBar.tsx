@@ -5,36 +5,13 @@ import type { Reaction } from "~/hooks/useRoomState";
 
 const REACTIONS = [
   { emoji: "🔥", label: "Fire" },
-  { emoji: "👏", label: "Clap" },
-  { emoji: "😍", label: "Love" },
-  { emoji: "🎵", label: "Music" },
   { emoji: "💯", label: "100" },
-  { emoji: "🙌", label: "Raise" },
-  { emoji: "😂", label: "Laugh" },
-  { emoji: "💀", label: "Skull" },
-  { emoji: "👎", label: "Thumbs Down" },
-  { emoji: "😴", label: "Sleep" },
+  { emoji: "😢", label: "Sad" },
+  { emoji: "🎵", label: "Music" },
+  { emoji: "❤️", label: "Heart" },
 ];
 
 // --- Web Audio API synthesized sounds (zero dependencies) ---
-
-function playClap(ctx: AudioContext) {
-  const buf = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.02));
-  }
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  const filter = ctx.createBiquadFilter();
-  filter.type = "highpass";
-  filter.frequency.value = 1000;
-  const gain = ctx.createGain();
-  gain.gain.value = 0.11;
-  src.connect(filter).connect(gain).connect(ctx.destination);
-  src.start();
-  return src;
-}
 
 function playPop(ctx: AudioContext, freq: number) {
   const osc = ctx.createOscillator();
@@ -81,22 +58,6 @@ function playShimmer(ctx: AudioContext) {
   });
 }
 
-function playSleepShimmer(ctx: AudioContext) {
-  [220, 330, 440].forEach((freq, i) => {
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    const gain = ctx.createGain();
-    const t = ctx.currentTime + i * 0.09;
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.03, t + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.57);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.57);
-  });
-}
-
 // Shared AudioContext for all reaction sounds — avoids Chrome's context limit
 let reactionCtx: AudioContext | null = null;
 function getReactionCtx(): AudioContext {
@@ -116,32 +77,17 @@ export function playReactionSound(emoji: string) {
       case "🔥":
         playChime(ctx, [440, 554, 659, 880]);
         break;
-      case "👏":
-        playClap(ctx);
-        break;
-      case "😍":
-        playShimmer(ctx);
-        break;
       case "🎵":
         playChime(ctx, [523, 659, 784]);
         break;
       case "💯":
         playPop(ctx, 1200);
         break;
-      case "🙌":
-        playChime(ctx, [659, 784, 988, 1047]);
-        break;
-      case "😂":
-        playChime(ctx, [330, 392, 440]);
-        break;
-      case "💀":
-        playPop(ctx, 220);
-        break;
-      case "👎":
+      case "😢":
         playChime(ctx, [440, 330, 220]);
         break;
-      case "😴":
-        playSleepShimmer(ctx);
+      case "❤️":
+        playShimmer(ctx);
         break;
       default:
         playPop(ctx, 880);

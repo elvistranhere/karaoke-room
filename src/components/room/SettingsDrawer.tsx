@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Lock, LockOpen } from "lucide-react";
 
 interface SettingsDrawerProps {
   open: boolean;
   onClose: () => void;
   voiceVolume: number;
   onVoiceVolumeChange: (vol: number) => void;
+  displayName?: string;
+  onRename?: (name: string) => void;
+  isAdmin?: boolean;
+  isLocked?: boolean;
+  onSetPassword?: (password: string | null) => void;
 }
 
 export function SettingsDrawer({
@@ -14,7 +20,21 @@ export function SettingsDrawer({
   onClose,
   voiceVolume,
   onVoiceVolumeChange,
+  displayName = "",
+  onRename,
+  isAdmin = false,
+  isLocked = false,
+  onSetPassword,
 }: SettingsDrawerProps) {
+  const [password, setPassword] = useState("");
+  const [nameDraft, setNameDraft] = useState(displayName);
+
+  useEffect(() => {
+    if (!open) return;
+    setPassword("");
+    setNameDraft(displayName);
+  }, [open, isLocked, displayName]);
+
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -23,6 +43,20 @@ export function SettingsDrawer({
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const savePassword = () => {
+    if (!onSetPassword) return;
+    const trimmed = password.trim();
+    if (!trimmed) return;
+    onSetPassword(trimmed);
+    setPassword("");
+  };
+
+  const removePassword = () => {
+    if (!onSetPassword || !isLocked) return;
+    onSetPassword(null);
+    setPassword("");
+  };
 
   return (
     <>
@@ -44,7 +78,7 @@ export function SettingsDrawer({
       >
         <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--color-dark-border)" }}>
           <h2
-            className="text-sm font-semibold uppercase tracking-widest"
+            className="text-lg font-medium"
             style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
           >
             Settings
@@ -61,9 +95,41 @@ export function SettingsDrawer({
         </div>
 
         <div className="flex-1 space-y-6 overflow-auto p-5">
+          {onRename ? (
+            <section>
+              <label htmlFor="display-name" className="mb-2 block text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                Display name
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="display-name"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value.slice(0, 20))}
+                  className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
+                  style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+                  onKeyDown={(e) => {
+                    const trimmed = nameDraft.trim();
+                    if (e.key === "Enter" && trimmed && trimmed !== displayName) onRename(trimmed);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const trimmed = nameDraft.trim();
+                    if (trimmed && trimmed !== displayName) onRename(trimmed);
+                  }}
+                  disabled={!nameDraft.trim() || nameDraft.trim() === displayName}
+                  className="rounded-lg px-3 text-xs font-semibold transition-all enabled:cursor-pointer enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
+                >
+                  Save
+                </button>
+              </div>
+            </section>
+          ) : null}
+
           {/* App Volume */}
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
+          <div className={onRename ? "border-t pt-5" : ""} style={{ borderColor: "var(--color-dark-border)" }}>
+            <label className="mb-2 block text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
               App Volume
             </label>
             <div className="flex items-center gap-3">
@@ -82,6 +148,78 @@ export function SettingsDrawer({
             </p>
           </div>
 
+          {isAdmin && onSetPassword ? (
+            <section className="border-t pt-5" style={{ borderColor: "var(--color-dark-border)" }}>
+              <div className="mb-1 flex items-center gap-2">
+                {isLocked
+                  ? <Lock size={15} style={{ color: "var(--color-primary)" }} />
+                  : <LockOpen size={15} style={{ color: "var(--color-text-muted)" }} />}
+                <h3 className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+                  Room password
+                </h3>
+              </div>
+              <p className="mb-4 text-[11px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+                Only you, the room admin, can manage this setting.
+              </p>
+
+              <div
+                className="mb-4 flex items-center gap-3 rounded-xl border p-3"
+                style={{
+                  background: isLocked ? "var(--color-primary-dim)" : "var(--color-dark-surface)",
+                  borderColor: isLocked ? "color-mix(in srgb, var(--color-primary) 35%, var(--color-dark-border))" : "var(--color-dark-border)",
+                }}
+              >
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: isLocked ? "var(--color-primary)" : "var(--color-dark-card)", color: isLocked ? "#fff" : "var(--color-text-muted)" }}
+                >
+                  {isLocked ? <Lock size={14} /> : <LockOpen size={14} />}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                    {isLocked ? "Password protected" : "No password required"}
+                  </p>
+                  <p className="mt-0.5 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                    {isLocked ? "Guests must enter it before joining." : "Anyone with the room code can join."}
+                  </p>
+                </div>
+              </div>
+
+              <label htmlFor="room-password" className="mb-2 block text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                {isLocked ? "Change password" : "Create a password"}
+              </label>
+              <input
+                id="room-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isLocked ? "Enter a new password" : "Enter a password"}
+                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
+                style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+                onKeyDown={(e) => { if (e.key === "Enter") savePassword(); }}
+              />
+
+              <button
+                onClick={savePassword}
+                disabled={!password.trim()}
+                className="mt-3 w-full rounded-lg py-2.5 text-xs font-bold transition-all enabled:cursor-pointer enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
+              >
+                {isLocked ? "Change password" : "Set password"}
+              </button>
+
+              {isLocked ? (
+                <button
+                  onClick={removePassword}
+                  className="mt-2 w-full cursor-pointer rounded-lg border py-2.5 text-xs font-medium transition-all hover:brightness-110"
+                  style={{ fontFamily: "var(--font-display)", background: "var(--color-danger-dim)", borderColor: "color-mix(in srgb, var(--color-danger) 35%, transparent)", color: "var(--color-danger)" }}
+                >
+                  Remove password protection
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+
           <div className="rounded-lg p-4 text-center" style={{ background: "var(--color-dark-surface)" }}>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
               Mic settings, voice effects, and device selection are in
@@ -98,4 +236,3 @@ export function SettingsDrawer({
     </>
   );
 }
-

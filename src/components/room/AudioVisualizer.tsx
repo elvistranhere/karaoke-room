@@ -10,6 +10,8 @@ interface AudioVisualizerProps {
   children: React.ReactNode;
   ambientId?: string;
   ambientColor?: "violet" | "amber";
+  framed?: boolean;
+  className?: string;
 }
 
 // Per-instance state is now inside the component via refs (not module-level)
@@ -59,7 +61,7 @@ function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | 
   return { bass, mid, high, overall };
 }
 
-export function AudioVisualizer({ room, isActive, children, ambientId, ambientColor = "violet" }: AudioVisualizerProps) {
+export function AudioVisualizer({ room, isActive, children, ambientId, ambientColor = "violet", framed = true, className = "" }: AudioVisualizerProps) {
   const rafRef = useRef<number>(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const trackCheckCounter = useRef(0);
@@ -197,9 +199,9 @@ export function AudioVisualizer({ room, isActive, children, ambientId, ambientCo
   return (
     <div
       ref={wrapperRef}
-      className="rounded-xl border transition-[border-color] duration-150"
+      className={`${framed ? "rounded-2xl border transition-[border-color] duration-150" : ""} ${className}`}
       style={{
-        borderColor: isActive ? "rgba(139, 92, 246, 0.4)" : "var(--color-dark-border)",
+        borderColor: framed ? (isActive ? "rgba(139, 92, 246, 0.4)" : "var(--color-dark-border)") : undefined,
       }}
     >
       {children}
