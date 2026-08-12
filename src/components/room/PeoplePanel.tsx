@@ -223,7 +223,7 @@ export function PeoplePanel({
       </ul>
 
       {/* Song queue */}
-      {roomState.queue.length > 0 && <section className="flex max-h-[46%] shrink-0 flex-col border-t" style={{ borderColor: "var(--color-dark-border)" }}>
+      {(roomState.currentSingerId !== null || roomState.queue.length > 0) && <section className="flex max-h-[46%] shrink-0 flex-col border-t" style={{ borderColor: "var(--color-dark-border)" }}>
         <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
           <h3 className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "color-mix(in srgb, var(--color-primary) 65%, white)" }}>
             Song Queue
@@ -233,7 +233,8 @@ export function PeoplePanel({
           </span>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-3 pb-2">
+        {roomState.queue.length > 0 ? (
+          <div className="min-h-0 overflow-y-auto px-3 pb-2">
             <ul className="space-y-1">
               {roomState.queue.map((id, i) => {
                 const participant = roomState.participants.find((p) => p.id === id);
@@ -259,7 +260,12 @@ export function PeoplePanel({
                 );
               })}
             </ul>
-        </div>
+          </div>
+        ) : (
+          <p className="px-4 pb-3 text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+            The queue is empty. Add a song to sing next.
+          </p>
+        )}
 
         <div className="shrink-0 px-3 pb-3 pt-1">
         {!isInQueueOrSinging ? (

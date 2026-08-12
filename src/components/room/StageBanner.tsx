@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
-import { Mic, Music, VolumeX, Volume2, Circle, Square, Wand2, Plus } from "lucide-react";
+import { Mic, Music, VolumeX, Volume1, Volume2, Circle, Square, Wand2, SlidersHorizontal, ChevronDown, Plus } from "lucide-react";
 import type { RecordingState } from "~/hooks/useLiveKit";
 import { AudioVisualizer } from "./AudioVisualizer";
 
@@ -77,11 +77,30 @@ export function StageBanner({
   onStartRecording,
   onStopRecording,
 }: StageBannerProps) {
+  const [liveRoomLevel, setLiveRoomLevel] = useState(0);
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
   );
 
   const isSomeoneSinging = !!roomState.currentSingerId;
+  const roomVolumePercent = Math.round(musicVolume * 100);
+  const RoomVolumeIcon = roomVolumePercent === 0 ? VolumeX : roomVolumePercent < 50 ? Volume1 : Volume2;
+  const meterBars = [0.35, 0.55, 0.78, 1, 0.78, 0.55, 0.35];
+
+  useEffect(() => {
+    if (!room || !isSomeoneSinging || isMyTurn || roomVolumePercent === 0) {
+      setLiveRoomLevel(0);
+      return;
+    }
+
+    const updateLevel = () => {
+      const remoteLevel = Math.max(0, ...Array.from(room.remoteParticipants.values(), (participant) => participant.audioLevel || 0));
+      setLiveRoomLevel((previous) => previous * 0.55 + Math.min(1, remoteLevel) * 0.45);
+    };
+    updateLevel();
+    const interval = window.setInterval(updateLevel, 75);
+    return () => window.clearInterval(interval);
+  }, [room, isSomeoneSinging, isMyTurn, roomVolumePercent]);
 
   // No one singing — compact idle state
   if (!isSomeoneSinging) {
@@ -135,9 +154,8 @@ export function StageBanner({
             <Mic size={23} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-success)" }}>Live performance</span>
+            <div className="mb-1 flex items-center">
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: "color-mix(in srgb, var(--color-success) 12%, transparent)", color: "var(--color-success)" }}>Live performance</span>
             </div>
             <h2 className="truncate text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
               {currentSinger?.name ?? "Unknown"} is singing
@@ -146,9 +164,26 @@ export function StageBanner({
               {singerSongName || "Song unknown"}
             </p>
           </div>
-          <div className="hidden h-10 items-center gap-1 sm:flex" aria-hidden="true">
-            {[12, 22, 34, 26, 38, 20, 12].map((height, index) => (
-              <span key={`${height}-${index}`} className="w-1 rounded-full" style={{ height, background: "#9d5cff", opacity: 0.5 + index * 0.05 }} />
+          <div
+            className="hidden h-10 shrink-0 items-center gap-1 sm:flex"
+            role="meter"
+            aria-label="Live room audio level"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(liveRoomLevel * roomVolumePercent)}
+            title={roomVolumePercent === 0 ? "Room audio muted" : `Room audio level ${Math.round(liveRoomLevel * 100)}%`}
+          >
+            {meterBars.map((shape, index) => (
+              <span
+                key={`${shape}-${index}`}
+                className="w-0.5 rounded-full"
+                style={{
+                  height: `${Math.max(5, Math.min(38, 5 + liveRoomLevel * 40 * shape))}px`,
+                  background: roomVolumePercent === 0 ? "var(--color-text-muted)" : "#b78cff",
+                  opacity: roomVolumePercent === 0 ? 0.25 : 0.55 + liveRoomLevel * 0.45,
+                  transition: "height 90ms ease-out, opacity 120ms ease-out",
+                }}
+              />
             ))}
           </div>
         </div>
@@ -158,11 +193,11 @@ export function StageBanner({
           <div className="mt-5 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-medium text-white">Room volume</span>
-              <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>{Math.round(musicVolume * 100)}%</span>
+              <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>{roomVolumePercent}%</span>
             </div>
             <div className="flex items-center gap-2">
-              <Volume2 size={14} style={{ color: "var(--color-text-muted)" }} />
-              <input type="range" min="0" max="100" value={Math.round(musicVolume * 100)} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider flex-1" aria-label="Room volume" />
+              <RoomVolumeIcon size={14} style={{ color: roomVolumePercent === 0 ? "var(--color-text-muted)" : "var(--color-primary)" }} />
+              <input type="range" min="0" max="100" value={roomVolumePercent} onChange={(e) => onMusicVolumeChange(Number(e.target.value) / 100)} className="volume-slider flex-1" aria-label="Room volume" />
             </div>
           </div>
         )}
@@ -364,12 +399,22 @@ function formatDuration(s: number) {
 }
 
 function MixSlider({ label, icon, value, onChange, disabled }: { label: string; icon: React.ReactNode; value: number; onChange: (val: number) => void; disabled?: boolean }) {
+  const fill = Math.min(100, (value / 150) * 100);
   return (
-    <div className="flex items-center gap-2" style={disabled ? { opacity: 0.6, pointerEvents: "none" } : undefined}>
-      {icon}
-      <span className="w-10 text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>{disabled ? "auto" : label}</span>
-      <input type="range" min="0" max="150" value={value} onChange={(e) => onChange(Number(e.target.value))} className="volume-slider flex-1" disabled={disabled} />
-      <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{value}</span>
+    <div className="flex items-center gap-3" style={disabled ? { opacity: 0.6, pointerEvents: "none" } : undefined}>
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-dark-card)" }}>{icon}</span>
+      <span className="w-11 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--color-text-secondary)" }}>{disabled ? "auto" : label}</span>
+      <input
+        type="range"
+        min="0"
+        max="150"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="volume-slider flex-1"
+        style={{ background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)` }}
+        disabled={disabled}
+      />
+      <span className="w-7 text-right text-[11px] tabular-nums" style={{ color: "var(--color-text-secondary)" }}>{value}</span>
     </div>
   );
 }
@@ -440,11 +485,17 @@ function ListenerMixControl({ voiceValue, musicValue, onAdjust, onDone }: { voic
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium transition-all hover:border-[var(--color-primary)] hover:brightness-110"
-        style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
+        className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-dark-border))] hover:bg-[var(--color-primary-dim)] active:scale-[0.995]"
+        style={{ background: "color-mix(in srgb, var(--color-dark-card) 55%, transparent)", borderColor: "var(--color-dark-border)" }}
       >
-        <Wand2 size={12} />
-        Adjust room mix
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}>
+          <SlidersHorizontal size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold" style={{ color: "var(--color-text-primary)" }}>Room mix</span>
+          <span className="mt-0.5 block text-[10px]" style={{ color: "var(--color-text-muted)" }}>Balance voice and music for everyone</span>
+        </span>
+        <ChevronDown size={15} style={{ color: "var(--color-text-muted)" }} />
       </button>
     );
   }
@@ -455,14 +506,20 @@ function ListenerMixControl({ voiceValue, musicValue, onAdjust, onDone }: { voic
   };
 
   return (
-    <div className="mt-2 space-y-1.5 border-t pt-2" style={{ borderColor: "var(--color-dark-border)" }}>
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Adjust for everyone</span>
-        <button onClick={() => setExpanded(false)} className="cursor-pointer text-[9px]" style={{ color: "var(--color-text-muted)" }}>hide</button>
+    <div className="mt-3 rounded-xl border p-3.5" style={{ background: "color-mix(in srgb, var(--color-dark-card) 55%, transparent)", borderColor: "color-mix(in srgb, var(--color-primary) 25%, var(--color-dark-border))", animation: "fade-in 0.18s ease-out" }}>
+      <div className="mb-3 flex items-center gap-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}>
+          <SlidersHorizontal size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold" style={{ color: "var(--color-text-primary)" }}>Room mix</span>
+          <span className="block text-[10px]" style={{ color: "var(--color-text-muted)" }}>Changes are shared with everyone</span>
+        </span>
+        <button onClick={() => setExpanded(false)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-colors hover:bg-[var(--color-dark-card)]" style={{ color: "var(--color-text-secondary)" }}>Done</button>
       </div>
-      <div onPointerUp={handleRelease} onKeyUp={(e) => { if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) handleRelease(); }}>
-        <MixSlider label="Voice" icon={<Mic size={12} style={{ color: "var(--color-primary)" }} />} value={voice} onChange={(v) => { setVoice(v); sendThrottled(v, music); }} />
-        <MixSlider label="Music" icon={<Music size={12} style={{ color: "var(--color-accent)" }} />} value={music} onChange={(v) => { setMusic(v); sendThrottled(voice, v); }} />
+      <div className="space-y-2" onPointerUp={handleRelease} onKeyUp={(e) => { if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) handleRelease(); }}>
+        <MixSlider label="Voice" icon={<Mic size={13} style={{ color: "var(--color-primary)" }} />} value={voice} onChange={(v) => { setVoice(v); sendThrottled(v, music); }} />
+        <MixSlider label="Music" icon={<Music size={13} style={{ color: "var(--color-accent)" }} />} value={music} onChange={(v) => { setMusic(v); sendThrottled(voice, v); }} />
       </div>
     </div>
   );
