@@ -25,7 +25,7 @@ Never use em dashes (—). Use regular dashes (-) or rewrite the sentence.
 
 ## Architecture
 
-**KaraOK** is a real-time karaoke room app. Three systems work together:
+**Karaoke Now** is a real-time karaoke room app. Three systems work together:
 
 1. **PartyKit** (`party/`) — Cloudflare Durable Objects for room state (participants, queue, chat, mute-all). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
 

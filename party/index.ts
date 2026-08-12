@@ -451,7 +451,7 @@ export default class KaraokeRoom implements Party.Server {
     if (!trimmedText) return;
     const chatMsg: ChatMessage = {
       from: "system",
-      fromName: "KaraOK",
+      fromName: "Karaoke Now",
       text: trimmedText,
       timestamp: Date.now(),
     };
@@ -790,10 +790,10 @@ export default class KaraokeRoom implements Party.Server {
       isLocked: this.passwordHash !== null,
     });
 
-    const registry = this.room.parties.registry;
+    const registry = this.room.context.parties.registry;
     if (!registry) return;
     const stub = registry.get("global");
-    void stub.fetch(`?room=${encodeURIComponent(this.room.id)}`, {
+    void stub.fetch(`/?room=${encodeURIComponent(this.room.id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
@@ -801,10 +801,10 @@ export default class KaraokeRoom implements Party.Server {
   }
 
   private deleteFromRegistry() {
-    const registry = this.room.parties.registry;
+    const registry = this.room.context.parties.registry;
     if (!registry) return;
     const stub = registry.get("global");
-    void stub.fetch(`?room=${encodeURIComponent(this.room.id)}`, {
+    void stub.fetch(`/?room=${encodeURIComponent(this.room.id)}`, {
       method: "DELETE",
     }).catch(() => {});
   }

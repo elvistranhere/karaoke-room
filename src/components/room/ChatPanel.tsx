@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ChatMessage } from "~/types/room";
 import { REACTION_EMOJIS } from "~/lib/reactions";
+import { chatNameColor } from "~/lib/chatColors";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -17,25 +18,6 @@ interface ChatPanelProps {
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
-}
-
-// Deterministic color for a given peer ID - uses fixed palette that works on dark bg in both modes
-function nameColor(peerId: string): string {
-  const colors = [
-    "var(--chat-name-1)",
-    "var(--chat-name-2)",
-    "var(--chat-name-3)",
-    "var(--chat-name-4)",
-    "var(--chat-name-5)",
-    "var(--chat-name-6)",
-    "var(--chat-name-7)",
-    "var(--chat-name-8)",
-  ];
-  let hash = 0;
-  for (let i = 0; i < peerId.length; i++) {
-    hash = (hash * 31 + peerId.charCodeAt(i)) | 0;
-  }
-  return colors[Math.abs(hash) % colors.length]!;
 }
 
 export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleCollapse, onReact }: ChatPanelProps) {
@@ -114,7 +96,7 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
             <span className="shrink-0 text-[10px] tabular-nums" style={{ color: "var(--color-text-secondary)" }}>
               {formatTime(last.timestamp)}
             </span>
-            <span className="text-xs font-semibold" style={{ color: isMe ? "var(--color-primary)" : nameColor(last.from) }}>
+            <span className="text-xs font-semibold" style={{ color: isMe ? "var(--color-primary)" : chatNameColor(last.from) }}>
               {last.fromName}
             </span>
             <span className="truncate text-xs" style={{ color: "var(--color-text-muted)" }}>
@@ -152,7 +134,7 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
                     </span>
                     <span
                       className="text-xs font-semibold"
-                      style={{ color: isMe ? "var(--color-primary)" : nameColor(msg.from) }}
+                      style={{ color: isMe ? "var(--color-primary)" : chatNameColor(msg.from) }}
                     >
                       {msg.fromName}
                       {isMe && (

@@ -1,6 +1,6 @@
 # Neon Pulse Design System
 
-Neon Pulse is the visual system for KaraOK, a social online karaoke platform. It combines premium dark surfaces, vibrant neon accents, and focused interaction patterns suited to high-energy shared rooms.
+Neon Pulse is the visual system for Karaoke Now, a social online karaoke platform. It combines premium dark surfaces, vibrant neon accents, and focused interaction patterns suited to high-energy shared rooms.
 
 ## Vision
 

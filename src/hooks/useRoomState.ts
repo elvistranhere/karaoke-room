@@ -19,6 +19,10 @@ export interface Reaction {
   left: number; // random horizontal position (0-100%), set once at creation
 }
 
+export interface FloatingChatMessage extends ChatMessage {
+  id: string;
+}
+
 interface UseRoomStateReturn {
   roomState: RoomState;
   myPeerId: string | null;
@@ -40,6 +44,7 @@ interface UseRoomStateReturn {
   nameTaken: { name: string; suggestions: string[] } | null;
   clearNameTaken: () => void;
   chatMessages: ChatMessage[];
+  floatingChatMessages: FloatingChatMessage[];
   participantStatus: Record<string, ParticipantStatus>;
   reactions: Reaction[];
   kicked: string | null;
@@ -70,6 +75,7 @@ export function useRoomState({
   const [roomState, setRoomState] = useState<RoomState>(INITIAL_ROOM_STATE);
   const [myPeerId, setMyPeerId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [floatingChatMessages, setFloatingChatMessages] = useState<FloatingChatMessage[]>([]);
   const [participantStatus, setParticipantStatus] = useState<Record<string, ParticipantStatus>>({});
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [mutedBySinger, setMutedBySinger] = useState<string | null>(null);
@@ -79,6 +85,7 @@ export function useRoomState({
   const [authRequired, setAuthRequired] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const reactionIdRef = useRef(0);
+  const floatingChatIdRef = useRef(0);
   const hasSentJoinRef = useRef(false);
   const onRawMessageRef = useRef(onRawMessage);
 
@@ -133,15 +140,24 @@ export function useRoomState({
           return next;
         });
         break;
-      case "chat":
+      case "chat": {
+        const chatMessage = { from: msg.from, fromName: msg.fromName, text: msg.text, timestamp: msg.timestamp };
         setChatMessages((prev) => {
-          const updated = [...prev, { from: msg.from, fromName: msg.fromName, text: msg.text, timestamp: msg.timestamp }];
+          const updated = [...prev, chatMessage];
           if (updated.length > 100) {
             return updated.slice(-100);
           }
           return updated;
         });
+        if (msg.from !== "system") {
+          const floatingId = `chat-${++floatingChatIdRef.current}`;
+          setFloatingChatMessages((prev) => [...prev, { ...chatMessage, id: floatingId }].slice(-3));
+          setTimeout(() => {
+            setFloatingChatMessages((prev) => prev.filter((message) => message.id !== floatingId));
+          }, 4000);
+        }
         break;
+      }
       case "reaction": {
         const reactionId = `r-${++reactionIdRef.current}`;
         setReactions((prev) => {
@@ -316,6 +332,7 @@ export function useRoomState({
     nameTaken,
     clearNameTaken,
     chatMessages,
+    floatingChatMessages,
     participantStatus,
     reactions,
     kicked,

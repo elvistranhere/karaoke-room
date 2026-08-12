@@ -16,6 +16,7 @@ import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { RecordingModal } from "./RecordingModal";
 import { playReactionSound } from "./ReactionBar";
+import { chatNameColor } from "~/lib/chatColors";
 import { AuthModal } from "./AuthModal";
 import { JoinQueueModal } from "./JoinQueueModal";
 
@@ -63,6 +64,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     nameTaken,
     clearNameTaken,
     chatMessages,
+    floatingChatMessages,
     participantStatus,
     reactions,
     kicked,
@@ -109,6 +111,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     setMixMusicGain,
     voiceEffect,
     setVoiceEffect,
+    effectWetDry,
     setEffectWetDry,
     autoMix,
     autoMixDuckedValue,
@@ -407,7 +410,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               WebkitTextFillColor: "transparent",
             }}
           >
-            KaraOK
+            Karaoke Now
           </h1>
           <div className="hidden h-7 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
           <div className="min-w-0">
@@ -532,7 +535,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         {/* Center stage */}
         <section className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${mobileSection === "stage" ? "flex" : "hidden"} lg:flex`}>
           <div
-            className={`flex min-h-0 flex-1 flex-col justify-center overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
+            className={`relative flex min-h-0 flex-1 flex-col justify-center overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
             style={{
               background: roomState.currentSingerId
                 ? "transparent"
@@ -590,6 +593,65 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onStartRecording={startRecording}
               onStopRecording={stopRecording}
             />
+          {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
+          {(reactions.length > 0 || floatingChatMessages.length > 0) && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">
+              <div className="absolute inset-0 overflow-hidden">
+                {reactions.map((reaction) => (
+                  <div
+                    key={reaction.id}
+                    className="absolute bottom-2"
+                    style={{
+                      left: `clamp(4.5rem, ${reaction.left}%, calc(100% - 4.5rem))`,
+                      transform: "translateX(-50%)",
+                    }}
+                  >
+                    <div
+                      className="flex max-w-[min(14rem,calc(100vw-2rem))] items-center gap-2 rounded-full border px-3.5 py-2 backdrop-blur-md will-change-transform"
+                      style={{
+                        animation: "reaction-bubble-float 3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                        background: "color-mix(in srgb, var(--color-dark-surface) 88%, transparent)",
+                        borderColor: "color-mix(in srgb, var(--color-text-primary) 12%, transparent)",
+                        boxShadow: "0 12px 32px rgba(0, 0, 0, 0.38)",
+                      }}
+                    >
+                      <span
+                        className="max-w-28 truncate text-xs font-semibold"
+                        style={{ color: reaction.from === myPeerId ? "var(--color-primary)" : chatNameColor(reaction.from) }}
+                      >
+                        {reaction.fromName}
+                      </span>
+                      <span className="text-2xl leading-none" aria-hidden="true">{reaction.emoji}</span>
+                      <span className="sr-only">{reaction.fromName} reacted with {reaction.emoji}</span>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="absolute bottom-2 left-1/2 flex w-[min(22rem,calc(100%_-_1.5rem))] -translate-x-1/2 flex-col-reverse items-center gap-2">
+                  {floatingChatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className="flex w-fit max-w-full items-baseline gap-2 rounded-2xl border px-4 py-2.5 backdrop-blur-md will-change-transform"
+                      style={{
+                        animation: "chat-bubble-float 4s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                        background: "color-mix(in srgb, var(--color-dark-surface) 92%, transparent)",
+                        borderColor: "color-mix(in srgb, var(--color-primary) 30%, var(--color-dark-border))",
+                        boxShadow: "0 14px 36px rgba(0, 0, 0, 0.42)",
+                      }}
+                    >
+                      <span
+                        className="max-w-28 shrink-0 truncate text-xs font-semibold"
+                        style={{ color: message.from === myPeerId ? "var(--color-primary)" : chatNameColor(message.from) }}
+                      >
+                        {message.fromName}
+                      </span>
+                      <p className="min-w-0 break-words text-sm leading-5" style={{ color: "var(--color-text-primary)" }}>{message.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           </div>
 
           <Toolbar
@@ -622,25 +684,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           />
         </aside>
       </div>
-
-      {/* Floating reactions */}
-      {reactions.length > 0 ? (
-        <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
-          {reactions.map((r) => (
-            <span
-              key={r.id}
-              className="absolute text-2xl"
-              style={{
-                left: `${r.left}%`,
-                bottom: "10%",
-                animation: "reaction-float 3s ease-out forwards",
-              }}
-            >
-              {r.emoji}
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       {/* Shared join-queue flow */}
       <JoinQueueModal
@@ -679,6 +722,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         micMode={micMode}
         voiceEffect={voiceEffect}
         onVoiceEffectChange={setVoiceEffect}
+        effectWetDry={effectWetDry}
         onEffectWetDry={setEffectWetDry}
         noiseCancellationMode={noiseCancellationMode}
         onNoiseCancellationModeChange={setNoiseCancellationMode}

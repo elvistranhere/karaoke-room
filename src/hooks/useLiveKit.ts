@@ -53,6 +53,7 @@ interface UseLiveKitReturn {
   setMixMusicGain: (val: number) => void;
   voiceEffect: VoiceEffect;
   setVoiceEffect: (effect: VoiceEffect) => void;
+  effectWetDry: number;
   setEffectWetDry: (wet: number) => void;
   // Mix mic stream (for status bar level meter during sharing)
   mixMicStream: MediaStream | null;
@@ -134,7 +135,8 @@ export function useLiveKit({
   const effectChainRef = useRef<EffectChain | null>(null);
   const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>("none");
   const voiceEffectRef = useRef<VoiceEffect>("none");
-  const effectWetDryRef = useRef(0.7); // tracks current wet/dry for singing mic check
+  const [effectWetDry, setEffectWetDryState] = useState(0.5);
+  const effectWetDryRef = useRef(0.5); // synchronous value for active audio chains
 
   // Recording: passive tap on mixDest stream
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
@@ -1252,10 +1254,12 @@ export function useLiveKit({
   }, [connectAutoMixAnalyser]);
 
   const setEffectWetDry = useCallback((wet: number) => {
-    effectWetDryRef.current = wet;
-    effectChainRef.current?.setWetDry?.(wet);
+    const normalizedWet = Math.min(1, Math.max(0, wet));
+    effectWetDryRef.current = normalizedWet;
+    setEffectWetDryState(normalizedWet);
+    effectChainRef.current?.setWetDry?.(normalizedWet);
     // Also apply to mic check effect chain if monitoring
-    micCheckEffectChainRef.current?.setWetDry?.(wet);
+    micCheckEffectChainRef.current?.setWetDry?.(normalizedWet);
   }, []);
 
   const startSharing = useCallback(async () => {
@@ -1572,6 +1576,7 @@ export function useLiveKit({
     setMixMusicGain,
     voiceEffect,
     setVoiceEffect,
+    effectWetDry,
     setEffectWetDry,
     mixMicStream: mixMicStreamState,
     autoMix,

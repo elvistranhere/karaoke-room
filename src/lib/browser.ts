@@ -1,5 +1,5 @@
 /**
- * Browser detection utilities for KaraOK.
+ * Browser detection utilities for Karaoke Now.
  * System audio sharing (getDisplayMedia with audio) only works reliably on Chromium browsers.
  */
 

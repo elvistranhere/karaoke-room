@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Users, Music, Lock, Search, Plus, LogIn } from "lucide-react";
+import { Mic, Users, Music, Lock, Search, Plus, LogIn, Eye, EyeOff } from "lucide-react";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -19,6 +19,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [roomPassword, setRoomPassword] = useState("");
+  const [showRoomPassword, setShowRoomPassword] = useState(false);
   const joinCodeClean = joinCode.toUpperCase().trim();
   const canJoin = joinCodeClean.length === CODE_LENGTH;
 
@@ -53,7 +54,7 @@ export default function Home() {
             WebkitTextFillColor: "transparent",
           }}
         >
-          KaraOK
+          Karaoke Now
         </h1>
         <p className="mt-2 text-center text-sm" style={{ color: "var(--color-text-secondary)" }}>
           Sing together, anywhere. No signup needed.
@@ -99,27 +100,61 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-7 rounded-xl border p-3" style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)" }}>
-            <label className="flex cursor-pointer items-center gap-2.5">
-              <input
-                type="checkbox"
-                checked={passwordEnabled}
-                onChange={(e) => { setPasswordEnabled(e.target.checked); if (!e.target.checked) setRoomPassword(""); }}
-                className="accent-[var(--color-primary)]"
-              />
-              <Lock size={14} style={{ color: "var(--color-text-muted)" }} />
-              <span className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Require a password</span>
-            </label>
+          <div className="mt-7 flex h-5 items-center justify-between gap-3">
+            <label htmlFor="room-password" className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room password</label>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={passwordEnabled}
+              aria-controls="room-password-field"
+              onClick={() => {
+                setPasswordEnabled((enabled) => {
+                  if (enabled) {
+                    setRoomPassword("");
+                    setShowRoomPassword(false);
+                  }
+                  return !enabled;
+                });
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
+            >
+              <span className="text-[10px] font-medium" style={{ color: passwordEnabled ? "var(--color-primary)" : "var(--color-text-muted)" }}>Required</span>
+              <span
+                aria-hidden="true"
+                className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200"
+                style={{ background: passwordEnabled ? "var(--color-primary)" : "var(--color-dark-border)" }}
+              >
+                <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${passwordEnabled ? "translate-x-4" : "translate-x-0"}`} />
+              </span>
+            </button>
+          </div>
+          <div id="room-password-field" className="relative mt-2">
+            <Lock
+              size={15}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors"
+              style={{ color: passwordEnabled ? "var(--color-primary)" : "var(--color-text-muted)" }}
+            />
+            <input
+              id="room-password"
+              type={showRoomPassword ? "text" : "password"}
+              value={roomPassword}
+              onChange={(e) => setRoomPassword(e.target.value)}
+              placeholder={passwordEnabled ? "Enter a room password" : "No password required"}
+              disabled={!passwordEnabled}
+              autoComplete="new-password"
+              className="h-[58px] w-full rounded-xl border pl-10 pr-11 text-sm outline-none transition-all placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)] disabled:cursor-default disabled:opacity-60"
+              style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+            />
             {passwordEnabled && (
-              <input
-                aria-label="Room password"
-                type="password"
-                value={roomPassword}
-                onChange={(e) => setRoomPassword(e.target.value)}
-                placeholder="Room password"
-                className="mt-3 w-full rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-                style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-              />
+                  <button
+                    type="button"
+                    onClick={() => setShowRoomPassword((show) => !show)}
+                    aria-label={showRoomPassword ? "Hide password" : "Show password"}
+                    className="absolute inset-y-0 right-0 flex w-11 cursor-pointer items-center justify-center rounded-r-xl outline-none transition-colors hover:text-[var(--color-text-secondary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary)]"
+                    style={{ color: "var(--color-text-muted)" }}
+                  >
+                    {showRoomPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
             )}
           </div>
 
@@ -150,7 +185,7 @@ export default function Home() {
             </div>
           </div>
 
-          <label htmlFor="room-code" className="mt-7 text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room code</label>
+          <label htmlFor="room-code" className="mt-7 flex h-5 items-center text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room code</label>
           <input
             id="room-code"
             type="text"
@@ -159,7 +194,7 @@ export default function Home() {
             placeholder="XXXXXX"
             maxLength={CODE_LENGTH}
             autoComplete="off"
-            className="mt-2 w-full rounded-xl border px-3 py-3.5 text-center font-mono text-lg font-bold uppercase tracking-[0.3em] outline-none transition-all placeholder:opacity-30 focus:border-[var(--color-primary)]"
+            className="mt-2 h-[58px] w-full rounded-xl border px-3 text-center font-mono text-lg font-bold uppercase tracking-[0.3em] outline-none transition-all placeholder:opacity-30 focus:border-[var(--color-primary)]"
             style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
             onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
           />
