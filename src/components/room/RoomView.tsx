@@ -234,12 +234,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       if (el.dataset.savedVolume !== undefined) return;
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
+      // Element volume hard-throws outside [0, 1]; slider values above 100 saturate
+      const volume = Math.min(1, Math.max(0, voiceVolume * personVol));
       if (micChecking) {
-        el.dataset.savedVolume = String(voiceVolume * personVol);
+        el.dataset.savedVolume = String(volume);
         el.volume = 0;
         return;
       }
-      el.volume = voiceVolume * personVol;
+      el.volume = volume;
     });
   }, [voiceVolume, personVolumes, micChecking]);
 
