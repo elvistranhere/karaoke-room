@@ -387,7 +387,7 @@ export function useLiveKit({
       if (micErrorTimerRef.current) { clearTimeout(micErrorTimerRef.current); micErrorTimerRef.current = null; }
       document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
         const saved = el.dataset.savedVolume;
-        if (saved !== undefined) { el.volume = parseFloat(saved); delete el.dataset.savedVolume; }
+        if (saved !== undefined) { el.volume = Math.min(1, Math.max(0, parseFloat(saved) || 0)); delete el.dataset.savedVolume; }
       });
       // Clean up mix context if active
       if (mixPubRef.current?.track) {
@@ -645,7 +645,7 @@ export function useLiveKit({
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
       const saved = el.dataset.savedVolume;
       if (saved !== undefined) {
-        el.volume = parseFloat(saved);
+        el.volume = Math.min(1, Math.max(0, parseFloat(saved) || 0));
         delete el.dataset.savedVolume;
       }
     });

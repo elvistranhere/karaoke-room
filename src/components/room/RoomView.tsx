@@ -63,15 +63,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendReaction,
     sendMuteAll,
     sendUnmuteAll,
-    sendMixAdjust,
-    clearPendingMixAdjust,
     sendVideoLoad,
     sendVideoSync,
     videoRef,
     serverOffsetRef,
     clockSyncedRef,
     mutedBySinger,
-    pendingMixAdjust,
     nameTaken,
     clearNameTaken,
     chatMessages,
@@ -234,12 +231,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       if (el.dataset.savedVolume !== undefined) return;
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
+      // Element volume hard-throws outside [0, 1]; slider values above 100 saturate
+      const volume = Math.min(1, Math.max(0, voiceVolume * personVol));
       if (micChecking) {
-        el.dataset.savedVolume = String(voiceVolume * personVol);
+        el.dataset.savedVolume = String(volume);
         el.volume = 0;
         return;
       }
-      el.volume = voiceVolume * personVol;
+      el.volume = volume;
     });
   }, [voiceVolume, personVolumes, micChecking]);
 
@@ -266,45 +265,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
   }, []);
-
-  // Debounced broadcast of singer's local mix changes to listeners
-  const mixBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMyTurnRef = useRef(isMyTurn);
-  useEffect(() => {
-    isMyTurnRef.current = isMyTurn;
-    // Cancel pending broadcast if no longer singer
-    if (!isMyTurn && mixBroadcastRef.current) {
-      clearTimeout(mixBroadcastRef.current);
-      mixBroadcastRef.current = null;
-    }
-  }, [isMyTurn]);
-
-  const broadcastMix = useCallback((voice: number) => {
-    if (mixBroadcastRef.current) clearTimeout(mixBroadcastRef.current);
-    mixBroadcastRef.current = setTimeout(() => {
-      if (isMyTurnRef.current) sendMixAdjust(voice);
-      mixBroadcastRef.current = null;
-    }, 150);
-  }, [sendMixAdjust]);
-
-  // Handle incoming collaborative voice adjustments
-  useEffect(() => {
-    if (!pendingMixAdjust) return;
-    const { voice } = pendingMixAdjust;
-    const voicePercent = Math.round(voice * 100);
-
-    if (isMyTurn) {
-      // Singer receives a listener's adjustment, applies it to the published gain
-      setMixMicGain(voice);
-      setMixVoiceValue(voicePercent);
-      // Rebroadcast so all other listeners stay in sync
-      broadcastMix(voice);
-    } else {
-      // Listener receives the singer's broadcast, syncs the slider only
-      setMixVoiceValue(voicePercent);
-    }
-    clearPendingMixAdjust();
-  }, [pendingMixAdjust, isMyTurn, setMixMicGain, clearPendingMixAdjust, broadcastMix]);
 
   // Forward name-taken rejection to parent so it can show the name modal
   useEffect(() => {
@@ -638,7 +598,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
               onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
               playbackReady={playerReady}
-              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v); }}
+              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); }}
               onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
               mixVoiceValue={mixVoiceValue}
               mixMusicValue={mixMusicValue}
@@ -720,10 +680,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             toggleMic={toggleMic}
             micVolume={mixVoiceValue}
             onMicVolumeChange={(volume) => {
-              const gain = volume / 100;
               setMixVoiceValue(volume);
-              setMixMicGain(gain);
-              if (isMyTurn) broadcastMix(gain);
+              setMixMicGain(volume / 100);
             }}
             voiceEffect={voiceEffect}
             onVoiceEffectChange={setVoiceEffect}

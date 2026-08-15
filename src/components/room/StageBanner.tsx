@@ -24,6 +24,7 @@ interface StageBannerProps {
   onPause?: () => void;
   onRestart?: () => void;
   playbackReady?: boolean;
+  // Singer-local: published voice gain and own player volume; never broadcast
   onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
   ambientId?: string;
@@ -279,7 +280,7 @@ export function StageBanner({
 
           {onLoadVideo && <VideoUrlInput onLoad={onLoadVideo} label="Change" />}
 
-          {/* Separate voice/music volume sliders */}
+          {/* Singer-local mix: voice is their own output level, music is their own player */}
           {onMixMicGain && onMixMusicGain && (
             <div className="space-y-2">
               <MixSlider label="Voice" icon={<Mic size={14} style={{ color: "var(--color-primary)" }} />} value={mixVoiceValue} onChange={(v) => onMixMicGain(v / 100)} />

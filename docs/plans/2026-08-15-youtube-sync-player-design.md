@@ -62,7 +62,7 @@ The Web Audio graph (mic source, effect chain from `createEffectChain`, mic gain
 ### Sliders
 
 - Listener controls collapse to two local sliders: Voice (singer voice element volume) and Music (local player volume). Nothing routes to the singer anymore.
-- Singer "Music" mix slider: own local player volume. Singer "Voice" slider: published mic gain, unchanged.
+- Singer "Music" mix slider: own local player volume. The room-wide Voice mix slider and the mix-adjust broadcast loop are gone; the Toolbar mic volume remains as the singer's personal output level, and each listener balances the rest locally.
 - Toolbar mic volume and all per-person/voice sliders: unchanged.
 
 ### Queue
