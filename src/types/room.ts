@@ -53,7 +53,7 @@ export type ClientMessage =
   | { type: "unmute-all" }
   | { type: "mix-adjust"; voice: number; music?: number }
   | { type: "video-load"; videoId: string }
-  | { type: "video-sync"; playing: boolean; videoTime: number }
+  | { type: "video-sync"; playing: boolean; videoTime: number; videoId?: string }
   | { type: "time-sync"; t0: number }
   | { type: "kick"; peerId: string }
   | { type: "set-password"; password: string | null }
@@ -74,7 +74,7 @@ export type ServerMessage =
   | { type: "mute-all"; singerName: string }
   | { type: "unmute-all" }
   | { type: "mix-adjust"; fromName: string; voice: number; music: number }
-  | { type: "video-state"; video: VideoState | null; serverTime: number }
+  | { type: "video-state"; video: VideoState | null }
   | { type: "time-sync"; t0: number; t1: number }
   | { type: "name-taken"; name: string; suggestions: string[] }
   | { type: "kicked"; by: string }

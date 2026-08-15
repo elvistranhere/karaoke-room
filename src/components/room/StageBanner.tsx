@@ -6,6 +6,7 @@ import type { RoomState } from "~/types/room";
 import { Mic, Music, VolumeX, Volume2, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
+import { SyncOffsetControl } from "./SyncOffsetControl";
 import { VideoUrlInput } from "./VideoUrlInput";
 
 interface StageBannerProps {
@@ -37,6 +38,13 @@ interface StageBannerProps {
   // Listener-local mix: voice is the singer's volume on this device only
   listenerVoiceValue?: number;
   onListenerVoiceChange?: (val: number) => void;
+  // Listener-local sync offset (auto-estimated, manual override remembered per singer)
+  syncAuto?: boolean;
+  onSyncAutoChange?: (auto: boolean) => void;
+  autoOffsetMs?: number;
+  syncOffsetMs?: number;
+  onSyncOffsetChange?: (ms: number) => void;
+  syncSingerName?: string | null;
 }
 
 export function StageBanner({
@@ -65,6 +73,12 @@ export function StageBanner({
   mixMusicValue = 70,
   listenerVoiceValue = 100,
   onListenerVoiceChange,
+  syncAuto = true,
+  onSyncAutoChange,
+  autoOffsetMs = 150,
+  syncOffsetMs = 150,
+  onSyncOffsetChange,
+  syncSingerName = null,
 }: StageBannerProps) {
   const [liveRoomLevel, setLiveRoomLevel] = useState(0);
   const currentSinger = roomState.participants.find(
@@ -198,6 +212,18 @@ export function StageBanner({
             <p className="pt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
               Only changes what you hear.
             </p>
+          </div>
+        )}
+        {onSyncAutoChange && onSyncOffsetChange && (
+          <div className="mt-2 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
+            <SyncOffsetControl
+              auto={syncAuto}
+              onAutoChange={onSyncAutoChange}
+              autoOffsetMs={autoOffsetMs}
+              offsetMs={syncOffsetMs}
+              onOffsetChange={onSyncOffsetChange}
+              singerName={syncSingerName}
+            />
           </div>
         )}
 

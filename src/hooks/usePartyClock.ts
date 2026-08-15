@@ -9,9 +9,14 @@ const RESAMPLE_INTERVAL_MS = 30_000;
 const MAX_SAMPLES = 8;
 const BEST_SAMPLES = 4;
 
+const MAX_RTT_MS = 2500;
+const MIN_SAMPLES_FOR_SYNC = 2;
+const SAMPLE_MAX_AGE_MS = 90_000;
+
 interface Sample {
   rtt: number;
   offset: number;
+  at: number;
 }
 
 interface UsePartyClockReturn {
@@ -32,20 +37,26 @@ export function usePartyClock(
   const handleTimeSync = useCallback((t0: number, t1: number) => {
     const now = Date.now();
     const rtt = now - t0;
-    if (!Number.isFinite(rtt) || rtt < 0 || rtt > 10_000) return;
+    // A single asymmetric round trip can hide up to rtt/2 of offset error, so
+    // slow probes are rejected outright rather than trusted
+    if (!Number.isFinite(rtt) || rtt < 0 || rtt > MAX_RTT_MS) return;
 
     const samples = samplesRef.current;
-    samples.push({ rtt, offset: t1 + rtt / 2 - now });
+    samples.push({ rtt, offset: t1 + rtt / 2 - now, at: now });
     if (samples.length > MAX_SAMPLES) samples.shift();
 
-    const best = [...samples].sort((a, b) => a.rtt - b.rtt).slice(0, BEST_SAMPLES);
+    // Old samples predate any local clock step (NTP correction, sleep), so
+    // prefer fresh ones even when their round trips are worse
+    const fresh = samples.filter((s) => now - s.at <= SAMPLE_MAX_AGE_MS);
+    const pool = fresh.length > 0 ? fresh : samples;
+    const best = [...pool].sort((a, b) => a.rtt - b.rtt).slice(0, BEST_SAMPLES);
     const offsets = best.map((s) => s.offset).sort((a, b) => a - b);
     const mid = Math.floor(offsets.length / 2);
     const median = offsets.length % 2 === 0
       ? ((offsets[mid - 1] ?? 0) + (offsets[mid] ?? 0)) / 2
       : offsets[mid] ?? 0;
     serverOffsetRef.current = median;
-    clockSyncedRef.current = true;
+    if (pool.length >= MIN_SAMPLES_FOR_SYNC) clockSyncedRef.current = true;
   }, []);
 
   useEffect(() => {

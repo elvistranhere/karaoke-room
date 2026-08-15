@@ -321,7 +321,7 @@ export function useRoomState({
   }, [send]);
 
   const sendVideoSync = useCallback((playing: boolean, videoTime: number) => {
-    send({ type: "video-sync", playing, videoTime });
+    send({ type: "video-sync", playing, videoTime, videoId: videoRef.current?.videoId });
   }, [send]);
 
   const clearNameTaken = useCallback(() => {

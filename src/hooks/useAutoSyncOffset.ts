@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Room, RemoteAudioTrack } from "livekit-client";
 import { SYNC_OFFSET_DEFAULT_MS } from "~/components/room/SyncOffsetControl";
+import { VOICE_TRACK_NAME } from "./useLiveKit";
 
 const SAMPLE_MS = 5000;
-// Singer-side capture, encode, and singer-to-SFU transit are not observable from
-// the listener, so a fixed base stands in for them.
-const BASE_MS = 80;
+// Singer-side capture and encode are not observable from the listener; the
+// singer-to-SFU leg is NOT included because the server's wallTime stamp
+// already carries it into the sync target.
+const BASE_MS = 50;
 const MIN_MS = 60;
 const MAX_MS = 800;
 const SMOOTHING = 0.4;
@@ -34,20 +36,24 @@ export function useAutoSyncOffset(
   const emaRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!room || !singerIdentity || !active) {
-      prevJitterRef.current = null;
-      emaRef.current = null;
-      return;
-    }
+    // Each singer is a different track and network path, so samples never carry over
+    prevJitterRef.current = null;
+    emaRef.current = null;
+    if (!room || !singerIdentity || !active) return;
 
     let cancelled = false;
     const sample = async () => {
+      // lkIdentity is exact; the display-name fallback only ever matches as a
+      // prefix of the real LiveKit identity (e.g. "elvis" vs "elvis-044ef3d6")
       const participant = Array.from(room.remoteParticipants.values()).find(
-        (p) => p.identity === singerIdentity,
+        (p) => p.identity === singerIdentity || p.identity.startsWith(`${singerIdentity}-`),
       );
-      const publication = participant
-        ? Array.from(participant.audioTrackPublications.values()).find((pub) => pub.track)
-        : undefined;
+      const publications = participant
+        ? Array.from(participant.audioTrackPublications.values())
+        : [];
+      // The singer also has a muted managed mic; measure the real voice track
+      const publication = publications.find((pub) => pub.trackName === VOICE_TRACK_NAME && pub.track)
+        ?? publications.find((pub) => pub.track);
       const track = publication?.track as RemoteAudioTrack | undefined;
       if (!track?.getRTCStatsReport) return;
 
@@ -60,6 +66,7 @@ export function useAutoSyncOffset(
       if (!report || cancelled) return;
 
       let jitterMs = 0;
+      let hasJitterDelta = false;
       let rttMs = 0;
       for (const value of report.values()) {
         const stat = value as StatFields;
@@ -69,6 +76,7 @@ export function useAutoSyncOffset(
           const prev = prevJitterRef.current;
           if (prev && count > prev.count) {
             jitterMs = ((delay - prev.delay) / (count - prev.count)) * 1000;
+            hasJitterDelta = true;
           }
           prevJitterRef.current = { delay, count };
         }
@@ -81,6 +89,9 @@ export function useAutoSyncOffset(
         }
       }
 
+      // The first sample only sets the jitter baseline; committing it would
+      // seed the EMA with a known-too-low estimate the loop then chases
+      if (!hasJitterDelta) return;
       const estimate = Math.max(MIN_MS, Math.min(MAX_MS, BASE_MS + rttMs / 2 + jitterMs));
       emaRef.current = emaRef.current === null
         ? estimate

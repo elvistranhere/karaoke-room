@@ -175,7 +175,7 @@ export default class KaraokeRoom implements Party.Server {
         this.handleVideoLoad(sender, msg.videoId);
         break;
       case "video-sync":
-        this.handleVideoSync(sender, msg.playing, msg.videoTime);
+        this.handleVideoSync(sender, msg.playing, msg.videoTime, msg.videoId);
         break;
       case "time-sync":
         this.handleTimeSync(sender, msg.t0);
@@ -589,7 +589,7 @@ export default class KaraokeRoom implements Party.Server {
     this.broadcastVideoState();
   }
 
-  private handleVideoSync(sender: Party.Connection, playing: boolean, videoTime: number) {
+  private handleVideoSync(sender: Party.Connection, playing: boolean, videoTime: number, videoId?: string) {
     if (this.currentSingerId !== sender.id) {
       this.send(sender, { type: "error", message: "Only the singer can control playback" });
       return;
@@ -597,6 +597,8 @@ export default class KaraokeRoom implements Party.Server {
     const current = this.videoState;
     if (!current) return;
     if (!Number.isFinite(videoTime) || videoTime < 0) return;
+    // An in-flight sync for the previous video must not stamp the newly loaded one
+    if (videoId !== undefined && videoId !== current.videoId) return;
 
     this.videoState = {
       ...current,
@@ -624,7 +626,7 @@ export default class KaraokeRoom implements Party.Server {
   // Point broadcast, not broadcastState(): video-sync fires every ~2s and a full
   // room-state would also re-trigger registry reporting.
   private broadcastVideoState() {
-    this.broadcast({ type: "video-state", video: this.videoState, serverTime: Date.now() });
+    this.broadcast({ type: "video-state", video: this.videoState });
   }
 
   // ── Admin Handlers ──────────────────────────────────────────

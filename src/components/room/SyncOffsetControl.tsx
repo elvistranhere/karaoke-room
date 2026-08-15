@@ -28,22 +28,66 @@ export function readStoredSyncAuto(): boolean {
   }
 }
 
+export const SYNC_OFFSET_BY_SINGER_KEY = "karaoke-sync-offset-by-singer";
+const MAX_SINGER_OFFSET_ENTRIES = 50;
+
+function readSingerOffsetMap(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SYNC_OFFSET_BY_SINGER_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function readStoredSyncOffsetFor(singerName: string | null): number {
+  if (singerName) {
+    const value = readSingerOffsetMap()[singerName];
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, value as number));
+    }
+  }
+  return readStoredSyncOffset();
+}
+
+export function storeSyncOffsetFor(singerName: string | null, ms: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(ms));
+    if (!singerName) return;
+    const map = readSingerOffsetMap();
+    map[singerName] = ms;
+    const names = Object.keys(map);
+    if (names.length > MAX_SINGER_OFFSET_ENTRIES) {
+      for (const name of names.slice(0, names.length - MAX_SINGER_OFFSET_ENTRIES)) {
+        delete map[name];
+      }
+    }
+    window.localStorage.setItem(SYNC_OFFSET_BY_SINGER_KEY, JSON.stringify(map));
+  } catch {
+    // storage unavailable, the offset still applies for this session
+  }
+}
+
 interface SyncOffsetControlProps {
   auto: boolean;
   onAutoChange: (auto: boolean) => void;
   autoOffsetMs: number;
   offsetMs: number;
   onOffsetChange: (ms: number) => void;
+  singerName?: string | null;
 }
 
-export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, onOffsetChange }: SyncOffsetControlProps) {
+export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, onOffsetChange, singerName }: SyncOffsetControlProps) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Timer size={15} style={{ color: "var(--color-primary)" }} />
           <span className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-            Voice sync
+            Voice sync{singerName ? ` for ${singerName}` : ""}
           </span>
         </div>
         <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
@@ -79,8 +123,8 @@ export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, 
       )}
       <p className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
         {auto
-          ? "Lines the music up with the singer's voice automatically."
-          : "Slide right if the music runs ahead of the singer's voice."}
+          ? "Lines the music up with this singer's voice automatically."
+          : "Slide right if the music runs ahead. Remembered per singer."}
       </p>
     </div>
   );

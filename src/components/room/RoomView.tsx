@@ -17,7 +17,7 @@ import { InviteCode } from "./InviteCode";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { VideoStage } from "./VideoStage";
-import { SYNC_OFFSET_STORAGE_KEY, SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto } from "./SyncOffsetControl";
+import { SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor, storeSyncOffsetFor } from "./SyncOffsetControl";
 import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
@@ -146,6 +146,16 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name
       ?? null
     : null;
+  const singerName = roomState.currentSingerId
+    ? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name ?? null
+    : null;
+  const singerNameRef = useRef(singerName);
+  singerNameRef.current = singerName;
+
+  // Each singer has their own latency, so the manual offset follows the singer
+  useEffect(() => {
+    if (singerName) setSyncOffsetMs(readStoredSyncOffsetFor(singerName));
+  }, [singerName]);
 
   const autoOffsetMs = useAutoSyncOffset(room, singerIdentity, !isMyTurn && roomState.video !== null);
   useEffect(() => {
@@ -203,11 +213,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
     setSyncOffsetMs(clamped);
-    try {
-      window.localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(clamped));
-    } catch {
-      // storage unavailable, offset is still applied for this session
-    }
+    storeSyncOffsetFor(singerNameRef.current, clamped);
   }, []);
 
   const handleSyncAutoChange = useCallback((auto: boolean) => {
@@ -606,6 +612,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onListenerVoiceChange={!isMyTurn && singerIdentity
                 ? (v) => handlePersonVolumeChange(singerIdentity, v / 100)
                 : undefined}
+              syncAuto={syncOffsetAuto}
+              onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
+              autoOffsetMs={autoOffsetMs}
+              syncOffsetMs={syncOffsetMs}
+              onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
+              syncSingerName={singerName}
               ambientId="ambient-bg"
               ambientColor="violet"
               onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
@@ -723,11 +735,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         isAdmin={isAdmin}
         isLocked={roomState.isLocked}
         onSetPassword={isAdmin ? sendSetPassword : undefined}
-        syncAuto={syncOffsetAuto}
-        onSyncAutoChange={handleSyncAutoChange}
-        autoOffsetMs={autoOffsetMs}
-        syncOffsetMs={syncOffsetMs}
-        onSyncOffsetChange={handleSyncOffsetChange}
       />
 
       {/* Sound Profile Modal */}

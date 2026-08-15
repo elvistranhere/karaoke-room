@@ -17,8 +17,10 @@ const PERSIST_DRIFT_S = 0.35;
 const PERSIST_TICKS = 8;
 
 const UNSTARTED = -1;
+const PLAYING = 1;
 const PAUSED = 2;
 const CUED = 5;
+const PERSIST_DRIFT_NO_RATE_S = 0.15;
 
 interface UseVideoSyncParams {
   player: YouTubePlayerHandle;
@@ -115,6 +117,9 @@ export function useVideoSync({
 
       if (isSingerRef.current) {
         if (!current.playing) return;
+        // A buffering or stalled player would re-stamp a frozen time and drag
+        // every listener backwards, so only a genuinely playing player is the clock
+        if (player.getState() !== PLAYING) return;
         const now = Date.now();
         if (now - lastBroadcastRef.current < SINGER_BROADCAST_MS) return;
         broadcastNow(true, player.getTime());
@@ -123,7 +128,11 @@ export function useVideoSync({
 
       if (!current.playing) return;
       if (player.getLoadedVideoId() !== current.videoId) return;
-      if (!clockSyncedRef.current) return;
+      if (!clockSyncedRef.current) {
+        // Frozen correction is fine during an outage; an active nudge is not
+        if (player.getPlaybackRate() !== 1) player.setPlaybackRate(1);
+        return;
+      }
 
       const state = player.getState();
       if (state === PAUSED || state === UNSTARTED || state === CUED) {
@@ -145,10 +154,13 @@ export function useVideoSync({
       }
 
       const serverNow = Date.now() + serverOffsetRef.current;
-      const target = current.videoTime
+      const rawTarget = current.videoTime
         + (serverNow - current.wallTime) / 1000
         - syncOffsetMsRef.current / 1000;
-      if (!Number.isFinite(target) || target < 0) return;
+      if (!Number.isFinite(rawTarget)) return;
+      // Negative means the delayed timeline has not reached 0 yet; correcting
+      // toward 0 beats abandoning correction for the first offset-worth of song
+      const target = Math.max(0, rawTarget);
 
       const drift = target - player.getTime();
       if (Math.abs(drift) >= SEEK_THRESHOLD_S) {
@@ -164,7 +176,9 @@ export function useVideoSync({
 
       // Nudging moves ~15ms per tick, so drift that stays large for seconds means it
       // is not working (no rate control, or a big post-ad gap): one cooled-down seek.
-      persistTicksRef.current = Math.abs(drift) >= PERSIST_DRIFT_S ? persistTicksRef.current + 1 : 0;
+      // Without rate control the seek is the only tool, so it engages sooner.
+      const persistThreshold = rateSupportedRef.current ? PERSIST_DRIFT_S : PERSIST_DRIFT_NO_RATE_S;
+      persistTicksRef.current = Math.abs(drift) >= persistThreshold ? persistTicksRef.current + 1 : 0;
       if (persistTicksRef.current >= PERSIST_TICKS) {
         persistTicksRef.current = 0;
         seekTo(target);
