@@ -22,7 +22,6 @@ import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { AuthModal } from "./AuthModal";
-import { JoinQueueModal } from "./JoinQueueModal";
 
 const API_WAIT_MS = 5000;
 
@@ -43,7 +42,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundProfileOpen, setSoundProfileOpen] = useState(false);
-  const [joinQueueModalOpen, setJoinQueueModalOpen] = useState(false);
   const [noiseCancellationMode, setNoiseCancellationMode] = useState<NoiseCancellationMode>("auto");
   const talkingNC = noiseCancellationMode !== "off";
   const singingNC = noiseCancellationMode === "on";
@@ -109,9 +107,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,
+    setVoiceBoost,
     singingError,
     activeSpeakers,
-    setMixMicGain,
     voiceEffect,
     setVoiceEffect,
     effectWetDry,
@@ -135,14 +133,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const [singerVolumes, setSingerVolumes] = useState<Record<string, number>>({});
 
   // Mix values: voice is the singer's published gain, music is local to each client
-  const [mixVoiceValue, setMixVoiceValue] = useState(100);
   const [mixMusicValue, setMixMusicValue] = useState(70);
 
   const [songName, setSongName] = useState<string | null>(null);
   const [syncOffsetMs, setSyncOffsetMs] = useState(readStoredSyncOffset);
   const [syncOffsetAuto, setSyncOffsetAuto] = useState(readStoredSyncAuto);
   const syncOffsetMsRef = useRef(syncOffsetMs);
-  const pendingVideoIdRef = useRef<string | null>(null);
 
   const singerIdentity = roomState.currentSingerId
     ? participantStatus[roomState.currentSingerId]?.lkIdentity
@@ -235,6 +231,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   }, [sendVideoLoad]);
 
   const applyAllVolumes = useCallback(() => {
+    const singerTotal = singerIdentity
+      ? voiceVolume * (personVolumes[singerIdentity] ?? 1) * (singerVolumes[singerIdentity] ?? 1)
+      : 0;
+    const boosting = singerIdentity !== null && singerTotal > 1 && !micChecking;
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
       // savedVolume marks elements the mic check muted; leave those alone, and
       // mute elements that attached after the check started so they join the hush
@@ -242,8 +242,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
       const performanceVol = identity === singerIdentity ? singerVolumes[identity] ?? 1 : 1;
-      // Element volume hard-throws outside [0, 1]; slider values above 100 saturate
-      const volume = Math.min(1, Math.max(0, voiceVolume * personVol * performanceVol));
+      // Element volume hard-throws outside [0, 1]; above 1 the Web Audio boost
+      // chain plays the singer instead and the element goes silent
+      const total = voiceVolume * personVol * performanceVol;
+      const volume = boosting && identity === singerIdentity ? 0 : Math.min(1, Math.max(0, total));
       if (micChecking) {
         el.dataset.savedVolume = String(volume);
         el.volume = 0;
@@ -251,7 +253,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       }
       el.volume = volume;
     });
-  }, [voiceVolume, personVolumes, singerVolumes, singerIdentity, micChecking]);
+    setVoiceBoost(singerIdentity, micChecking ? 0 : singerTotal);
+  }, [voiceVolume, personVolumes, singerVolumes, singerIdentity, micChecking, setVoiceBoost]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
@@ -325,10 +328,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     if (isMyTurn && !wasMyTurnRef.current) {
       wasMyTurnRef.current = true;
       if (micMode === "voice") setMicMode("raw");
-      // A YouTube link supplied at queue time goes straight on stage
-      const pendingVideoId = pendingVideoIdRef.current;
-      pendingVideoIdRef.current = null;
-      if (pendingVideoId) sendVideoLoad(pendingVideoId);
     }
     if (!isMyTurn && wasMyTurnRef.current) {
       wasMyTurnRef.current = false;
@@ -338,7 +337,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       if (micMode === "raw") setMicMode("voice");
     }
     if (!isMyTurn) wasMyTurnRef.current = false;
-  }, [isMyTurn, micMode, setMicMode, sendVideoLoad, singerMutedAll]);
+  }, [isMyTurn, micMode, setMicMode, singerMutedAll]);
 
   // Send status updates (includes LiveKit identity). isSharingAudio now means
   // "the stage video is playing", which is what suspends the 60s singer timer.
@@ -546,7 +545,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           <PeoplePanel
             roomState={roomState}
             myPeerId={myPeerId}
-            onRequestJoinQueue={() => setJoinQueueModalOpen(true)}
+            onRequestJoinQueue={joinQueue}
             onLeaveQueue={leaveQueue}
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
@@ -595,7 +594,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               singerIdentity={singerIdentity}
               onAddToQueue={
                 roomState.queue.length === 0 && !isMyTurn
-                  ? () => setJoinQueueModalOpen(true)
+                  ? joinQueue
                   : undefined
               }
               onSetSongName={isMyTurn ? setSongName : undefined}
@@ -695,11 +694,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             room={room}
             isMicEnabled={isMicEnabled}
             toggleMic={toggleMic}
-            micVolume={mixVoiceValue}
-            onMicVolumeChange={(volume) => {
-              setMixVoiceValue(volume);
-              setMixMicGain(volume / 100);
-            }}
             voiceEffect={voiceEffect}
             onVoiceEffectChange={setVoiceEffect}
             onEffectWetDry={setEffectWetDry}
@@ -719,15 +713,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           />
         </aside>
       </div>
-
-      {/* Shared join-queue flow */}
-      <JoinQueueModal
-        open={joinQueueModalOpen}
-        onClose={() => setJoinQueueModalOpen(false)}
-        onJoin={joinQueue}
-        onSetSongIntent={setSongName}
-        onSetPendingVideo={(videoId) => { pendingVideoIdRef.current = videoId; }}
-      />
 
       {/* Settings drawer */}
       <SettingsDrawer

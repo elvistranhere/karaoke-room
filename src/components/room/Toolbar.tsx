@@ -11,8 +11,6 @@ interface ToolbarProps {
   room: Room | null;
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
-  micVolume: number;
-  onMicVolumeChange: (volume: number) => void;
   voiceEffect: VoiceEffect;
   onVoiceEffectChange: (effect: VoiceEffect) => void;
   onEffectWetDry: (wet: number) => void;
@@ -25,8 +23,6 @@ export function Toolbar({
   room,
   isMicEnabled,
   toggleMic,
-  micVolume,
-  onMicVolumeChange,
   voiceEffect,
   onVoiceEffectChange,
   onEffectWetDry,
@@ -109,23 +105,7 @@ export function Toolbar({
 
       <div className="hidden h-10 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
 
-      <div className="min-w-32 flex-1">
-        <label htmlFor="mic-volume" className="sr-only">Mic volume</label>
-        <input
-          id="mic-volume"
-          type="range"
-          min={0}
-          max={100}
-          value={micVolume}
-          onChange={(event) => onMicVolumeChange(Number(event.target.value))}
-          className="volume-slider h-2 w-full cursor-pointer rounded-full disabled:cursor-not-allowed disabled:opacity-40"
-          style={{
-            background: `linear-gradient(to right, #c9a7ff 0%, #c9a7ff ${micVolume}%, var(--color-dark-border) ${micVolume}%, var(--color-dark-border) 100%)`,
-          }}
-          aria-label="Microphone volume"
-          disabled={!isMicEnabled}
-        />
-      </div>
+      <div className="flex-1" />
 
       <div className="grid w-full grid-cols-3 gap-2 border-t pt-3 sm:flex sm:w-auto sm:border-0 sm:pt-0" style={{ borderColor: "var(--color-dark-border)" }}>
         <div className="min-w-0">

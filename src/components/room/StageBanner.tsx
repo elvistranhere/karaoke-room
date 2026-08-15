@@ -196,7 +196,6 @@ export function StageBanner({
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
               value={listenerVoiceValue}
-              max={100}
               onChange={onListenerVoiceChange}
             />
             <MixSlider
@@ -343,10 +342,18 @@ export function StageBanner({
 // max is 100 for music: the YouTube player caps volume there, so a boost half would be dead
 function MixSlider({ label, icon, value, max = 150, onChange }: { label: string; icon: React.ReactNode; value: number; max?: number; onChange: (val: number) => void }) {
   const fill = Math.min(100, (value / max) * 100);
+  const boosting = value > 100;
   return (
     <div className="flex items-center gap-3">
       <span className="flex size-7 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-dark-card)" }}>{icon}</span>
-      <span className="w-11 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--color-text-secondary)" }}>{label}</span>
+      <span className="w-11 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--color-text-secondary)" }}>
+        {label}
+        {boosting && (
+          <span className="mt-0.5 block text-[8px] font-bold tracking-wider" style={{ color: "var(--color-accent)" }}>
+            BOOST
+          </span>
+        )}
+      </span>
       <input
         type="range"
         min="0"
@@ -354,9 +361,13 @@ function MixSlider({ label, icon, value, max = 150, onChange }: { label: string;
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="volume-slider flex-1"
-        style={{ background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)` }}
+        style={{
+          background: boosting
+            ? `linear-gradient(to right, var(--color-primary) 0%, var(--color-accent) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`
+            : `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`,
+        }}
       />
-      <span className="w-7 text-right text-[11px] tabular-nums" style={{ color: "var(--color-text-secondary)" }}>{value}</span>
+      <span className="w-7 text-right text-[11px] tabular-nums" style={{ color: boosting ? "var(--color-accent)" : "var(--color-text-secondary)" }}>{value}</span>
     </div>
   );
 }

@@ -80,6 +80,7 @@ interface UseLiveKitReturn {
   singingError: string | null;
   activeSpeakers: Set<string>;
   setMixMicGain: (val: number) => void;
+  setVoiceBoost: (identity: string | null, gain: number) => void;
   voiceEffect: VoiceEffect;
   setVoiceEffect: (effect: VoiceEffect) => void;
   effectWetDry: number;
@@ -119,6 +120,8 @@ export function useLiveKit({
   const micCheckRestoreMicRef = useRef(false);
   const micCheckPrevMixGainRef = useRef<number | null>(null);
   const mixMicGainValueRef = useRef(1); // last slider value, applied when the pipeline (re)builds
+  const boostCtxRef = useRef<AudioContext | null>(null);
+  const boostChainRef = useRef<{ identity: string; trackSid: string; source: MediaStreamAudioSourceNode; gain: GainNode } | null>(null);
   const isSingingInFlightRef = useRef(false); // guard against concurrent startSinging/stopSinging
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
@@ -390,6 +393,16 @@ export function useLiveKit({
         const saved = el.dataset.savedVolume;
         if (saved !== undefined) { el.volume = Math.min(1, Math.max(0, parseFloat(saved) || 0)); delete el.dataset.savedVolume; }
       });
+      // Tear down the voice boost chain
+      if (boostChainRef.current) {
+        boostChainRef.current.source.disconnect();
+        boostChainRef.current.gain.disconnect();
+        boostChainRef.current = null;
+      }
+      if (boostCtxRef.current && boostCtxRef.current.state !== "closed") {
+        void boostCtxRef.current.close();
+        boostCtxRef.current = null;
+      }
       // Clean up mix context if active
       if (mixPubRef.current?.track) {
         void room.localParticipant?.unpublishTrack(mixPubRef.current.track);
@@ -620,6 +633,9 @@ export function useLiveKit({
       void el.setSinkId(selectedOutputDeviceId).catch(() => {});
     });
 
+    if (boostCtxRef.current && "setSinkId" in boostCtxRef.current) {
+      void (boostCtxRef.current as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputDeviceId).catch(() => {});
+    }
     // Also route mic check AudioContext to new output if active
     if (micCheckCtxRef.current && "setSinkId" in micCheckCtxRef.current) {
       void (micCheckCtxRef.current as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputDeviceId).catch(() => {});
@@ -1118,6 +1134,62 @@ export function useLiveKit({
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
   }, []);
 
+  // Element volume caps at 1.0, so boosting the singer above 100% routes their
+  // track through a Web Audio gain stage; the element stays attached muted
+  // (Safari needs a live sink for remote WebRTC audio to flow through WebAudio).
+  const setVoiceBoost = useCallback((identity: string | null, gainValue: number) => {
+    const existing = boostChainRef.current;
+    const wanted = identity !== null && gainValue > 1.001;
+    if (!wanted) {
+      if (existing) {
+        existing.source.disconnect();
+        existing.gain.disconnect();
+        boostChainRef.current = null;
+      }
+      return;
+    }
+
+    const room = roomRef.current;
+    if (!room || !identity) return;
+    const participant = Array.from(room.remoteParticipants.values()).find(
+      (p) => p.identity === identity || p.identity.startsWith(`${identity}-`),
+    );
+    const publications = participant ? Array.from(participant.audioTrackPublications.values()) : [];
+    const publication = publications.find((pub) => pub.trackName === VOICE_TRACK_NAME && pub.track)
+      ?? publications.find((pub) => pub.track);
+    const mediaTrack = publication?.track?.mediaStreamTrack;
+    const trackSid = publication?.trackSid ?? "";
+    if (!mediaTrack) return;
+
+    const clamped = Math.min(2, gainValue);
+    if (existing && existing.trackSid === trackSid) {
+      existing.gain.gain.value = clamped;
+      return;
+    }
+    if (existing) {
+      existing.source.disconnect();
+      existing.gain.disconnect();
+      boostChainRef.current = null;
+    }
+
+    let ctx = boostCtxRef.current;
+    if (!ctx || ctx.state === "closed") {
+      ctx = new AudioContext();
+      boostCtxRef.current = ctx;
+      if (selectedOutputRef.current && "setSinkId" in ctx) {
+        void (ctx as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputRef.current).catch(() => {});
+      }
+    }
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+
+    const source = ctx.createMediaStreamSource(new MediaStream([mediaTrack]));
+    const gain = ctx.createGain();
+    gain.gain.value = clamped;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    boostChainRef.current = { identity, trackSid, source, gain };
+  }, []);
+
   // Swap voice effect live while singing
   const setVoiceEffect = useCallback((effect: VoiceEffect) => {
     setVoiceEffectState(effect);
@@ -1298,6 +1370,7 @@ export function useLiveKit({
     singingError,
     activeSpeakers,
     setMixMicGain,
+    setVoiceBoost,
     voiceEffect,
     setVoiceEffect,
     effectWetDry,
