@@ -167,3 +167,23 @@ body {
 .volume-slider--voice::-moz-range-thumb {
   background: var(--color-primary);
 }
+
+/* Slim theme-matched scrollbars instead of the chunky default */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-dark-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-dark-border) 60%, #8b8b9e);
+}
