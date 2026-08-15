@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useRoomState } from "~/hooks/useRoomState";
 import { useLiveKit } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
+import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
+import { useVideoSync } from "~/hooks/useVideoSync";
 import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageBanner } from "./StageBanner";
@@ -14,11 +16,15 @@ import { ChatPanel } from "./ChatPanel";
 import { InviteCode } from "./InviteCode";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
-import { RecordingModal } from "./RecordingModal";
+import { VideoStage } from "./VideoStage";
+import { SYNC_OFFSET_STORAGE_KEY, SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto } from "./SyncOffsetControl";
+import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { AuthModal } from "./AuthModal";
 import { JoinQueueModal } from "./JoinQueueModal";
+
+const API_WAIT_MS = 5000;
 
 interface RoomViewProps {
   roomCode: string;
@@ -32,7 +38,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const [browser] = useState<BrowserInfo>(() =>
     typeof window !== "undefined"
       ? detectBrowser()
-      : { name: "Unknown", isChromium: true, canSing: true, isMobile: false }
+      : { name: "Unknown", isChromium: true, isMobile: false }
   );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -59,6 +65,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendUnmuteAll,
     sendMixAdjust,
     clearPendingMixAdjust,
+    sendVideoLoad,
+    sendVideoSync,
+    videoRef,
+    serverOffsetRef,
+    clockSyncedRef,
     mutedBySinger,
     pendingMixAdjust,
     nameTaken,
@@ -101,28 +112,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,
-    isSharing,
-    startSharing,
-    stopSharing,
-    sharingError,
-    currentSong,
+    singingError,
     activeSpeakers,
     setMixMicGain,
-    setMixMusicGain,
     voiceEffect,
     setVoiceEffect,
     effectWetDry,
     setEffectWetDry,
-    autoMix,
-    autoMixDuckedValue,
-    autoMixBoostedVoice,
-    setAutoMix,
-    recordingState,
-    recordingDuration,
-    recordingBlob,
-    startRecording,
-    stopRecording,
-    clearRecording,
   } = useLiveKit({
     roomCode,
     playerName,
@@ -135,29 +131,121 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   });
 
   // Volume controls
-  const [musicVolume, setMusicVolume] = useState(1);
   const [voiceVolume, setVoiceVolume] = useState(1);
   const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
 
-  // Collaborative mix values (synced via PartyKit: singer broadcasts to listeners, listeners send to singer)
+  // Mix values: voice is the singer's published gain, music is local to each client
   const [mixVoiceValue, setMixVoiceValue] = useState(100);
   const [mixMusicValue, setMixMusicValue] = useState(70);
 
+  const [songName, setSongName] = useState<string | null>(null);
+  const [syncOffsetMs, setSyncOffsetMs] = useState(readStoredSyncOffset);
+  const [syncOffsetAuto, setSyncOffsetAuto] = useState(readStoredSyncAuto);
+  const syncOffsetMsRef = useRef(syncOffsetMs);
+  const pendingVideoIdRef = useRef<string | null>(null);
+
+  const singerIdentity = roomState.currentSingerId
+    ? participantStatus[roomState.currentSingerId]?.lkIdentity
+      ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name
+      ?? null
+    : null;
+
+  const autoOffsetMs = useAutoSyncOffset(room, singerIdentity, !isMyTurn && roomState.video !== null);
+  useEffect(() => {
+    syncOffsetMsRef.current = syncOffsetAuto ? autoOffsetMs : syncOffsetMs;
+  }, [syncOffsetAuto, autoOffsetMs, syncOffsetMs]);
+
+  const isMyTurnForPlayerRef = useRef(isMyTurn);
+  isMyTurnForPlayerRef.current = isMyTurn;
+  const songNameRef = useRef(songName);
+  songNameRef.current = songName;
+
+  const handlePlayerStateChange = useCallback((state: number) => {
+    if (!isMyTurnForPlayerRef.current) return;
+    // 1 = playing, 5 = cued: the video metadata is available in both
+    if ((state === 1 || state === 5) && !songNameRef.current) {
+      const title = playerRef.current?.getTitle();
+      if (title) setSongName(title);
+    }
+    // The singer is the clock, so a pause the app did not initiate still has to ship.
+    // Only while the room believes playback is live: swapping videos also lands in
+    // PAUSED, and that position belongs to the video that just left the stage.
+    if (state === 1) broadcastNowRef.current?.(true, playerRef.current?.getTime() ?? 0);
+    if (state === 2 && videoRef.current?.playing) broadcastNowRef.current?.(false, playerRef.current?.getTime() ?? 0);
+    if (state === 0) broadcastNowRef.current?.(false, 0);
+  }, [videoRef]);
+
+  const { mountRef, player, apiReady, ready: playerReady, errorCode: playerErrorCode, embedBlocked, createPlayer } =
+    useYouTubePlayer({ onStateChange: handlePlayerStateChange });
+
+  const playerRef = useRef(player);
+  playerRef.current = player;
+
+  const { broadcastNow } = useVideoSync({
+    player,
+    video: roomState.video,
+    videoRef,
+    isSinger: isMyTurn,
+    playerReady,
+    serverOffsetRef,
+    clockSyncedRef,
+    syncOffsetMsRef,
+    onBroadcast: sendVideoSync,
+  });
+
+  const broadcastNowRef = useRef(broadcastNow);
+  broadcastNowRef.current = broadcastNow;
+
+  // The mic check mutes remote audio itself, but the music is local now, so it
+  // has to be silenced here or the loopback is drowned out.
+  const micChecking = micCheckState !== "idle" && micCheckState !== "error";
+  useEffect(() => {
+    player.setVolume(micChecking ? 0 : mixMusicValue);
+  }, [player, mixMusicValue, micChecking]);
+
+  const handleSyncOffsetChange = useCallback((ms: number) => {
+    const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
+    setSyncOffsetMs(clamped);
+    try {
+      window.localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(clamped));
+    } catch {
+      // storage unavailable, offset is still applied for this session
+    }
+  }, []);
+
+  const handleSyncAutoChange = useCallback((auto: boolean) => {
+    setSyncOffsetAuto(auto);
+    try {
+      window.localStorage.setItem(SYNC_AUTO_STORAGE_KEY, auto ? "on" : "off");
+    } catch {
+      // storage unavailable, choice still applies for this session
+    }
+  }, []);
+
+  const handleLoadVideo = useCallback((videoId: string) => {
+    setSongName(null);
+    sendVideoLoad(videoId);
+  }, [sendVideoLoad]);
+
   const applyAllVolumes = useCallback(() => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      if (el.dataset.lkType === "music") {
-        el.volume = musicVolume;
-      } else {
-        const identity = el.dataset.lkIdentity ?? "";
-        const personVol = personVolumes[identity] ?? 1;
-        el.volume = voiceVolume * personVol;
+      // savedVolume marks elements the mic check muted; leave those alone, and
+      // mute elements that attached after the check started so they join the hush
+      if (el.dataset.savedVolume !== undefined) return;
+      const identity = el.dataset.lkIdentity ?? "";
+      const personVol = personVolumes[identity] ?? 1;
+      if (micChecking) {
+        el.dataset.savedVolume = String(voiceVolume * personVol);
+        el.volume = 0;
+        return;
       }
+      el.volume = voiceVolume * personVol;
     });
-  }, [musicVolume, voiceVolume, personVolumes]);
+  }, [voiceVolume, personVolumes, micChecking]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
-  // Ref-stable callback for MutationObserver — avoids re-registering on volume changes
+  // Ref-stable callback for MutationObserver - avoids re-registering on volume changes
   const applyVolumesRef = useRef(applyAllVolumes);
   applyVolumesRef.current = applyAllVolumes;
 
@@ -177,15 +265,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
     setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
-    // If this person is the current singer, also sync the music volume
-    if (roomState.currentSingerId) {
-      const singerStatus = participantStatus[roomState.currentSingerId];
-      const singerIdentity = singerStatus?.lkIdentity ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name;
-      if (singerIdentity && identity === singerIdentity) {
-        setMusicVolume(vol);
-      }
-    }
-  }, [roomState.currentSingerId, roomState.participants, participantStatus]);
+  }, []);
 
   // Debounced broadcast of singer's local mix changes to listeners
   const mixBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,36 +279,32 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
   }, [isMyTurn]);
 
-  const broadcastMix = useCallback((voice: number, music: number) => {
+  const broadcastMix = useCallback((voice: number) => {
     if (mixBroadcastRef.current) clearTimeout(mixBroadcastRef.current);
     mixBroadcastRef.current = setTimeout(() => {
-      if (isMyTurnRef.current) sendMixAdjust(voice, music);
+      if (isMyTurnRef.current) sendMixAdjust(voice);
       mixBroadcastRef.current = null;
     }, 150);
   }, [sendMixAdjust]);
 
-  // Handle incoming collaborative mix adjustments
+  // Handle incoming collaborative voice adjustments
   useEffect(() => {
     if (!pendingMixAdjust) return;
-    const { voice, music } = pendingMixAdjust;
+    const { voice } = pendingMixAdjust;
     const voicePercent = Math.round(voice * 100);
-    const musicPercent = Math.round(music * 100);
 
     if (isMyTurn) {
-      // Singer receives listener's adjustment → apply to gain nodes
+      // Singer receives a listener's adjustment, applies it to the published gain
       setMixMicGain(voice);
-      setMixMusicGain(music);
       setMixVoiceValue(voicePercent);
-      setMixMusicValue(musicPercent);
       // Rebroadcast so all other listeners stay in sync
-      broadcastMix(voice, music);
+      broadcastMix(voice);
     } else {
-      // Listener receives singer's broadcast → sync sliders only (no gain, no chat)
+      // Listener receives the singer's broadcast, syncs the slider only
       setMixVoiceValue(voicePercent);
-      setMixMusicValue(musicPercent);
     }
     clearPendingMixAdjust();
-  }, [pendingMixAdjust, isMyTurn, setMixMicGain, setMixMusicGain, clearPendingMixAdjust, broadcastMix]);
+  }, [pendingMixAdjust, isMyTurn, setMixMicGain, clearPendingMixAdjust, broadcastMix]);
 
   // Forward name-taken rejection to parent so it can show the name modal
   useEffect(() => {
@@ -239,21 +315,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   // LiveKit identity for status updates - must be before statusCtxRef
   const lkIdentity = room?.localParticipant?.identity ?? null;
-
-  // Listen for manual song name from singer — ref-stable to avoid re-registration
-  const statusCtxRef = useRef({ isMicEnabled, isSharing, browser, sendStatusUpdate, lkIdentity, autoMix });
-  statusCtxRef.current = { isMicEnabled, isSharing, browser, sendStatusUpdate, lkIdentity, autoMix };
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const name = (e as CustomEvent<string>).detail;
-      if (!name) return;
-      const { isMicEnabled: mic, isSharing: share, browser: b, sendStatusUpdate: send, lkIdentity: lkId, autoMix: am } = statusCtxRef.current;
-      send({ isMuted: !mic, isSharingAudio: share, currentSong: name, browser: b.name + (b.isMobile ? " (Mobile)" : ""), lkIdentity: lkId ?? undefined, autoMix: am });
-    };
-    window.addEventListener("karaoke-set-song", handler);
-    return () => window.removeEventListener("karaoke-set-song", handler);
-  }, []);
 
   // Play sound when new reactions arrive
   const prevReactionCountRef = useRef(0);
@@ -274,7 +335,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       wasMutedBySingerRef.current = true;
       micWasOnBeforeMuteRef.current = isMicEnabled;
       if (isMicEnabled) {
-        // Use setMicMuted which handles both sharing (Web Audio mix) and non-sharing paths
+        // setMicMuted handles both the singing mix and the idle managed-mic path
         void setMicMuted(true);
       }
     }
@@ -293,28 +354,34 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     if (isMyTurn && !wasMyTurnRef.current) {
       wasMyTurnRef.current = true;
       if (micMode === "voice") setMicMode("raw");
+      // A YouTube link supplied at queue time goes straight on stage
+      const pendingVideoId = pendingVideoIdRef.current;
+      pendingVideoIdRef.current = null;
+      if (pendingVideoId) sendVideoLoad(pendingVideoId);
     }
     if (!isMyTurn && wasMyTurnRef.current) {
       wasMyTurnRef.current = false;
       if (singerMutedAll) setSingerMutedAll(false);
+      setSongName(null);
       // Switch back to talking mode when done singing
       if (micMode === "raw") setMicMode("voice");
     }
     if (!isMyTurn) wasMyTurnRef.current = false;
-  }, [isMyTurn, micMode, setMicMode]);
+  }, [isMyTurn, micMode, setMicMode, sendVideoLoad, singerMutedAll]);
 
-  // Send status updates (includes LiveKit identity + auto-mix state)
+  // Send status updates (includes LiveKit identity). isSharingAudio now means
+  // "the stage video is playing", which is what suspends the 60s singer timer.
+  const isStageVideoPlaying = isMyTurn && (roomState.video?.playing ?? false);
   useEffect(() => {
     if (!isPartyConnected) return;
     sendStatusUpdate({
       isMuted: !isMicEnabled,
-      isSharingAudio: isSharing,
-      currentSong,
+      isSharingAudio: isStageVideoPlaying,
+      currentSong: songName,
       browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
       lkIdentity: lkIdentity ?? undefined,
-      autoMix,
     });
-  }, [isMicEnabled, isSharing, currentSong, isPartyConnected, sendStatusUpdate, browser, lkIdentity, autoMix]);
+  }, [isMicEnabled, isStageVideoPlaying, songName, isPartyConnected, sendStatusUpdate, browser, lkIdentity]);
 
   // Broadcast to room when quota is hit so existing users know
   const quotaBroadcastedRef = useRef(false);
@@ -383,8 +450,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden">
-      {/* Audio unlock prompt — dismisses on first click to satisfy autoplay policy */}
-      <AudioUnlockOverlay />
+      {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
+      <AudioUnlockOverlay onUnlock={createPlayer} apiReady={apiReady} />
 
       {/* Ambient background — driven by audio visualizer when someone sings */}
       <div
@@ -477,18 +544,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
-      {/* Browser warning */}
-      {!browser.canSing && (
-        <div
-          className="relative z-10 mx-4 mt-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
-          style={{ background: "var(--color-accent-dim)", color: "var(--color-accent)" }}
-        >
-          {browser.isMobile
-            ? "Mobile detected — you can listen and chat, but singing requires a desktop Chromium browser."
-            : `${browser.name} detected — singing requires a Chromium browser (Chrome, Edge, Brave, Arc...).`}
-        </div>
-      )}
-
       {/* Main content */}
       <div
         className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden p-2 lg:flex-row lg:gap-3 lg:p-4 xl:gap-4"
@@ -522,7 +577,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             myPeerId={myPeerId}
             onRequestJoinQueue={() => setJoinQueueModalOpen(true)}
             onLeaveQueue={leaveQueue}
-            canSing={browser.canSing}
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
             personVolumes={personVolumes}
@@ -534,8 +588,16 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
         {/* Center stage */}
         <section className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${mobileSection === "stage" ? "flex" : "hidden"} lg:flex`}>
+          <VideoStage
+            mountRef={mountRef}
+            hasVideo={roomState.video !== null}
+            ready={playerReady}
+            embedBlocked={embedBlocked}
+            errorCode={playerErrorCode}
+            isSinger={isMyTurn}
+          />
           <div
-            className={`relative flex min-h-0 flex-1 flex-col justify-center overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
+            className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
             style={{
               background: roomState.currentSingerId
                 ? "transparent"
@@ -543,56 +605,54 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               borderColor: roomState.currentSingerId ? "transparent" : "var(--color-dark-border)",
             }}
           >
+            {/* Auto margins center only when content fits; justify-center would clip
+                overflow above the scrollable area. */}
+            <div className="my-auto w-full">
             <StageBanner
               room={room}
               roomState={roomState}
               isMyTurn={isMyTurn}
-              isSharing={isSharing}
-              onStartSharing={startSharing}
-              onStopSharing={stopSharing}
               onFinishSinging={finishSinging}
-              audioError={sharingError}
+              audioError={singingError}
               singerSongName={
                 roomState.currentSingerId
                   ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
                   : null
               }
-              canSing={browser.canSing}
+              singerIdentity={singerIdentity}
               onAddToQueue={
-                roomState.queue.length === 0 && !isMyTurn && browser.canSing
+                roomState.queue.length === 0 && !isMyTurn
                   ? () => setJoinQueueModalOpen(true)
                   : undefined
               }
-              musicVolume={musicVolume}
-              onMusicVolumeChange={(vol: number) => {
-                setMusicVolume(vol);
-                if (roomState.currentSingerId) {
-                  const singerStatus = participantStatus[roomState.currentSingerId];
-                  const singerId = singerStatus?.lkIdentity ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name ?? "";
-                  if (singerId) setPersonVolumes((prev) => ({ ...prev, [singerId]: vol }));
-                }
-              }}
-              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v, mixMusicValue / 100); }}
-              onMixMusicGain={(v) => { setMixMusicGain(v); setMixMusicValue(Math.round(v * 100)); broadcastMix(mixVoiceValue / 100, v); }}
-              mixVoiceValue={autoMixBoostedVoice ?? mixVoiceValue}
-              mixMusicValue={autoMixDuckedValue ?? mixMusicValue}
+              onSetSongName={isMyTurn ? setSongName : undefined}
+              onLoadVideo={isMyTurn ? handleLoadVideo : undefined}
+              onPlay={isMyTurn ? () => {
+                // Play after the video ended restarts it, so broadcast 0 rather than the
+                // duration the player still reports
+                const ended = player.getState() === 0;
+                if (ended) player.seek(0);
+                player.play();
+                broadcastNow(true, ended ? 0 : player.getTime());
+              } : undefined}
+              onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
+              onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
+              playbackReady={playerReady}
+              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v); }}
+              onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
+              mixVoiceValue={mixVoiceValue}
+              mixMusicValue={mixMusicValue}
+              listenerVoiceValue={Math.round((singerIdentity ? personVolumes[singerIdentity] ?? 1 : 1) * 100)}
+              onListenerVoiceChange={!isMyTurn && singerIdentity
+                ? (v) => handlePersonVolumeChange(singerIdentity, v / 100)
+                : undefined}
               ambientId="ambient-bg"
               ambientColor="violet"
               onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
               onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
               isMutedAll={singerMutedAll}
-              singerAutoMix={roomState.currentSingerId ? participantStatus[roomState.currentSingerId]?.autoMix : false}
-              onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
-              onMixAdjustDone={!isMyTurn ? (voice, music) => {
-                sendChat(`adjusted mix - Voice ${Math.round(voice * 100)}%, Music ${Math.round(music * 100)}%`);
-              } : undefined}
-              autoMix={autoMix}
-              onAutoMixChange={isSharing ? (on) => { setAutoMix(on); sendChat(on ? "enabled Auto Mix" : "disabled Auto Mix"); } : undefined}
-              recordingState={recordingState}
-              recordingDuration={recordingDuration}
-              onStartRecording={startRecording}
-              onStopRecording={stopRecording}
             />
+            </div>
           {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
           {(reactions.length > 0 || floatingChatMessages.length > 0) && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">
@@ -663,7 +723,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               const gain = volume / 100;
               setMixVoiceValue(volume);
               setMixMicGain(gain);
-              if (isMyTurn) broadcastMix(gain, mixMusicValue / 100);
+              if (isMyTurn) broadcastMix(gain);
             }}
             voiceEffect={voiceEffect}
             onVoiceEffectChange={setVoiceEffect}
@@ -690,16 +750,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         open={joinQueueModalOpen}
         onClose={() => setJoinQueueModalOpen(false)}
         onJoin={joinQueue}
-        onSetSongIntent={(song) => {
-          sendStatusUpdate({
-            isMuted: !isMicEnabled,
-            isSharingAudio: isSharing,
-            currentSong: song,
-            browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
-            lkIdentity: lkIdentity ?? undefined,
-            autoMix,
-          });
-        }}
+        onSetSongIntent={setSongName}
+        onSetPendingVideo={(videoId) => { pendingVideoIdRef.current = videoId; }}
       />
 
       {/* Settings drawer */}
@@ -713,6 +765,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         isAdmin={isAdmin}
         isLocked={roomState.isLocked}
         onSetPassword={isAdmin ? sendSetPassword : undefined}
+        syncAuto={syncOffsetAuto}
+        onSyncAutoChange={handleSyncAutoChange}
+        autoOffsetMs={autoOffsetMs}
+        syncOffsetMs={syncOffsetMs}
+        onSyncOffsetChange={handleSyncOffsetChange}
       />
 
       {/* Sound Profile Modal */}
@@ -739,39 +796,39 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         micCheckState={micCheckState}
       />
 
-      {/* Recording download modal */}
-      {recordingBlob && recordingState === "stopped" && (
-        <RecordingModal
-          open
-          blob={recordingBlob}
-          duration={recordingDuration}
-          songName={currentSong}
-          onClose={clearRecording}
-        />
-      )}
-
     </main>
   );
 }
 
-function AudioUnlockOverlay() {
+function AudioUnlockOverlay({ onUnlock, apiReady }: { onUnlock: () => void; apiReady: boolean }) {
   const [visible, setVisible] = useState(true);
+  const [waitedForApi, setWaitedForApi] = useState(false);
+
+  // The player must be built inside this click for autoplay to work, which needs the
+  // IFrame API in hand. If it never arrives, let people into the room anyway.
+  useEffect(() => {
+    const timer = setTimeout(() => setWaitedForApi(true), API_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (!visible) return null;
+  const canEnter = apiReady || waitedForApi;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center"
+      className={`fixed inset-0 z-50 flex items-center justify-center ${canEnter ? "cursor-pointer" : "cursor-progress"}`}
       style={{ background: "rgba(9, 9, 11, 0.85)" }}
-      onClick={() => setVisible(false)}
+      onClick={canEnter ? () => { onUnlock(); setVisible(false); } : undefined}
     >
       <div className="text-center" style={{ animation: "fade-in 0.3s ease-out" }}>
         <p
           className="text-xl font-bold"
           style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
         >
-          Click to enter room
+          {canEnter ? "Click to enter room" : "Preparing the stage"}
         </p>
         <p className="mt-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
-          This enables audio playback
+          {canEnter ? "This enables audio and video playback" : "One moment"}
         </p>
       </div>
     </div>

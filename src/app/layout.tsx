@@ -19,7 +19,7 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Karaoke Now — Sing Together Online",
   description:
-    "Real-time online karaoke rooms. Join with a code, share your audio, and sing with friends.",
+    "Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, and sing with friends.",
   icons: [{ rel: "icon", url: "/favicon.svg", type: "image/svg+xml" }],
 };
 

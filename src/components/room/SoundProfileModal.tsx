@@ -57,11 +57,14 @@ export function SoundProfileModal({
   const [micCheckProfile, setMicCheckProfile] = useState<MicMode>(micMode);
   const wetDry = Math.round(effectWetDry * 100);
 
+  // Seed only when the modal opens; re-seeding on state changes would clobber an
+  // explicit profile choice the moment a check stops.
   useEffect(() => {
-    if (open && micCheckState === "idle") setMicCheckProfile(micMode);
-  }, [open, micMode, micCheckState]);
+    if (open) setMicCheckProfile(micMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  // Close modal — auto-stop effect below handles mic check cleanup
+  // Close modal - auto-stop effect below handles mic check cleanup
   const handleClose = () => {
     onClose();
   };

@@ -1,5 +1,5 @@
 import type * as Party from "partykit/server";
-import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, SignalPayload } from "./types";
+import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "./types";
 
 interface ParticipantEntry {
   name: string;
@@ -14,6 +14,7 @@ const ALLOWED_EMOJIS = new Set(["🔥", "💯", "😢", "🎵", "❤️"]);
 const HEARTBEAT_INTERVAL_MS = 15_000; // ping every 15s
 const HEARTBEAT_TIMEOUT_MS = 40_000;  // evict after 40s of no pong
 const SINGER_TIMEOUT_MS = 60_000;     // auto-advance queue after 60s of inactive singer
+const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
 export default class KaraokeRoom implements Party.Server {
   participants: Map<string, ParticipantEntry> = new Map();
@@ -22,6 +23,7 @@ export default class KaraokeRoom implements Party.Server {
   chatMessages: ChatMessage[] = [];
   participantStatus: Map<string, ParticipantStatus> = new Map();
   mutedBySinger: string | null = null; // persisted so reconnecting clients get correct state
+  videoState: VideoState | null = null; // current singer's synced YouTube video, null when nobody is on stage
 
   // Admin & password
   adminPeerId: string | null = null;
@@ -83,6 +85,7 @@ export default class KaraokeRoom implements Party.Server {
         console.log(`[KaraokeRoom] Singer ${this.currentSingerId} timed out - advancing queue`);
         this.currentSingerId = null;
         this.mutedBySinger = null;
+        this.videoState = null;
         this.promoteNextSinger();
         this.broadcastState();
       }, SINGER_TIMEOUT_MS);
@@ -144,9 +147,6 @@ export default class KaraokeRoom implements Party.Server {
       case "finish-singing":
         this.handleFinishSinging(sender);
         break;
-      case "signal":
-        this.handleSignal(sender, msg.to, msg.payload);
-        break;
       case "chat":
         this.handleChat(sender, msg.text);
         break;
@@ -157,7 +157,6 @@ export default class KaraokeRoom implements Party.Server {
           currentSong: msg.currentSong,
           browser: msg.browser,
           lkIdentity: msg.lkIdentity,
-          autoMix: msg.autoMix === true,
         });
         break;
       case "reaction":
@@ -171,6 +170,15 @@ export default class KaraokeRoom implements Party.Server {
         break;
       case "mix-adjust":
         this.handleMixAdjust(sender, msg.voice, msg.music);
+        break;
+      case "video-load":
+        this.handleVideoLoad(sender, msg.videoId);
+        break;
+      case "video-sync":
+        this.handleVideoSync(sender, msg.playing, msg.videoTime);
+        break;
+      case "time-sync":
+        this.handleTimeSync(sender, msg.t0);
         break;
       case "kick":
         this.handleKick(sender, msg.peerId);
@@ -233,6 +241,7 @@ export default class KaraokeRoom implements Party.Server {
     // If they were the current singer, promote next
     if (this.currentSingerId === peerId) {
       this.currentSingerId = null;
+      this.videoState = null;
       this.promoteNextSinger();
     }
 
@@ -242,6 +251,7 @@ export default class KaraokeRoom implements Party.Server {
       this.queue = [];
       this.currentSingerId = null;
       this.mutedBySinger = null;
+      this.videoState = null;
       this.chatMessages = [];
       this.participantStatus.clear();
       this.lastPong.clear();
@@ -375,6 +385,7 @@ export default class KaraokeRoom implements Party.Server {
     // If they were the current singer and chose to leave queue, clear them
     if (this.currentSingerId === sender.id) {
       this.currentSingerId = null;
+      this.videoState = null;
       this.promoteNextSinger();
     }
 
@@ -391,26 +402,9 @@ export default class KaraokeRoom implements Party.Server {
     }
 
     this.currentSingerId = null;
+    this.videoState = null;
     this.promoteNextSinger();
     this.broadcastState();
-  }
-
-  private handleSignal(
-    sender: Party.Connection,
-    to: string,
-    payload: SignalPayload
-  ) {
-    const target = this.participants.get(to);
-    if (!target) {
-      this.send(sender, { type: "error", message: "Target peer not found" });
-      return;
-    }
-
-    this.send(target.ws, {
-      type: "signal",
-      from: sender.id,
-      payload,
-    });
   }
 
   private handleChat(sender: Party.Connection, text: string) {
@@ -542,29 +536,95 @@ export default class KaraokeRoom implements Party.Server {
     }
   }
 
-  private handleMixAdjust(sender: Party.Connection, voice: number, music: number) {
+  private handleMixAdjust(sender: Party.Connection, voice: number, music?: number) {
     if (!this.currentSingerId) return;
-    if (!Number.isFinite(voice) || !Number.isFinite(music)) return;
+    if (!Number.isFinite(voice)) return;
     const participant = this.participants.get(sender.id);
     if (!participant) return;
 
     const clampedVoice = Math.max(0, Math.min(1.5, voice));
-    const clampedMusic = Math.max(0, Math.min(1.5, music));
+    // Music is local to each client now, but pre-YouTube clients still read it off
+    // the wire and feed it to an AudioParam, so it always ships with a finite value.
+    const clampedMusic = Number.isFinite(music) ? Math.max(0, Math.min(1.5, music as number)) : 1;
     const isSinger = sender.id === this.currentSingerId;
 
     if (isSinger) {
-      // Singer adjusted — broadcast to all listeners so their sliders sync
+      // Singer adjusted - broadcast to all listeners so their sliders sync
       for (const [id, entry] of this.participants) {
         if (id !== sender.id) {
           this.send(entry.ws, { type: "mix-adjust", fromName: participant.name, voice: clampedVoice, music: clampedMusic });
         }
       }
     } else {
-      // Listener adjusted — send to singer to apply gain + announce in chat
+      // Listener adjusted - send to singer to apply gain + announce in chat
       const singer = this.participants.get(this.currentSingerId);
       if (!singer) return;
       this.send(singer.ws, { type: "mix-adjust", fromName: participant.name, voice: clampedVoice, music: clampedMusic });
     }
+  }
+
+  // ── Synced video playback ───────────────────────────────────
+
+  private handleVideoLoad(sender: Party.Connection, videoId: string) {
+    if (this.currentSingerId !== sender.id) {
+      this.send(sender, { type: "error", message: "Only the singer can control playback" });
+      return;
+    }
+    if (typeof videoId !== "string" || !YOUTUBE_ID_RE.test(videoId)) {
+      this.send(sender, { type: "error", message: "Invalid video link" });
+      return;
+    }
+
+    // loadedAt changes on every load, so re-picking the current video restarts it
+    this.videoState = {
+      videoId,
+      playing: false,
+      videoTime: 0,
+      wallTime: Date.now(),
+      loadedAt: Date.now(),
+      singerId: sender.id,
+    };
+    // Loaded but not playing yet: the idle timer keeps running until playback starts
+    this.resetSingerTimer();
+    this.broadcastVideoState();
+  }
+
+  private handleVideoSync(sender: Party.Connection, playing: boolean, videoTime: number) {
+    if (this.currentSingerId !== sender.id) {
+      this.send(sender, { type: "error", message: "Only the singer can control playback" });
+      return;
+    }
+    const current = this.videoState;
+    if (!current) return;
+    if (!Number.isFinite(videoTime) || videoTime < 0) return;
+
+    this.videoState = {
+      ...current,
+      playing: playing === true,
+      videoTime,
+      wallTime: Date.now(),
+      singerId: sender.id,
+    };
+
+    // Playing counts as activity, so the singer gets unlimited time on stage
+    if (this.videoState.playing) {
+      if (this.singerTimer) { clearTimeout(this.singerTimer); this.singerTimer = null; }
+    } else {
+      this.resetSingerTimer();
+    }
+
+    this.broadcastVideoState();
+  }
+
+  private handleTimeSync(sender: Party.Connection, t0: number) {
+    if (!Number.isFinite(t0)) return;
+    this.send(sender, { type: "time-sync", t0, t1: Date.now() });
+  }
+
+  // Point broadcast, not broadcastState(): video-sync fires every ~2s and a full
+  // room-state would also re-trigger registry reporting.
+  private broadcastVideoState() {
+    this.broadcast({ type: "video-state", video: this.videoState, serverTime: Date.now() });
   }
 
   // ── Admin Handlers ──────────────────────────────────────────
@@ -666,8 +726,9 @@ export default class KaraokeRoom implements Party.Server {
 
   private promoteNextSinger() {
     if (this.currentSingerId !== null) return;
-    // Clear mute-all when no singer is active
+    // Clear mute-all and any leftover video when no singer is active
     this.mutedBySinger = null;
+    this.videoState = null;
     if (this.queue.length === 0) {
       this.resetSingerTimer();
       return;
@@ -705,6 +766,7 @@ export default class KaraokeRoom implements Party.Server {
       mutedBySinger: this.mutedBySinger,
       adminPeerId: this.adminPeerId,
       isLocked: this.passwordHash !== null,
+      video: this.videoState,
     };
   }
 

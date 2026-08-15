@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePartySocket } from "./usePartySocket";
-import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage } from "~/types/room";
+import { usePartyClock } from "./usePartyClock";
+import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "~/types/room";
 
 interface UseRoomStateParams {
   roomCode: string;
@@ -33,14 +34,19 @@ interface UseRoomStateReturn {
   isMyTurn: boolean;
   send: (msg: ClientMessage) => void;
   sendChat: (text: string) => void;
-  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; autoMix?: boolean }) => void;
+  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string }) => void;
   sendReaction: (emoji: string) => void;
   sendMuteAll: () => void;
   sendUnmuteAll: () => void;
-  sendMixAdjust: (voice: number, music: number) => void;
+  sendMixAdjust: (voice: number) => void;
   clearPendingMixAdjust: () => void;
+  sendVideoLoad: (videoId: string) => void;
+  sendVideoSync: (playing: boolean, videoTime: number) => void;
+  videoRef: React.RefObject<VideoState | null>;
+  serverOffsetRef: React.RefObject<number>;
+  clockSyncedRef: React.RefObject<boolean>;
   mutedBySinger: string | null;
-  pendingMixAdjust: { fromName: string; voice: number; music: number } | null;
+  pendingMixAdjust: { fromName: string; voice: number } | null;
   nameTaken: { name: string; suggestions: string[] } | null;
   clearNameTaken: () => void;
   chatMessages: ChatMessage[];
@@ -65,6 +71,7 @@ const INITIAL_ROOM_STATE: RoomState = {
   mutedBySinger: null,
   adminPeerId: null,
   isLocked: false,
+  video: null,
 };
 
 export function useRoomState({
@@ -79,7 +86,7 @@ export function useRoomState({
   const [participantStatus, setParticipantStatus] = useState<Record<string, ParticipantStatus>>({});
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [mutedBySinger, setMutedBySinger] = useState<string | null>(null);
-  const [pendingMixAdjust, setPendingMixAdjust] = useState<{ fromName: string; voice: number; music: number } | null>(null);
+  const [pendingMixAdjust, setPendingMixAdjust] = useState<{ fromName: string; voice: number } | null>(null);
   const [nameTaken, setNameTaken] = useState<{ name: string; suggestions: string[] } | null>(null);
   const [kicked, setKicked] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -95,9 +102,22 @@ export function useRoomState({
 
   const hasReceivedInitialStateRef = useRef(false);
   const sendRef = useRef<((msg: ClientMessage) => void) | null>(null);
+  const handleTimeSyncRef = useRef<(t0: number, t1: number) => void>(() => {});
+
+  // Timing fields land in a ref only: video-state arrives every ~2s and the drift
+  // loop reads it there, so only identity changes are worth a re-render.
+  const videoRef = useRef<VideoState | null>(null);
+  const applyVideoState = useCallback((video: VideoState | null) => {
+    const previous = videoRef.current;
+    videoRef.current = video;
+    const changed = (previous === null) !== (video === null)
+      || previous?.videoId !== video?.videoId
+      || previous?.playing !== video?.playing
+      || previous?.loadedAt !== video?.loadedAt;
+    if (changed) setRoomState((prev) => ({ ...prev, video }));
+  }, []);
 
   const onMessage = useCallback((msg: ServerMessage) => {
-    console.log("[RoomState] Received message:", msg.type);
     onRawMessageRef.current?.(msg);
 
     switch (msg.type) {
@@ -114,8 +134,10 @@ export function useRoomState({
           participants: msg.state.participants ?? [],
           adminPeerId: msg.state.adminPeerId ?? null,
           isLocked: msg.state.isLocked ?? false,
+          video: msg.state.video ?? null,
         };
         setRoomState(state);
+        videoRef.current = state.video;
         // Sync mutedBySinger from server state (persisted across reconnects)
         setMutedBySinger(state.mutedBySinger ?? null);
         setParticipantStatus(state.participantStatus);
@@ -172,16 +194,19 @@ export function useRoomState({
         break;
       }
       case "mute-all":
-        console.log("[RoomState] Muted by singer:", msg.singerName);
         setMutedBySinger(msg.singerName);
         break;
       case "unmute-all":
-        console.log("[RoomState] Unmuted by singer");
         setMutedBySinger(null);
         break;
       case "mix-adjust":
-        console.log("[RoomState] Mix adjusted by:", msg.fromName, "voice:", msg.voice, "music:", msg.music);
-        setPendingMixAdjust({ fromName: msg.fromName, voice: msg.voice, music: msg.music });
+        setPendingMixAdjust({ fromName: msg.fromName, voice: msg.voice });
+        break;
+      case "video-state":
+        applyVideoState(msg.video);
+        break;
+      case "time-sync":
+        handleTimeSyncRef.current(msg.t0, msg.t1);
         break;
       case "name-taken":
         console.log("[RoomState] Name taken:", msg.name, "suggestions:", msg.suggestions);
@@ -214,10 +239,13 @@ export function useRoomState({
       default:
         break;
     }
-  }, []);
+  }, [applyVideoState]);
 
   const { send, isConnected } = usePartySocket({ roomCode, onMessage });
   sendRef.current = send;
+
+  const { serverOffsetRef, clockSyncedRef, handleTimeSync } = usePartyClock(sendRef, isConnected);
+  handleTimeSyncRef.current = handleTimeSync;
 
   // Send join message on connect and on name change
   const prevNameRef = useRef(playerName);
@@ -257,7 +285,7 @@ export function useRoomState({
     }
   }, [send]);
 
-  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; autoMix?: boolean }) => {
+  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string }) => {
     send({
       type: "status-update",
       isMuted: status.isMuted,
@@ -265,7 +293,6 @@ export function useRoomState({
       currentSong: status.currentSong,
       browser: status.browser,
       lkIdentity: status.lkIdentity,
-      autoMix: status.autoMix,
     });
   }, [send]);
 
@@ -281,13 +308,21 @@ export function useRoomState({
     send({ type: "unmute-all" });
   }, [send]);
 
-  const sendMixAdjust = useCallback((voice: number, music: number) => {
-    send({ type: "mix-adjust", voice, music });
+  const sendMixAdjust = useCallback((voice: number) => {
+    send({ type: "mix-adjust", voice });
   }, [send]);
 
   const clearPendingMixAdjust = useCallback(() => {
     setPendingMixAdjust(null);
   }, []);
+
+  const sendVideoLoad = useCallback((videoId: string) => {
+    send({ type: "video-load", videoId });
+  }, [send]);
+
+  const sendVideoSync = useCallback((playing: boolean, videoTime: number) => {
+    send({ type: "video-sync", playing, videoTime });
+  }, [send]);
 
   const clearNameTaken = useCallback(() => {
     setNameTaken(null);
@@ -327,6 +362,11 @@ export function useRoomState({
     sendUnmuteAll,
     sendMixAdjust,
     clearPendingMixAdjust,
+    sendVideoLoad,
+    sendVideoSync,
+    videoRef,
+    serverOffsetRef,
+    clockSyncedRef,
     mutedBySinger,
     pendingMixAdjust,
     nameTaken,
