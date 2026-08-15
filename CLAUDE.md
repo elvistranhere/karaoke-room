@@ -124,7 +124,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 
 ## Environment
 
-Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`). See `docs/IDEOLOGY.md` for key rotation architecture.
+Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation and search caching, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`), `YOUTUBE_API_KEY` for in-app YouTube search (Data API v3; without it the video input is paste-only; results are filtered to embeddable videos and cached 24h in Redis because search.list costs 100 of the 10k daily quota units). See `docs/IDEOLOGY.md` for key rotation architecture.
 
 Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedIndexedAccess`.
 
