@@ -24,12 +24,15 @@ interface StageBannerProps {
   onPause?: () => void;
   onRestart?: () => void;
   playbackReady?: boolean;
+  // Singer-local: published voice gain and own player volume; never broadcast
+  onMixMicGain?: (val: number) => void;
   onMixMusicGain?: (val: number) => void;
   ambientId?: string;
   ambientColor?: "violet" | "amber";
   onMuteAll?: () => void;
   onUnmuteAll?: () => void;
   isMutedAll?: boolean;
+  mixVoiceValue?: number;
   mixMusicValue?: number;
   // Listener-local mix: voice is the singer's volume on this device only
   listenerVoiceValue?: number;
@@ -51,12 +54,14 @@ export function StageBanner({
   onPause,
   onRestart,
   playbackReady = false,
+  onMixMicGain,
   onMixMusicGain,
   ambientId,
   ambientColor,
   onMuteAll,
   onUnmuteAll,
   isMutedAll = false,
+  mixVoiceValue = 100,
   mixMusicValue = 70,
   listenerVoiceValue = 100,
   onListenerVoiceChange,
@@ -275,9 +280,12 @@ export function StageBanner({
 
           {onLoadVideo && <VideoUrlInput onLoad={onLoadVideo} label="Change" />}
 
-          {/* Music volume - the singer's own player only */}
-          {onMixMusicGain && (
-            <MixSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={100} onChange={(v) => onMixMusicGain(v / 100)} />
+          {/* Singer-local mix: voice is their own output level, music is their own player */}
+          {onMixMicGain && onMixMusicGain && (
+            <div className="space-y-2">
+              <MixSlider label="Voice" icon={<Mic size={14} style={{ color: "var(--color-primary)" }} />} value={mixVoiceValue} onChange={(v) => onMixMicGain(v / 100)} />
+              <MixSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={100} onChange={(v) => onMixMusicGain(v / 100)} />
+            </div>
           )}
 
           <div className="flex flex-wrap gap-2">

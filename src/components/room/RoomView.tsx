@@ -598,7 +598,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
               onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
               playbackReady={playerReady}
+              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); }}
               onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
+              mixVoiceValue={mixVoiceValue}
               mixMusicValue={mixMusicValue}
               listenerVoiceValue={Math.round((singerIdentity ? personVolumes[singerIdentity] ?? 1 : 1) * 100)}
               onListenerVoiceChange={!isMyTurn && singerIdentity
