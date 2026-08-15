@@ -17,7 +17,8 @@ import { InviteCode } from "./InviteCode";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { VideoStage } from "./VideoStage";
-import { SYNC_OFFSET_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset } from "./SyncOffsetControl";
+import { SYNC_OFFSET_STORAGE_KEY, SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto } from "./SyncOffsetControl";
+import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { AuthModal } from "./AuthModal";
@@ -130,18 +131,17 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   });
 
   // Volume controls
-  const [musicVolume, setMusicVolume] = useState(1);
   const [voiceVolume, setVoiceVolume] = useState(1);
   const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
 
-  // Collaborative mix values: voice is shared via PartyKit, music is local to each client
+  // Mix values: voice is the singer's published gain, music is local to each client
   const [mixVoiceValue, setMixVoiceValue] = useState(100);
   const [mixMusicValue, setMixMusicValue] = useState(70);
 
   const [songName, setSongName] = useState<string | null>(null);
   const [syncOffsetMs, setSyncOffsetMs] = useState(readStoredSyncOffset);
+  const [syncOffsetAuto, setSyncOffsetAuto] = useState(readStoredSyncAuto);
   const syncOffsetMsRef = useRef(syncOffsetMs);
-  syncOffsetMsRef.current = syncOffsetMs;
   const pendingVideoIdRef = useRef<string | null>(null);
 
   const singerIdentity = roomState.currentSingerId
@@ -149,6 +149,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name
       ?? null
     : null;
+
+  const autoOffsetMs = useAutoSyncOffset(room, singerIdentity, !isMyTurn && roomState.video !== null);
+  useEffect(() => {
+    syncOffsetMsRef.current = syncOffsetAuto ? autoOffsetMs : syncOffsetMs;
+  }, [syncOffsetAuto, autoOffsetMs, syncOffsetMs]);
 
   const isMyTurnForPlayerRef = useRef(isMyTurn);
   isMyTurnForPlayerRef.current = isMyTurn;
@@ -191,10 +196,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const broadcastNowRef = useRef(broadcastNow);
   broadcastNowRef.current = broadcastNow;
 
-  // Room volume scales the whole performance, the music slider sets the music share
   useEffect(() => {
-    player.setVolume(musicVolume * mixMusicValue);
-  }, [player, musicVolume, mixMusicValue]);
+    player.setVolume(mixMusicValue);
+  }, [player, mixMusicValue]);
 
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
@@ -203,6 +207,15 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       window.localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(clamped));
     } catch {
       // storage unavailable, offset is still applied for this session
+    }
+  }, []);
+
+  const handleSyncAutoChange = useCallback((auto: boolean) => {
+    setSyncOffsetAuto(auto);
+    try {
+      window.localStorage.setItem(SYNC_AUTO_STORAGE_KEY, auto ? "on" : "off");
+    } catch {
+      // storage unavailable, choice still applies for this session
     }
   }, []);
 
@@ -215,11 +228,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
-      // Room volume is the overall performance level, so it scales the singer's voice too
-      const roomVol = identity === singerIdentity ? musicVolume : 1;
-      el.volume = voiceVolume * personVol * roomVol;
+      el.volume = voiceVolume * personVol;
     });
-  }, [voiceVolume, personVolumes, singerIdentity, musicVolume]);
+  }, [voiceVolume, personVolumes]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
@@ -616,23 +627,19 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
               onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
               playbackReady={playerReady}
-              musicVolume={musicVolume}
-              onMusicVolumeChange={setMusicVolume}
               onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); broadcastMix(v); }}
               onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
               mixVoiceValue={mixVoiceValue}
               mixMusicValue={mixMusicValue}
-              syncOffsetMs={syncOffsetMs}
-              onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
+              listenerVoiceValue={Math.round((singerIdentity ? personVolumes[singerIdentity] ?? 1 : 1) * 100)}
+              onListenerVoiceChange={!isMyTurn && singerIdentity
+                ? (v) => handlePersonVolumeChange(singerIdentity, v / 100)
+                : undefined}
               ambientId="ambient-bg"
               ambientColor="violet"
               onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
               onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
               isMutedAll={singerMutedAll}
-              onMixAdjust={!isMyTurn ? sendMixAdjust : undefined}
-              onMixAdjustDone={!isMyTurn ? (voice) => {
-                sendChat(`adjusted the singer's voice to ${Math.round(voice * 100)}%`);
-              } : undefined}
             />
             </div>
           {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
@@ -747,6 +754,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         isAdmin={isAdmin}
         isLocked={roomState.isLocked}
         onSetPassword={isAdmin ? sendSetPassword : undefined}
+        syncAuto={syncOffsetAuto}
+        onSyncAutoChange={handleSyncAutoChange}
+        autoOffsetMs={autoOffsetMs}
+        syncOffsetMs={syncOffsetMs}
+        onSyncOffsetChange={handleSyncOffsetChange}
       />
 
       {/* Sound Profile Modal */}

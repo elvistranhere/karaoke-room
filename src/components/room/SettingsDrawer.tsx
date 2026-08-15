@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Lock, LockOpen } from "lucide-react";
+import { SyncOffsetControl, SYNC_OFFSET_DEFAULT_MS } from "./SyncOffsetControl";
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -13,6 +14,11 @@ interface SettingsDrawerProps {
   isAdmin?: boolean;
   isLocked?: boolean;
   onSetPassword?: (password: string | null) => void;
+  syncAuto?: boolean;
+  onSyncAutoChange?: (auto: boolean) => void;
+  autoOffsetMs?: number;
+  syncOffsetMs?: number;
+  onSyncOffsetChange?: (ms: number) => void;
 }
 
 export function SettingsDrawer({
@@ -25,6 +31,11 @@ export function SettingsDrawer({
   isAdmin = false,
   isLocked = false,
   onSetPassword,
+  syncAuto = true,
+  onSyncAutoChange,
+  autoOffsetMs = SYNC_OFFSET_DEFAULT_MS,
+  syncOffsetMs = SYNC_OFFSET_DEFAULT_MS,
+  onSyncOffsetChange,
 }: SettingsDrawerProps) {
   const [password, setPassword] = useState("");
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -147,6 +158,18 @@ export function SettingsDrawer({
               Controls overall volume of all incoming audio
             </p>
           </div>
+
+          {onSyncAutoChange && onSyncOffsetChange ? (
+            <div className="border-t pt-5" style={{ borderColor: "var(--color-dark-border)" }}>
+              <SyncOffsetControl
+                auto={syncAuto}
+                onAutoChange={onSyncAutoChange}
+                autoOffsetMs={autoOffsetMs}
+                offsetMs={syncOffsetMs}
+                onOffsetChange={onSyncOffsetChange}
+              />
+            </div>
+          ) : null}
 
           {isAdmin && onSetPassword ? (
             <section className="border-t pt-5" style={{ borderColor: "var(--color-dark-border)" }}>

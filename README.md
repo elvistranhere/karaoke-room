@@ -21,7 +21,7 @@ Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, 
 - Queue system - take turns singing
 - Synced YouTube playback - the singer picks a link, every client plays it locally in step
 - Voice-only LiveKit publish, so the singer hears their music with zero encode latency
-- Per-listener sync offset slider to line the music up with the incoming voice
+- Automatic per-listener voice sync: the music is delayed to match the incoming voice
 - Voice effects: Hall reverb, Echo, Warm, Bright, Chorus (pure Web Audio API)
 - Per-person volume control
 - Audio-reactive ambient glow
@@ -53,7 +53,7 @@ NEXT_PUBLIC_PARTY_HOST=your-project.partykit.dev
 Browser A (Singer)                       Browser B (Listener)
   |-- getUserMedia (mic)                   |-- Receives the singer's voice track
   |    mic -> effects -> gain --+          |-- Own YouTube IFrame player
-  |                             |          |-- Sync offset slider
+  |                             |          |-- Auto voice-sync offset
   |                             +-> voice track -> LiveKit SFU
   |-- Own YouTube IFrame player (clock authority)
   |     video-load / video-sync -> PartyKit -> video-state -> every client

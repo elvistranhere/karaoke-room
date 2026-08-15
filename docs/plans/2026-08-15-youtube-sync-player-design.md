@@ -9,7 +9,7 @@ Remove the Chromium-only `getDisplayMedia` tab-audio share entirely. The singer 
 - Voice pipeline (mic capture, voice effect chain, LiveKit publish) behaves identically to today.
 - Existing volume sliders keep their positions and meanings; music sliders now drive the local player volume.
 - No user can interact with the YouTube surface directly. All control flows through app UI, then PartyKit, then players.
-- Audience gets a sync-offset slider (new control, under Room volume) to line the local track up with the incoming voice.
+- Audience playback is delayed by an automatically estimated voice-arrival offset (WebRTC jitter buffer plus half RTT); a manual override lives in the settings drawer.
 - Recording and auto-mix ducking are removed in this version.
 - Ships as a PR; PartyKit protocol changes are additive so prod clients keep working during the deploy gap.
 
@@ -47,7 +47,7 @@ drift  = target - player.getCurrentTime()
 - `|drift| >= 1.5s` or joining mid-song: seek once, then resume nudging.
 - One interval at ~300ms, all refs, no re-renders.
 
-`offsetSec` comes from the new sync slider (0 to 1500ms, default 150ms, persisted in localStorage).
+`offsetSec` is estimated automatically per listener (`useAutoSyncOffset`: fixed 80ms base for the unobservable singer-side leg, plus half the listener-to-SFU RTT, plus the receiver jitter-buffer hold, EMA-smoothed, sampled every 5s). A manual override slider (0 to 1500ms, persisted in localStorage) lives in the settings drawer.
 
 ### Player
 
@@ -61,8 +61,7 @@ The Web Audio graph (mic source, effect chain from `createEffectChain`, mic gain
 
 ### Sliders
 
-- Listener "Room volume": local player volume plus singer voice element volume (overall performance level, same as today).
-- Listener mix control: voice half sets the singer's voice element volume, music half sets the local player volume. Nothing routes to the singer anymore; the `music` half of `mix-adjust` is dropped.
+- Listener controls collapse to two local sliders: Voice (singer voice element volume) and Music (local player volume). Nothing routes to the singer anymore.
 - Singer "Music" mix slider: own local player volume. Singer "Voice" slider: published mic gain, unchanged.
 - Toolbar mic volume and all per-person/voice sliders: unchanged.
 
