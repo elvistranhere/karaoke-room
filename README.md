@@ -6,7 +6,7 @@
 [![LiveKit](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Felvistranhere%2F9578abf10f65c07ec2e82f6e272255b3%2Fraw%2Flivekit-health.json)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/health-livekit.yml)
 [![Deploy PartyKit](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml/badge.svg)](https://github.com/vietbrosinaus/karaoke-room/actions/workflows/deploy-partykit.yml)
 
-Real-time online karaoke rooms. Join with a code, share your audio, and sing with friends.
+Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, and sing with friends.
 
 ## Stack
 
@@ -18,14 +18,15 @@ Real-time online karaoke rooms. Join with a code, share your audio, and sing wit
 ## Features
 
 - Create/join rooms with a 6-character code
-- Queue system — take turns singing
-- Share tab audio (karaoke music from YouTube, Spotify, etc.)
-- Single-track mixing — voice + music combined with zero latency
+- Queue system - take turns singing
+- Synced YouTube playback - the singer picks a link, every client plays it locally in step
+- Voice-only LiveKit publish, so the singer hears their music with zero encode latency
+- Per-listener sync offset slider to line the music up with the incoming voice
 - Voice effects: Hall reverb, Echo, Warm, Bright, Chorus (pure Web Audio API)
 - Per-person volume control
 - Audio-reactive ambient glow
 - Real-time chat + emoji reactions with sound effects
-- Browser detection (Chromium required for singing)
+- Works in any modern browser, desktop or mobile
 - Heartbeat-based connection management
 
 ## Getting Started
@@ -49,13 +50,16 @@ NEXT_PUBLIC_PARTY_HOST=your-project.partykit.dev
 ## Architecture
 
 ```
-Browser A (Singer)                    Browser B (Listener)
-  |-- getUserMedia (mic)                |-- Receives single mixed track
-  |-- getDisplayMedia (tab audio)       |-- AudioVisualizer (glow effect)
-  |-- Web Audio mixing:                 |-- Per-person volume control
-  |    mic -> effects -> gain --+       +-- Chat + reactions
-  |    tab audio -> gain -------+
-  |                             +-> single track -> LiveKit SFU
-  |-- PartyKit (room state, chat, queue)
-  +-- Voice effects (reverb, echo, EQ, chorus)
+Browser A (Singer)                       Browser B (Listener)
+  |-- getUserMedia (mic)                   |-- Receives the singer's voice track
+  |    mic -> effects -> gain --+          |-- Own YouTube IFrame player
+  |                             |          |-- Sync offset slider
+  |                             +-> voice track -> LiveKit SFU
+  |-- Own YouTube IFrame player (clock authority)
+  |     video-load / video-sync -> PartyKit -> video-state -> every client
+  +-- PartyKit (room state, chat, queue, clock sync)
 ```
+
+Only voice travels over LiveKit. Each client plays the same YouTube video locally
+and corrects drift against the server-stamped `wallTime` in `video-state`, so the
+singer never hears their own music delayed.

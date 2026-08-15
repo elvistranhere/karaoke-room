@@ -6,11 +6,25 @@ applyTo: "**"
 
 ## Project Context
 
-Real-time karaoke room app. Singer shares tab audio + mic through a single Web Audio API mix, published as one LiveKit track. PartyKit handles room state. Next.js 15 frontend.
+Real-time karaoke room app. The singer's mic runs through a Web Audio effect chain and is published as one voice-only LiveKit track. Music never crosses LiveKit: every client plays the same YouTube video locally, kept in step through PartyKit. Next.js 15 frontend.
 
-## Critical: Audio Latency Path
+## Critical: Voice Pipeline
 
-The singer's audio pipeline (`startSharing` → `AudioContext` → `publishTrack`) is the most latency-sensitive code. Any change to `startSharing`, `stopSharing`, `cleanupMix`, or the mix AudioContext requires extra scrutiny. `MediaRecorder` and `AnalyserNode` are passive taps on `mixDest.stream` — they must never insert nodes into the audio graph.
+The singer's audio pipeline (`startSinging` → `AudioContext` → `publishTrack`) is the most latency-sensitive code. Any change to `startSinging`, `stopSinging`, `cleanupMix`, or the mix AudioContext requires extra scrutiny. `startSinging`/`stopSinging` are driven by the `isMyTurn` effect in `useLiveKit.ts`, not by a button.
+
+## Critical: Video Sync Loop
+
+`useVideoSync.ts` corrects drift against `videoTime + (estimatedServerNow - wallTime)/1000 - offsetSec`. When reviewing it, check:
+
+- The loop stays on refs and a single `setInterval`. Anything that makes it call `setState` per tick re-renders the player and is a bug.
+- `wallTime` is stamped by the PartyKit server on receipt, never by the singer's `Date.now()`. A client-stamped `wallTime` silently breaks every listener whose clock is off.
+- Rate nudges stay inside `[0.95, 1.05]`, and support is judged a tick later, never by reading `getPlaybackRate()` right after setting it: the iframe reports the applied rate only after a round trip.
+- When rate control is unavailable, sub-threshold drift is left alone. Seeking it away every tick rebuffers, which manufactures the next tick's drift.
+- `usePartyClock` must not piggyback on the ping/pong heartbeat: the server evicts a connection after 40s without a pong.
+- `videoState` is cleared everywhere `currentSingerId` is cleared, or the next singer inherits the previous video.
+- `video-state` is a point `broadcast(...)`, not `broadcastState()`: it fires every ~2s and `broadcastState()` also triggers registry reporting.
+- Only `currentSingerId` may send `video-load`/`video-sync`, and `videoId` is validated against `/^[a-zA-Z0-9_-]{11}$/` on the server.
+- The `VideoStage` overlay must have pointer events enabled and stack above the iframe, and the player container stays `inert` so the frame is out of the tab order. `pointer-events: none` inverts the requirement and lets clicks through to YouTube.
 
 ## Type Synchronization
 
@@ -31,14 +45,16 @@ The singer's audio pipeline (`startSharing` → `AudioContext` → `publishTrack
 4. **AudioContext cleanup**: Every `new AudioContext()` must have `ctx.close()` in cleanup.
 5. **`Number.isFinite` validation**: Any numeric values from PartyKit messages must be validated before use in Web Audio (NaN poisons `AudioParam`).
 6. **Mute-all state**: `mutedBySinger` is server-persisted in `RoomState`. Check that it's cleared on singer change and survives reconnects.
+7. **Late joiners**: anything added to `RoomState` must also be defaulted in `useRoomState.ts`'s room-state block, because PartyKit deploys separately from Vercel.
+8. **Protocol compatibility**: PartyKit deploys before Vercel, so server messages keep every field old clients still read (`mix-adjust` ships `music` for pre-YouTube clients).
 
 ## What NOT to Flag
 
 - Vercel preview deployment failures (env vars not set for preview — known infra issue)
-- `require("lamejs")` style imports (CommonJS lib, bundled correctly by webpack)
 - `setSinkId` on `AudioContext` — experimental API, guarded by `"setSinkId" in ctx`
-- The single-track mixing approach (mic + tab audio in one AudioContext) — this is the core architecture, not a bug
+- Publishing the effect-chain output as `Track.Source.Microphone` while LiveKit's managed mic is disabled - intentional, it avoids double voice
 - `data-lk-identity` DOM attributes on audio elements — intentional for per-person volume matching
+- The YouTube IFrame API loading from a third-party origin - there is no first-party alternative for synced playback
 
 ## Style
 
@@ -64,4 +80,4 @@ The singer's audio pipeline (`startSharing` → `AudioContext` → `publishTrack
 - Every `new AudioContext()` must have `ctx.close()` in all cleanup paths
 - Every `getUserMedia()` must have `track.stop()` in all cleanup paths
 - Every `setInterval`/`setTimeout` must be cleared on component unmount
-- `mutedBySinger`, `autoMix`, recording state must reset when room empties
+- `mutedBySinger` and `videoState` must reset when the room empties

@@ -9,7 +9,6 @@ import {
   type RemoteTrackPublication,
   type RemoteParticipant,
   ConnectionState,
-  type RoomOptions,
   type LocalTrackPublication,
   AudioPresets,
   DisconnectReason,
@@ -17,6 +16,10 @@ import {
 
 import type { MicMode } from "./useAudioDevices";
 import { createEffectChain, type VoiceEffect, type EffectChain } from "~/lib/voiceEffects";
+
+// The singer publishes this alongside LiveKit's muted managed mic, so both carry
+// Track.Source.Microphone and only the name tells them apart.
+export const VOICE_TRACK_NAME = "karaoke-voice";
 
 interface UseLiveKitParams {
   roomCode: string;
@@ -30,7 +33,6 @@ interface UseLiveKitParams {
 }
 
 export type MicCheckState = "idle" | "monitoring-talk" | "monitoring-sing" | "error";
-export type RecordingState = "idle" | "recording" | "stopped";
 
 interface UseLiveKitReturn {
   room: Room | null;
@@ -43,32 +45,18 @@ interface UseLiveKitReturn {
   startTalkingMicCheck: (noiseCancellation: boolean) => Promise<void>;
   startSingingMicCheck: (noiseCancellation: boolean) => Promise<void>;
   stopMicCheck: () => void;
-  isSharing: boolean;
-  startSharing: () => Promise<void>;
-  stopSharing: () => void;
-  sharingError: string | null;
-  currentSong: string | null;
+  isSinging: boolean;
+  startSinging: () => Promise<void>;
+  stopSinging: () => void;
+  singingError: string | null;
   activeSpeakers: Set<string>;
   setMixMicGain: (val: number) => void;
-  setMixMusicGain: (val: number) => void;
   voiceEffect: VoiceEffect;
   setVoiceEffect: (effect: VoiceEffect) => void;
   effectWetDry: number;
   setEffectWetDry: (wet: number) => void;
-  // Mix mic stream (for status bar level meter during sharing)
+  // Mix mic stream (for status bar level meter while singing)
   mixMicStream: MediaStream | null;
-  // Auto-mix (sidechain ducking)
-  autoMix: boolean;
-  autoMixDuckedValue: number | null;
-  autoMixBoostedVoice: number | null;
-  setAutoMix: (on: boolean) => void;
-  // Recording
-  recordingState: RecordingState;
-  recordingDuration: number;
-  recordingBlob: Blob | null;
-  startRecording: () => void;
-  stopRecording: () => void;
-  clearRecording: () => void;
 }
 
 export function useLiveKit({
@@ -84,15 +72,13 @@ export function useLiveKit({
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMicEnabled, setIsMicEnabled] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
-  const [sharingError, setSharingError] = useState<string | null>(null);
-  const [currentSong, setCurrentSong] = useState<string | null>(null);
+  const [isSinging, setIsSinging] = useState(false);
+  const [singingError, setSingingError] = useState<string | null>(null);
 
   const [micCheckState, setMicCheckState] = useState<MicCheckState>("idle");
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
 
   const roomRef = useRef<Room | null>(null);
-  const systemAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const micCheckAbortRef = useRef<(() => void) | null>(null);
   // Mic check Web Audio refs — stored so effects can hot-swap NC/effect during monitoring
   const micCheckCtxRef = useRef<AudioContext | null>(null);
@@ -100,7 +86,7 @@ export function useLiveKit({
   const micCheckGainRef = useRef<GainNode | null>(null);
   const micCheckStreamRef = useRef<MediaStream | null>(null);
   const micCheckEffectChainRef = useRef<EffectChain | null>(null);
-  const isSharingInFlightRef = useRef(false); // guard against concurrent startSharing/stopSharing
+  const isSingingInFlightRef = useRef(false); // guard against concurrent startSinging/stopSinging
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
   const playerNameRef = useRef(playerName);
@@ -116,21 +102,15 @@ export function useLiveKit({
   const singingNCRef = useRef(singingNC);
   singingNCRef.current = singingNC;
 
-  // Single-track mixing: when sharing, mix system audio + mic into one track
-  // via Web Audio API. Both sources share the same render clock → zero drift.
+  // While singing, the mic runs through the voice effect chain into a dedicated
+  // AudioContext destination and is published as one track. Music no longer
+  // travels over LiveKit: every client plays the YouTube video locally.
   const mixCtxRef = useRef<AudioContext | null>(null);
   const mixMicSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const mixSystemSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mixMicGainRef = useRef<GainNode | null>(null);
-  const mixSystemGainRef = useRef<GainNode | null>(null);
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mixMicStreamRef = useRef<MediaStream | null>(null); // raw mic capture
   const [mixMicStreamState, setMixMicStreamState] = useState<MediaStream | null>(null);
-  // Helper: set both ref and state for mixMicStream
-  const setMixMicStream = useCallback((stream: MediaStream | null) => {
-    mixMicStreamRef.current = stream;
-    setMixMicStreamState(stream);
-  }, []);
   const mixPubRef = useRef<LocalTrackPublication | null>(null);
   const effectChainRef = useRef<EffectChain | null>(null);
   const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>("none");
@@ -138,15 +118,7 @@ export function useLiveKit({
   const [effectWetDry, setEffectWetDryState] = useState(0.5);
   const effectWetDryRef = useRef(0.5); // synchronous value for active audio chains
 
-  // Recording: passive tap on mixDest stream
-  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingStartRef = useRef<number>(0);
 
   // --- Connect to LiveKit room ---
 
@@ -192,11 +164,9 @@ export function useLiveKit({
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return;
-        const isMusic = track.source === Track.Source.ScreenShareAudio;
-        console.log("[LiveKit] Subscribed to audio from", participant.identity, "source:", track.source, isMusic ? "(music)" : "(mic)");
+        console.log("[LiveKit] Subscribed to audio from", participant.identity, "source:", track.source);
         const el = track.attach();
         el.id = `lk-audio-${participant.identity}-${track.sid}`;
-        el.dataset.lkType = isMusic ? "music" : "mic";
         el.dataset.lkIdentity = participant.identity;
         el.style.display = "none";
         el.autoplay = true;
@@ -387,17 +357,12 @@ export function useLiveKit({
         const saved = el.dataset.savedVolume;
         if (saved !== undefined) { el.volume = parseFloat(saved); delete el.dataset.savedVolume; }
       });
-      if (systemAudioTrackRef.current) {
-        systemAudioTrackRef.current.stop();
-        systemAudioTrackRef.current = null;
-      }
       // Clean up mix context if active
       if (mixPubRef.current?.track) {
         void room.localParticipant?.unpublishTrack(mixPubRef.current.track);
       }
       mixPubRef.current = null;
       mixMicSourceRef.current?.disconnect();
-      mixSystemSourceRef.current?.disconnect();
       mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
       mixMicStreamRef.current = null; setMixMicStreamState(null);
       if (mixCtxRef.current?.state !== "closed") {
@@ -405,27 +370,17 @@ export function useLiveKit({
       }
       mixCtxRef.current = null;
       mixMicSourceRef.current = null;
-      mixSystemSourceRef.current = null;
       mixMicGainRef.current = null;
-      mixSystemGainRef.current = null;
       mixDestRef.current = null;
       // Stop token refresh timer
       if (tokenRefreshRef.current) { clearInterval(tokenRefreshRef.current); tokenRefreshRef.current = null; }
-      // Stop auto-mix timer + analyser (prevent orphaned setInterval)
-      if (autoMixTimerRef.current) { clearInterval(autoMixTimerRef.current); autoMixTimerRef.current = null; }
-      autoMixAnalyserRef.current?.disconnect();
-      autoMixAnalyserRef.current = null;
-      autoMixRef.current = false;
-      // Stop active recording timer (blob is lost on unmount anyway)
-      if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
-      recorderRef.current = null;
       // Remove all remote audio elements to prevent duplicates on reconnect
       document.querySelectorAll('audio[id^="lk-audio-"]').forEach((el) => el.remove());
       room.disconnect();
       roomRef.current = null;
       setIsConnected(false);
       setIsMicEnabled(false);
-      setIsSharing(false);
+      setIsSinging(false);
     };
     // playerName uses a ref — name changes only go through PartyKit, not LiveKit.
     // micMode is NOT included — handled by a separate effect that republishes the mic track.
@@ -473,8 +428,6 @@ export function useLiveKit({
               newSource.connect(gain);
             }
             mixMicSourceRef.current = newSource;
-            // Reconnect auto-mix analyser to new mic source if active
-            if (autoMixRef.current) connectAutoMixAnalyser();
             console.log("[LiveKit] Mix mic switched to new input device");
           }
         } catch (err) {
@@ -567,17 +520,17 @@ export function useLiveKit({
     })();
   }, [talkingNC, singingNC, micMode, isConnected, isMicEnabled]);
 
-  // --- Hot-swap NC during sharing ---
-  // When NC toggle changes while sharing, re-capture mic with new constraints
+  // --- Hot-swap NC while singing ---
+  // When NC toggle changes while singing, re-capture mic with new constraints
   const prevSingingNCRef = useRef(singingNC);
   useEffect(() => {
     if (prevSingingNCRef.current === singingNC) return;
     prevSingingNCRef.current = singingNC;
 
-    // Only hot-swap if we're actively sharing with a mic in the mix
+    // Only hot-swap if the singing mix is live
     if (!mixPubRef.current || !mixMicStreamRef.current || !mixCtxRef.current) return;
 
-    console.log("[LiveKit] Hot-swapping NC during sharing:", singingNC ? "ON" : "OFF");
+    console.log("[LiveKit] Hot-swapping NC while singing:", singingNC ? "ON" : "OFF");
     void (async () => {
       try {
         const nc = singingNC;
@@ -604,7 +557,6 @@ export function useLiveKit({
           const newSource = ctx.createMediaStreamSource(newStream);
           newSource.connect(chain.input);
           mixMicSourceRef.current = newSource;
-          if (autoMixRef.current) connectAutoMixAnalyser();
           console.log("[LiveKit] Mix mic re-captured with NC:", nc ? "ON" : "OFF");
         }
       } catch (err) {
@@ -956,7 +908,7 @@ export function useLiveKit({
     try {
       console.log("[LiveKit] Setting mic enabled:", newState);
 
-      // If sharing is active, add/remove mic from the mix instead of LiveKit managed mic
+      // If the singing mix is live, add/remove mic there instead of the LiveKit managed mic
       if (mixPubRef.current && mixCtxRef.current && mixDestRef.current) {
         if (newState && !mixMicStreamRef.current) {
           // Add mic to mix
@@ -990,8 +942,6 @@ export function useLiveKit({
           effectChainRef.current = chain;
 
           console.log("[LiveKit] Mic added to mix on the fly");
-          // Reconnect auto-mix analyser to new mic source if active
-          if (autoMixRef.current) connectAutoMixAnalyser();
         } else if (!newState && mixMicStreamRef.current) {
           // Remove mic from mix
           effectChainRef.current?.cleanup();
@@ -1002,14 +952,12 @@ export function useLiveKit({
           mixMicGainRef.current = null;
           mixMicStreamRef.current.getTracks().forEach((t) => t.stop());
           mixMicStreamRef.current = null; setMixMicStreamState(null);
-          // Auto-mix can't work without a mic source - disable it
-          if (autoMixRef.current) setAutoMix(false);
 
           console.log("[LiveKit] Mic removed from mix on the fly");
         }
         setIsMicEnabled(newState);
       } else {
-        // Not sharing — use LiveKit managed mic
+        // Not singing - use LiveKit managed mic
         await room.localParticipant.setMicrophoneEnabled(newState);
         setIsMicEnabled(newState);
       }
@@ -1038,7 +986,7 @@ export function useLiveKit({
     }
   }, [selectedInputDeviceId]);
 
-  // Force mute/unmute - used by mute-all to properly handle both sharing and non-sharing paths.
+  // Force mute/unmute - used by mute-all to handle both the singing and idle paths.
   // Unlike toggleMic, this sets a specific state rather than toggling.
   const setMicMuted = useCallback(async (muted: boolean) => {
     const currentlyEnabled = isMicEnabledRef.current;
@@ -1046,163 +994,24 @@ export function useLiveKit({
     await toggleMic();
   }, [toggleMic]);
 
-  // --- System audio sharing (single-track mixing) ---
-  // Mixes system audio + mic into ONE track via Web Audio API.
-  // Both sources share the same AudioContext render clock → zero drift/latency.
-  // Also bypasses Chrome's system-level echo cancellation (Chromium #40226380).
+  // --- Singing voice pipeline ---
+  // Mic runs through the voice effect chain into a MediaStreamDestination and is
+  // published as one LiveKit track. Music is played locally by every client.
 
   const cleanupMix = useCallback(() => {
     effectChainRef.current?.cleanup();
     effectChainRef.current = null;
     mixMicSourceRef.current?.disconnect();
-    mixSystemSourceRef.current?.disconnect();
     mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
     mixMicStreamRef.current = null; setMixMicStreamState(null);
     mixMicSourceRef.current = null;
-    mixSystemSourceRef.current = null;
     mixMicGainRef.current = null;
-    mixSystemGainRef.current = null;
     mixDestRef.current = null;
     if (mixCtxRef.current?.state !== "closed") {
       void mixCtxRef.current?.close();
     }
     mixCtxRef.current = null;
   }, []);
-
-  // --- Auto-mix: sidechain ducking (lower music when voice detected) ---
-  // Measures RAW mic level (before effects) to avoid reverb tails keeping ducking active.
-  // Reads music gain from the live GainNode (not a snapshot) so slider changes are respected.
-  const [autoMix, setAutoMixState] = useState(false);
-  const [autoMixDuckedValue, setAutoMixDuckedValue] = useState<number | null>(null);
-  const [autoMixBoostedVoice, setAutoMixBoostedVoice] = useState<number | null>(null);
-  const autoMixRef = useRef(false);
-  const autoMixTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoMixAnalyserRef = useRef<AnalyserNode | null>(null);
-  const autoMixBaseGainRef = useRef(0.7); // tracks the user's music slider position
-  const autoMixBaseVoiceRef = useRef(1.0); // tracks the user's voice slider position
-
-  // Called by setMixMusicGain to keep base gain in sync with slider
-  const updateAutoMixBaseGain = useCallback((val: number) => {
-    autoMixBaseGainRef.current = val;
-  }, []);
-
-  const connectAutoMixAnalyser = useCallback(() => {
-    // Connect analyser to raw mic source (before effects) to avoid reverb tails
-    const ctx = mixCtxRef.current;
-    const micSource = mixMicSourceRef.current;
-    if (!ctx || !micSource) return;
-
-    autoMixAnalyserRef.current?.disconnect();
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    micSource.connect(analyser); // always raw mic, never chain output
-    autoMixAnalyserRef.current = analyser;
-  }, []);
-
-  const setAutoMix = useCallback((on: boolean) => {
-    setAutoMixState(on);
-    autoMixRef.current = on;
-
-    if (!on) {
-      if (autoMixTimerRef.current) {
-        clearInterval(autoMixTimerRef.current);
-        autoMixTimerRef.current = null;
-      }
-      autoMixAnalyserRef.current?.disconnect();
-      autoMixAnalyserRef.current = null;
-      setAutoMixDuckedValue(null);
-      setAutoMixBoostedVoice(null);
-      // Restore music + voice gain to slider values
-      const musicGain = mixSystemGainRef.current;
-      const micGain = mixMicGainRef.current;
-      const ctx = mixCtxRef.current;
-      if (musicGain && ctx) {
-        musicGain.gain.setTargetAtTime(autoMixBaseGainRef.current, ctx.currentTime, 0.15);
-      }
-      if (micGain && ctx) {
-        micGain.gain.setTargetAtTime(autoMixBaseVoiceRef.current, ctx.currentTime, 0.15);
-      }
-      return;
-    }
-
-    const ctx = mixCtxRef.current;
-    const musicGain = mixSystemGainRef.current;
-    if (!ctx || !musicGain) return;
-
-    // Snapshot current slider position as base
-    autoMixBaseGainRef.current = musicGain.gain.value;
-
-    connectAutoMixAnalyser();
-    if (!autoMixAnalyserRef.current) return;
-
-    const analyser = autoMixAnalyserRef.current;
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    let smoothedLevel = 0;
-
-    let tickCounter = 0;
-    autoMixTimerRef.current = setInterval(() => {
-      if (!autoMixRef.current) return;
-      const currentAnalyser = autoMixAnalyserRef.current;
-      const currentMusicGain = mixSystemGainRef.current;
-      const currentCtx = mixCtxRef.current;
-      if (!currentAnalyser || !currentMusicGain || !currentCtx) return;
-
-      currentAnalyser.getByteFrequencyData(dataArray);
-
-      // RMS energy of voice frequencies (100Hz-4kHz) on raw mic signal
-      const binHz = (currentCtx.sampleRate / 2) / currentAnalyser.frequencyBinCount;
-      const lowBin = Math.floor(100 / binHz);
-      const highBin = Math.min(Math.floor(4000 / binHz), dataArray.length);
-      let sum = 0;
-      for (let i = lowBin; i < highBin; i++) sum += dataArray[i]! * dataArray[i]!;
-      const rms = Math.sqrt(sum / (highBin - lowBin)) / 255;
-
-      // Smooth to avoid pumping
-      smoothedLevel = smoothedLevel * 0.7 + rms * 0.3;
-
-      // Duck music + boost voice when singing
-      const voiceThreshold = 0.08;
-      const isSinging = smoothedLevel > voiceThreshold;
-      const duckRatio = isSinging
-        ? Math.max(0.3, 1 - (smoothedLevel - voiceThreshold) * 3)
-        : 1.0;
-      // Boost voice up to 1.2x when singing (gentle, avoids clipping)
-      const boostRatio = isSinging
-        ? Math.min(1.2, 1.0 + (smoothedLevel - voiceThreshold) * 1.0)
-        : 1.0;
-
-      // Apply voice boost
-      const currentMicGain = mixMicGainRef.current;
-      if (currentMicGain) {
-        currentMicGain.gain.setTargetAtTime(
-          Math.min(autoMixBaseVoiceRef.current * boostRatio, 1.3),
-          currentCtx.currentTime,
-          0.2,
-        );
-      }
-
-      // Update visual slider positions (throttled to ~4fps to limit re-renders;
-      // audio gain changes happen every 50ms for smooth sound regardless)
-      if (++tickCounter % 12 === 0) {
-        setAutoMixDuckedValue(Math.round(autoMixBaseGainRef.current * duckRatio * 100));
-        setAutoMixBoostedVoice(isSinging ? Math.round(Math.min(autoMixBaseVoiceRef.current * boostRatio, 1.3) * 100) : null);
-      }
-
-      // Smoother music restoration (0.3s) to avoid pumping between vocal phrases
-      currentMusicGain.gain.setTargetAtTime(
-        autoMixBaseGainRef.current * duckRatio,
-        currentCtx.currentTime,
-        0.3,
-      );
-    }, 50);
-  }, [connectAutoMixAnalyser]);
-
-  // Stop auto-mix when sharing stops
-  useEffect(() => {
-    if (!isSharing && autoMixRef.current) {
-      setAutoMix(false);
-    }
-  }, [isSharing, setAutoMix]);
 
   // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
   const syncNCToRoom = useCallback(() => {
@@ -1218,24 +1027,19 @@ export function useLiveKit({
     };
   }, []);
 
-  // Expose gain controls for the singer to adjust mix balance
+  // Expose the published voice gain so the singer can set their own level
   const setMixMicGain = useCallback((val: number) => {
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
-    autoMixBaseVoiceRef.current = val;
   }, []);
-  const setMixMusicGain = useCallback((val: number) => {
-    if (mixSystemGainRef.current) mixSystemGainRef.current.gain.value = val;
-    updateAutoMixBaseGain(val); // keep auto-mix base in sync with slider
-  }, [updateAutoMixBaseGain]);
 
-  // Swap voice effect live during sharing
+  // Swap voice effect live while singing
   const setVoiceEffect = useCallback((effect: VoiceEffect) => {
     setVoiceEffectState(effect);
     voiceEffectRef.current = effect;
     const ctx = mixCtxRef.current;
     const micSource = mixMicSourceRef.current;
     const micGain = mixMicGainRef.current;
-    if (!ctx || !micSource || !micGain) return; // not sharing, will apply on next share
+    if (!ctx || !micSource || !micGain) return; // not singing, will apply on the next turn
 
     // Tear down old chain
     effectChainRef.current?.cleanup();
@@ -1248,10 +1052,8 @@ export function useLiveKit({
     chain.output.connect(micGain);
     effectChainRef.current = chain;
 
-    // micSource.disconnect() above also disconnected the auto-mix analyser
-    if (autoMixRef.current) connectAutoMixAnalyser();
     console.log("[LiveKit] Voice effect switched to:", effect);
-  }, [connectAutoMixAnalyser]);
+  }, []);
 
   const setEffectWetDry = useCallback((wet: number) => {
     const normalizedWet = Math.min(1, Math.max(0, wet));
@@ -1262,161 +1064,75 @@ export function useLiveKit({
     micCheckEffectChainRef.current?.setWetDry?.(normalizedWet);
   }, []);
 
-  const startSharing = useCallback(async () => {
+  const startSinging = useCallback(async () => {
     const room = roomRef.current;
-    if (!room || !room.localParticipant || isSharingInFlightRef.current) {
-      if (!room) setSharingError("Not connected");
+    if (!room || !room.localParticipant || isSingingInFlightRef.current) {
+      if (!room) setSingingError("Not connected");
       return;
     }
 
-    isSharingInFlightRef.current = true;
+    isSingingInFlightRef.current = true;
     try {
-      // 1. Capture system audio
-      console.log("[LiveKit] Capturing system audio...");
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1, height: 1, frameRate: 1 },
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
-      for (const vt of displayStream.getVideoTracks()) vt.stop();
-
-      const systemTrack = displayStream.getAudioTracks()[0];
-      if (!systemTrack) {
-        displayStream.getTracks().forEach((t) => t.stop());
-        setSharingError("No audio captured. Check 'Share audio' in the dialog.");
-        isSharingInFlightRef.current = false;
-        return;
-      }
-
-      // Store system track ref immediately so it's cleaned up on any failure
-      systemAudioTrackRef.current = systemTrack;
-
-      // Detect song name from tab title
-      const trackLabel = systemTrack.label;
-      console.log("[LiveKit] System audio track label:", trackLabel);
-      const GENERIC_LABELS = new Set(["tab audio", "screen audio", "system audio", "audio", ""]);
-      let detectedSong: string | null = null;
-      if (trackLabel && !GENERIC_LABELS.has(trackLabel.toLowerCase())) {
-        let songName = trackLabel;
-        if (songName.startsWith("Tab: ")) songName = songName.slice(5);
-        if (songName.endsWith(" - YouTube")) songName = songName.slice(0, -10);
-        if (songName.endsWith(" - Spotify")) songName = songName.slice(0, -10);
-        if (songName.trim()) detectedSong = songName.trim();
-      }
-      setCurrentSong(detectedSong);
-
-      // 2. Capture mic with singing NC setting (AudioContext mixing bypasses
-      //    Chrome's system-level echo cancellation, Chromium bug #40226380)
-      // Auto-enable mic when starting to share so the singer can be heard
-      // and Auto Mix has a source. Singer can mute later if they want.
+      // Auto-enable the mic when taking the stage so the singer can be heard.
+      // They can still mute afterwards.
       if (!isMicEnabledRef.current) {
         isMicEnabledRef.current = true;
         setIsMicEnabled(true);
       }
       const singNC = singingNCRef.current;
-      let micStream: MediaStream | null = null;
-      if (isMicEnabledRef.current) {
-        try {
-          micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
-              echoCancellation: singNC,
-              noiseSuppression: singNC,
-              autoGainControl: singNC,
-              channelCount: 2,
-              sampleRate: 48000,
-            },
-          });
-        } catch (err) {
-          console.warn("[LiveKit] Mic capture failed — sharing music only:", err);
-        }
-      }
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          echoCancellation: singNC,
+          noiseSuppression: singNC,
+          autoGainControl: singNC,
+          channelCount: 2,
+          sampleRate: 48000,
+        },
+      });
 
-      // 3. Mix into a single AudioContext destination (low-latency for send path)
+      // Voice effect chain feeds a dedicated destination (low-latency send path)
       const ctx = new AudioContext({ sampleRate: 48000 });
       const dest = ctx.createMediaStreamDestination();
 
-      const systemSource = ctx.createMediaStreamSource(new MediaStream([systemTrack]));
-      const systemGain = ctx.createGain();
-      systemGain.gain.value = 0.7; // default: voice louder than music (karaoke standard)
-      systemSource.connect(systemGain);
-      systemGain.connect(dest);
+      const micSource = ctx.createMediaStreamSource(micStream);
+      const micGain = ctx.createGain();
+      micGain.gain.value = 1.0;
+
+      const chain = createEffectChain(ctx, voiceEffectRef.current);
+      micSource.connect(chain.input);
+      chain.output.connect(micGain);
+      micGain.connect(dest);
+      chain.setWetDry?.(effectWetDryRef.current);
 
       mixCtxRef.current = ctx;
-      mixSystemSourceRef.current = systemSource;
-      mixSystemGainRef.current = systemGain;
       mixDestRef.current = dest;
+      mixMicSourceRef.current = micSource;
+      mixMicGainRef.current = micGain;
+      mixMicStreamRef.current = micStream; setMixMicStreamState(micStream);
+      effectChainRef.current = chain;
 
-      if (micStream) {
-        const micSource = ctx.createMediaStreamSource(micStream);
-        const micGain = ctx.createGain();
-        micGain.gain.value = 1.0;
+      // Mute LiveKit's managed mic to avoid duplicate voice
+      await room.localParticipant.setMicrophoneEnabled(false);
 
-        // Insert voice effect chain: source → effect → gain → dest
-        const chain = createEffectChain(ctx, voiceEffectRef.current);
-        micSource.connect(chain.input);
-        chain.output.connect(micGain);
-        micGain.connect(dest);
+      const voiceTrack = dest.stream.getAudioTracks()[0];
+      if (!voiceTrack) throw new Error("No voice track");
 
-        mixMicSourceRef.current = micSource;
-        mixMicGainRef.current = micGain;
-        mixMicStreamRef.current = micStream; setMixMicStreamState(micStream);
-        effectChainRef.current = chain;
-        // Apply current wet/dry to match Sound Profile setting
-        chain.setWetDry?.(effectWetDryRef.current);
-      }
-
-      // 4. Mute LiveKit's managed mic to avoid duplicate voice
-      if (isMicEnabledRef.current) {
-        await room.localParticipant.setMicrophoneEnabled(false);
-      }
-
-      // 5. Publish the single mixed track
-      const mixedTrack = dest.stream.getAudioTracks()[0];
-      if (!mixedTrack) throw new Error("No mixed audio track");
-
-      console.log("[LiveKit] Publishing mixed track (music + voice)...");
-      const pub = await room.localParticipant.publishTrack(mixedTrack, {
-        source: Track.Source.ScreenShareAudio,
-        name: "karaoke-mix",
+      console.log("[LiveKit] Publishing singer voice track...");
+      const pub = await room.localParticipant.publishTrack(voiceTrack, {
+        source: Track.Source.Microphone,
+        name: VOICE_TRACK_NAME,
         audioPreset: AudioPresets.musicHighQuality,
         dtx: false,
         red: false,
       });
 
-      console.log("[LiveKit] Mixed track published!", pub.trackSid);
+      console.log("[LiveKit] Voice track published!", pub.trackSid);
 
       mixPubRef.current = pub;
-      setIsSharing(true);
-      setSharingError(null);
-
-      // When the user stops screen sharing from browser chrome
-      // Use refs in the handler to avoid stale closure issues
-      systemTrack.onended = () => {
-        console.log("[LiveKit] System audio ended by user");
-        // Inline cleanup instead of calling stopSharing to avoid stale closure
-        if (mixPubRef.current?.track && roomRef.current?.localParticipant) {
-          void roomRef.current.localParticipant.unpublishTrack(mixPubRef.current.track);
-        }
-        mixPubRef.current = null;
-        if (systemAudioTrackRef.current) {
-          systemAudioTrackRef.current.stop();
-          systemAudioTrackRef.current = null;
-        }
-        cleanupMix();
-        setIsSharing(false);
-        setCurrentSong(null);
-        // Restore managed mic with current NC settings
-        syncNCToRoom();
-        if (roomRef.current && isMicEnabledRef.current) {
-          void roomRef.current.localParticipant.setMicrophoneEnabled(true).catch(() => {});
-        }
-      };
+      setIsSinging(true);
+      setSingingError(null);
     } catch (err) {
-      // Stop system track if it was captured
-      if (systemAudioTrackRef.current) {
-        systemAudioTrackRef.current.stop();
-        systemAudioTrackRef.current = null;
-      }
       cleanupMix();
       // Restore managed mic with current NC settings
       syncNCToRoom();
@@ -1427,40 +1143,31 @@ export function useLiveKit({
       } catch { /* best effort */ }
 
       if (err instanceof Error && err.name === "NotAllowedError") {
-        setSharingError(null);
+        setSingingError("Microphone permission needed to sing");
       } else {
-        const msg = err instanceof Error ? err.message : "Failed to share audio";
-        console.error("[LiveKit] Share error:", err);
-        setSharingError(msg);
+        const msg = err instanceof Error ? err.message : "Failed to start singing";
+        console.error("[LiveKit] Singing error:", err);
+        setSingingError(msg);
       }
     } finally {
-      isSharingInFlightRef.current = false;
+      isSingingInFlightRef.current = false;
     }
-  }, [selectedInputDeviceId, cleanupMix]);
+  }, [selectedInputDeviceId, cleanupMix, syncNCToRoom]);
 
-  const stopSharing = useCallback(() => {
+  const stopSinging = useCallback(() => {
     const room = roomRef.current;
 
-    console.log("[LiveKit] Stopping sharing");
+    console.log("[LiveKit] Stopping singing");
 
-    // Unpublish mixed track
     if (mixPubRef.current?.track && room?.localParticipant) {
       void room.localParticipant.unpublishTrack(mixPubRef.current.track);
     }
     mixPubRef.current = null;
 
-    // Stop system audio
-    if (systemAudioTrackRef.current) {
-      systemAudioTrackRef.current.stop();
-      systemAudioTrackRef.current = null;
-    }
-
-    // Clean up mix context
     cleanupMix();
 
-    setIsSharing(false);
-    setSharingError(null);
-    setCurrentSong(null);
+    setIsSinging(false);
+    setSingingError(null);
 
     // Restore managed mic with current NC settings
     syncNCToRoom();
@@ -1469,91 +1176,17 @@ export function useLiveKit({
         console.error("[LiveKit] Error restoring managed mic:", err);
       });
     }
-  }, [cleanupMix]);
+  }, [cleanupMix, syncNCToRoom]);
 
-  // --- Recording (passive tap on mix stream) ---
-
-  const stopRecordingInternal = useCallback(() => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    if (recorderRef.current && recorderRef.current.state === "recording") {
-      recorderRef.current.stop();
-    }
-    recorderRef.current = null;
-  }, []);
-
-  const startRecording = useCallback(() => {
-    const dest = mixDestRef.current;
-    if (!dest || recordingState === "recording") return;
-
-    console.log("[LiveKit] Starting recording from mix stream");
-    recordingChunksRef.current = [];
-    setRecordingBlob(null);
-    setRecordingDuration(0);
-
-    const recorder = new MediaRecorder(dest.stream, {
-      mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm",
-    });
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) recordingChunksRef.current.push(e.data);
-    };
-
-    recorder.onstop = () => {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
-      const chunks = recordingChunksRef.current;
-      if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-        setRecordingBlob(blob);
-        setRecordingState("stopped");
-        console.log("[LiveKit] Recording stopped, blob size:", blob.size);
-      } else {
-        setRecordingState("idle");
-      }
-    };
-
-    recorder.start(1000); // collect chunks every 1s
-    recorderRef.current = recorder;
-    recordingStartRef.current = Date.now();
-    setRecordingState("recording");
-
-    // Update duration every second
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingDuration(Math.floor((Date.now() - recordingStartRef.current) / 1000));
-    }, 1000);
-  }, [recordingState]);
-
-  const stopRecording = useCallback(() => {
-    stopRecordingInternal();
-  }, [stopRecordingInternal]);
-
-  const clearRecording = useCallback(() => {
-    setRecordingBlob(null);
-    setRecordingState("idle");
-    setRecordingDuration(0);
-    recordingChunksRef.current = [];
-  }, []);
-
-  // Auto-stop recording when sharing stops
+  // The singing pipeline follows the stage turn: start on promotion, stop on exit
   useEffect(() => {
-    if (!isSharing && recordingState === "recording") {
-      console.log("[LiveKit] Sharing stopped — auto-stopping recording");
-      stopRecordingInternal();
+    if (isMyTurn && !isSinging && !isSingingInFlightRef.current) {
+      void startSinging();
     }
-  }, [isSharing, recordingState, stopRecordingInternal]);
-
-  // Auto-stop sharing when not my turn
-  useEffect(() => {
-    if (!isMyTurn && isSharing) {
-      console.log("[LiveKit] Not my turn — stopping share");
-      stopSharing();
+    if (!isMyTurn && isSinging) {
+      stopSinging();
     }
-  }, [isMyTurn, isSharing, stopSharing]);
+  }, [isMyTurn, isSinging, startSinging, stopSinging]);
 
   return {
     room: roomRef.current,
@@ -1566,28 +1199,16 @@ export function useLiveKit({
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,
-    isSharing,
-    startSharing,
-    stopSharing,
-    sharingError,
-    currentSong,
+    isSinging,
+    startSinging,
+    stopSinging,
+    singingError,
     activeSpeakers,
     setMixMicGain,
-    setMixMusicGain,
     voiceEffect,
     setVoiceEffect,
     effectWetDry,
     setEffectWetDry,
     mixMicStream: mixMicStreamState,
-    autoMix,
-    autoMixDuckedValue,
-    autoMixBoostedVoice,
-    setAutoMix,
-    recordingState,
-    recordingDuration,
-    recordingBlob,
-    startRecording,
-    stopRecording,
-    clearRecording,
   };
 }

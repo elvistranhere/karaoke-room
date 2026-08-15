@@ -712,13 +712,13 @@ User A refreshes browser in room ABC123
 -> Name check: if ghost still alive with same name, server checks
 lastPong age > 20s -> evicts ghost -> allows new connection
 
-Case 10: Singer recording, key hits quota
-Singer is recording + sharing audio, key quota depletes
+Case 10: Singer mid-song, key hits quota
+Singer is singing over a synced YouTube video, key quota depletes
 -> Singer stays connected (existing session)
--> Recording continues (MediaRecorder taps local mixDest)
+-> Video keeps playing: every client runs its own player, no LiveKit involved
 -> Audience stays connected
 -> Only new joins are blocked
--> Singer finishes, downloads recording normally
+-> Singer finishes the song normally
 
 ---
 

@@ -225,7 +225,7 @@ export default function Home() {
 
       {/* Footer */}
       <p className="mt-4 text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-        Works on all browsers. Singing requires Chromium (Chrome, Edge, Brave, Arc).
+        Works on every browser, desktop and mobile. Paste a YouTube link and sing.
       </p>
     </main>
   );

@@ -1,18 +1,17 @@
 /**
  * Browser detection utilities for Karaoke Now.
- * System audio sharing (getDisplayMedia with audio) only works reliably on Chromium browsers.
+ * Display only: every browser can sing and listen.
  */
 
 export interface BrowserInfo {
   name: string;
   isChromium: boolean;
-  canSing: boolean; // can share system audio
   isMobile: boolean;
 }
 
 export function detectBrowser(): BrowserInfo {
   if (typeof navigator === "undefined") {
-    return { name: "Unknown", isChromium: false, canSing: false, isMobile: false };
+    return { name: "Unknown", isChromium: false, isMobile: false };
   }
 
   const ua = navigator.userAgent;
@@ -38,10 +37,7 @@ export function detectBrowser(): BrowserInfo {
   else if (isFirefox) name = "Firefox";
   else if (isSafari) name = "Safari";
 
-  // Can sing = Chromium + Desktop (getDisplayMedia with audio)
-  const canSing = isChromium && !isMobile;
-
-  return { name, isChromium, canSing, isMobile };
+  return { name, isChromium, isMobile };
 }
 
 /** Short label for the participant list */

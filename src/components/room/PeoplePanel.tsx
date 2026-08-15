@@ -9,7 +9,6 @@ interface PeoplePanelProps {
   myPeerId: string | null;
   onRequestJoinQueue: () => void;
   onLeaveQueue: () => void;
-  canSing: boolean;
   participantStatus: Record<string, ParticipantStatus>;
   activeSpeakers: Set<string>;
   personVolumes: Record<string, number>;
@@ -23,7 +22,6 @@ export function PeoplePanel({
   myPeerId,
   onRequestJoinQueue,
   onLeaveQueue,
-  canSing,
   participantStatus,
   activeSpeakers,
   personVolumes,
@@ -269,20 +267,14 @@ export function PeoplePanel({
 
         <div className="shrink-0 px-3 pb-3 pt-1">
         {!isInQueueOrSinging ? (
-          canSing ? (
-            <button
-              onClick={onRequestJoinQueue}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all hover:brightness-110 active:scale-[0.98]"
-              style={{ fontFamily: "var(--font-display)", background: "color-mix(in srgb, var(--color-primary) 62%, white)", color: "#24153a" }}
-            >
-              <Plus size={14} />
-              Add to Queue
-            </button>
-          ) : (
-            <p className="text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-              Singing requires a Chromium desktop browser
-            </p>
-          )
+          <button
+            onClick={onRequestJoinQueue}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{ fontFamily: "var(--font-display)", background: "color-mix(in srgb, var(--color-primary) 62%, white)", color: "#24153a" }}
+          >
+            <Plus size={14} />
+            Add to Queue
+          </button>
         ) : isSinging ? (
           <p
             className="text-center text-xs font-bold"

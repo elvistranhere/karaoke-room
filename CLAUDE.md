@@ -29,22 +29,40 @@ Never use em dashes (—). Use regular dashes (-) or rewrite the sentence.
 
 1. **PartyKit** (`party/`) — Cloudflare Durable Objects for room state (participants, queue, chat, mute-all). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
 
-2. **LiveKit** — SFU for WebRTC audio transport. The singer publishes a **single mixed track** (mic + tab audio combined via Web Audio API) to avoid voice/music latency drift. Listeners subscribe to this one track.
+2. **LiveKit** - SFU for WebRTC audio transport. Voice only: the singer publishes their mic through the voice effect chain as one track. Music never crosses LiveKit.
 
 3. **Next.js 15** (App Router) — UI + `/api/livekit-token` endpoint with multi-key rotation.
 
-### Single-Track Mixing (Critical Path)
+### Voice Pipeline (Critical Path)
 
 The singer's audio pipeline in `useLiveKit.ts`:
 ```
-getUserMedia (mic) → Voice Effect Chain → Mic GainNode ─┐
-getDisplayMedia (tab audio) → Music GainNode ────────────┤
-                                                          ↓
-                                              AudioContext.destination
-                                                          ↓
-                                              publishTrack (LiveKit)
+getUserMedia (mic) → Voice Effect Chain → Mic GainNode
+                                              ↓
+                                  AudioContext.destination
+                                              ↓
+                                  publishTrack (LiveKit, Track.Source.Microphone)
 ```
-Both sources share one AudioContext render clock → zero drift. This is the most latency-sensitive code path. Changes to `startSharing`/`stopSharing`/`cleanupMix` require careful review.
+`startSinging` runs automatically when the turn starts and `stopSinging` when it ends. Changes to `startSinging`/`stopSinging`/`cleanupMix` require careful review.
+
+### Synced YouTube Playback (Critical Path)
+
+Every client runs its own YouTube IFrame player. The singer is the clock authority:
+
+```
+singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
+                                                        ↓
+                                   video-state {video, serverTime} → every client
+                                                        ↓
+        target = videoTime + (estimatedServerNow - wallTime)/1000 - offsetSec
+        drift  = target - player.getCurrentTime()  →  rate nudge or seek
+```
+
+- `usePartyClock` estimates `serverOffset` from dedicated `time-sync` round trips. Never fold this into the ping/pong heartbeat: the server evicts on stale pongs.
+- `useVideoSync` runs one ~300ms interval over refs only, so drift correction never re-renders the player.
+- `video-state` is a point broadcast, not `broadcastState()`, because it fires every ~2s.
+- The player is created inside the AudioUnlockOverlay click, the only guaranteed user gesture per client, and is never unmounted afterwards.
+- No user may touch the YouTube surface: `VideoStage` stacks a transparent blocker above the iframe, marks the player container `inert` (plus `tabindex=-1` on the frame for Safari), and the embed runs with `controls: 0, disablekb: 1`.
 
 ### Type Synchronization
 
@@ -53,7 +71,10 @@ Both sources share one AudioContext render clock → zero drift. This is the mos
 ## Key Hooks
 
 - **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions, mute-all. Returns `send()` for raw messages.
-- **`useLiveKit`** — LiveKit connection, mic toggle, tab audio sharing, voice effects, mic check (live loopback). The most complex hook (~1000 lines).
+- **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook (~1000 lines).
+- **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable handle.
+- **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast.
+- **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples).
 - **`useAudioDevices`** — Device enumeration, mic mode (`"voice"` = NC on, `"raw"` = NC off).
 - **`usePartySocket`** — Low-level PartyKit WebSocket wrapper with auto-reconnect.
 
@@ -64,9 +85,10 @@ Both sources share one AudioContext render clock → zero drift. This is the mos
 ## Patterns
 
 - **Refs over state** for values accessed in callbacks/timeouts to avoid stale closures (`isMicEnabledRef`, `talkingNCRef`, `singingNCRef`, `voiceEffectRef`).
-- **Hot-swap during sharing**: NC toggle and voice effect changes re-capture the mic stream or rebuild the effect chain live without stopping the published track.
-- **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the sharing mix path.
+- **Hot-swap while singing**: NC toggle and voice effect changes re-capture the mic stream or rebuild the effect chain live without stopping the published track.
+- **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the singing mix path.
 - **`mutedBySinger` is server-persisted**: Included in `RoomState` so reconnecting clients get the correct mute state. Cleared automatically in `promoteNextSinger()`.
+- **`videoState` is server-owned**: Included in `RoomState` so late joiners catch up mid-song, and cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
 - **Per-person volume**: Uses `lkIdentity` from PartyKit status updates (not DOM queries) to match LiveKit audio elements to participants.
 
 ## Adding a New PartyKit Message
@@ -111,7 +133,7 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 - **Next.js**: Vercel (auto-deploy from GitHub on push to main)
 - **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
 - **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
-- Singing requires Chromium (Chrome/Edge/Brave/Arc) - `getDisplayMedia` audio capture is Chromium-only.
+- Deploy PartyKit before Vercel: the video protocol is additive, so old clients keep working during the gap.
 
 ## Skills and Workflows
 
@@ -138,7 +160,7 @@ For major changes, run parallel review agents:
 1. Bug scan (focus on logic errors, race conditions)
 2. Regression check (compare with recent git history)
 3. Protocol consistency (types in sync, handlers complete)
-4. Audio path impact (verify startSharing/stopSharing untouched)
+4. Audio path impact (verify startSinging/stopSinging untouched)
 5. State/cleanup review (AudioContext closed, MediaStream stopped, timers cleared)
 
 ### Audit Pattern
@@ -147,4 +169,4 @@ For production readiness:
 2. Check PartyKit health: `curl https://karaoke-room.elvistranhere.partykit.dev/parties/main/test`
 3. Verify all AudioContexts closed on disconnect
 4. Verify all setInterval/setTimeout cleared on unmount
-5. Verify mutedBySinger/autoMix state cleared on room empty
+5. Verify mutedBySinger/videoState cleared on room empty
