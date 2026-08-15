@@ -575,7 +575,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             isSinger={isMyTurn}
           />
           <div
-            className={`relative flex min-h-0 flex-1 flex-col justify-center overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
+            className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
             style={{
               background: roomState.currentSingerId
                 ? "transparent"
@@ -583,6 +583,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               borderColor: roomState.currentSingerId ? "transparent" : "var(--color-dark-border)",
             }}
           >
+            {/* Auto margins center only when content fits; justify-center would clip
+                overflow above the scrollable area. */}
+            <div className="my-auto w-full">
             <StageBanner
               room={room}
               roomState={roomState}
@@ -631,6 +634,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 sendChat(`adjusted the singer's voice to ${Math.round(voice * 100)}%`);
               } : undefined}
             />
+            </div>
           {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
           {(reactions.length > 0 || floatingChatMessages.length > 0) && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">

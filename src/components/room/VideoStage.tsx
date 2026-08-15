@@ -23,7 +23,11 @@ export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode,
           ? "relative w-full shrink-0 overflow-hidden rounded-2xl border"
           : "pointer-events-none absolute -left-[9999px] top-0 h-px w-px overflow-hidden opacity-0"
       }
-      style={hasVideo ? { aspectRatio: "16 / 9", background: "#000", borderColor: "var(--color-dark-border)" } : undefined}
+      style={
+        hasVideo
+          ? { aspectRatio: "16 / 9", maxHeight: "46dvh", background: "#000", borderColor: "var(--color-dark-border)" }
+          : undefined
+      }
       aria-hidden={!hasVideo}
     >
       {/* inert keeps the iframe out of the tab order; the blocker below stops clicks */}
