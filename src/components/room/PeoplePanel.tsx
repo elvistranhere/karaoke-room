@@ -15,6 +15,7 @@ interface PeoplePanelProps {
   onPersonVolumeChange: (identity: string, vol: number) => void;
   onKick?: (peerId: string) => void;
   onTransferAdmin?: (peerId: string) => void;
+  onRemoveFromQueue?: (peerId: string) => void;
 }
 
 export function PeoplePanel({
@@ -28,6 +29,7 @@ export function PeoplePanel({
   onPersonVolumeChange,
   onKick,
   onTransferAdmin,
+  onRemoveFromQueue,
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adminMenuId, setAdminMenuId] = useState<string | null>(null);
@@ -124,7 +126,6 @@ export function PeoplePanel({
                       style={{ color: isMe ? "var(--color-primary)" : "var(--color-text-primary)" }}
                     >
                       {p.name}
-                      {isSinger ? " (Singing)" : ""}
                     </span>
                     {isMe && (
                       <span className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>(you)</span>
@@ -175,10 +176,19 @@ export function PeoplePanel({
               {/* Admin actions menu */}
               {adminMenuId === p.id && isAdmin && !isMe && (
                 <div
-                  className="ml-9 flex gap-1 rounded-lg px-2 py-1.5"
+                  className="ml-9 flex flex-wrap gap-1 rounded-lg px-2 py-1.5"
                   style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {onRemoveFromQueue && queuePos ? (
+                    <button
+                      onClick={() => { onRemoveFromQueue(p.id); setAdminMenuId(null); }}
+                      className="cursor-pointer rounded px-2.5 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+                      style={{ background: "var(--color-dark-surface)", color: "var(--color-text-secondary)" }}
+                    >
+                      Remove from queue
+                    </button>
+                  ) : null}
                   <button
                     onClick={() => { onKick?.(p.id); setAdminMenuId(null); }}
                     className="cursor-pointer rounded px-2.5 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
