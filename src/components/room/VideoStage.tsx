@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, VideoOff } from "lucide-react";
+import { LoaderCircle, Play, VideoOff } from "lucide-react";
 
 interface VideoStageProps {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -9,11 +9,13 @@ interface VideoStageProps {
   embedBlocked: boolean;
   errorCode: number | null;
   isSinger: boolean;
+  showTapToPlay?: boolean;
+  onTapToPlay?: () => void;
 }
 
 // The player is created once on the audio-unlock gesture and never unmounted, so an
 // empty stage parks the container off-screen instead of destroying the iframe.
-export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode, isSinger }: VideoStageProps) {
+export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode, isSinger, showTapToPlay = false, onTapToPlay }: VideoStageProps) {
   const failed = embedBlocked || errorCode !== null;
 
   return (
@@ -34,6 +36,27 @@ export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode,
       <div ref={mountRef} className="absolute inset-0" inert />
 
       <div className="absolute inset-0 z-10" aria-hidden="true" />
+
+      {hasVideo && !failed && ready && showTapToPlay && onTapToPlay && (
+        <button
+          onClick={onTapToPlay}
+          className="absolute inset-0 z-30 flex cursor-pointer flex-col items-center justify-center gap-2"
+          style={{ background: "color-mix(in srgb, #000 55%, transparent)" }}
+        >
+          <span
+            className="flex size-14 items-center justify-center rounded-full"
+            style={{ background: "var(--color-primary)", color: "#fff", boxShadow: "0 0 24px rgba(157, 92, 255, 0.5)" }}
+          >
+            <Play size={24} fill="currentColor" />
+          </span>
+          <span className="text-sm font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+            Tap to play
+          </span>
+          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            Your browser needs a tap to start the music
+          </span>
+        </button>
+      )}
 
       {hasVideo && (failed || !ready) && (
         <div

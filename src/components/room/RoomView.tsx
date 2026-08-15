@@ -130,6 +130,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   // Volume controls
   const [voiceVolume, setVoiceVolume] = useState(1);
   const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
+  // Performance-only layer: applies while that person is the current singer and
+  // expires when they leave the stage, so it never dents their talking volume
+  const [singerVolumes, setSingerVolumes] = useState<Record<string, number>>({});
 
   // Mix values: voice is the singer's published gain, music is local to each client
   const [mixVoiceValue, setMixVoiceValue] = useState(100);
@@ -188,7 +191,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const playerRef = useRef(player);
   playerRef.current = player;
 
-  const { broadcastNow } = useVideoSync({
+  const { broadcastNow, playbackBlocked } = useVideoSync({
     player,
     video: roomState.video,
     videoRef,
@@ -237,8 +240,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       if (el.dataset.savedVolume !== undefined) return;
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
+      const performanceVol = identity === singerIdentity ? singerVolumes[identity] ?? 1 : 1;
       // Element volume hard-throws outside [0, 1]; slider values above 100 saturate
-      const volume = Math.min(1, Math.max(0, voiceVolume * personVol));
+      const volume = Math.min(1, Math.max(0, voiceVolume * personVol * performanceVol));
       if (micChecking) {
         el.dataset.savedVolume = String(volume);
         el.volume = 0;
@@ -246,7 +250,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       }
       el.volume = volume;
     });
-  }, [voiceVolume, personVolumes, micChecking]);
+  }, [voiceVolume, personVolumes, singerVolumes, singerIdentity, micChecking]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
@@ -561,6 +565,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             embedBlocked={embedBlocked}
             errorCode={playerErrorCode}
             isSinger={isMyTurn}
+            showTapToPlay={playbackBlocked && !isMyTurn}
+            onTapToPlay={() => player.play()}
           />
           <div
             className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
@@ -608,9 +614,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
               mixVoiceValue={mixVoiceValue}
               mixMusicValue={mixMusicValue}
-              listenerVoiceValue={Math.round((singerIdentity ? personVolumes[singerIdentity] ?? 1 : 1) * 100)}
+              listenerVoiceValue={Math.round((singerIdentity ? singerVolumes[singerIdentity] ?? 1 : 1) * 100)}
               onListenerVoiceChange={!isMyTurn && singerIdentity
-                ? (v) => handlePersonVolumeChange(singerIdentity, v / 100)
+                ? (v) => setSingerVolumes((prev) => ({ ...prev, [singerIdentity]: v / 100 }))
                 : undefined}
               syncAuto={syncOffsetAuto}
               onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}

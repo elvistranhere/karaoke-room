@@ -200,6 +200,7 @@ export function StageBanner({
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
               value={listenerVoiceValue}
+              max={100}
               onChange={onListenerVoiceChange}
             />
             <MixSlider

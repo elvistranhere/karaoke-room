@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { VideoState } from "~/types/room";
 import type { YouTubePlayerHandle } from "./useYouTubePlayer";
 
@@ -36,6 +36,7 @@ interface UseVideoSyncParams {
 
 interface UseVideoSyncReturn {
   broadcastNow: (playing: boolean, videoTime: number) => void;
+  playbackBlocked: boolean;
 }
 
 // Keeps every client lined up with the singer's clock. All state lives in refs so
@@ -62,6 +63,9 @@ export function useVideoSync({
   const lastPlayAtRef = useRef(0);
   const lastBroadcastRef = useRef(0);
   const persistTicksRef = useRef(0);
+  const blockedTicksRef = useRef(0);
+  // iOS refuses sound playback without a fresh gesture; surfaced so the UI can ask for a tap
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   const videoId = video?.videoId ?? null;
   const playing = video?.playing ?? false;
@@ -126,7 +130,11 @@ export function useVideoSync({
         return;
       }
 
-      if (!current.playing) return;
+      if (!current.playing) {
+        blockedTicksRef.current = 0;
+        setPlaybackBlocked(false);
+        return;
+      }
       if (player.getLoadedVideoId() !== current.videoId) return;
       if (!clockSyncedRef.current) {
         // Frozen correction is fine during an outage; an active nudge is not
@@ -141,6 +149,13 @@ export function useVideoSync({
           lastPlayAtRef.current = now;
           player.play();
         }
+        // Retries without a gesture never succeed on iOS: after ~1.5s of a
+        // should-be-playing player sitting idle, ask the user for a tap
+        blockedTicksRef.current += 1;
+        if (blockedTicksRef.current >= 5) setPlaybackBlocked(true);
+      } else if (state === PLAYING) {
+        blockedTicksRef.current = 0;
+        setPlaybackBlocked(false);
       }
 
       // The iframe reports the applied rate a round trip later, so verify one tick on
@@ -202,5 +217,5 @@ export function useVideoSync({
     };
   }, [playerReady, player, videoRef, serverOffsetRef, clockSyncedRef, syncOffsetMsRef, broadcastNow]);
 
-  return { broadcastNow };
+  return { broadcastNow, playbackBlocked };
 }

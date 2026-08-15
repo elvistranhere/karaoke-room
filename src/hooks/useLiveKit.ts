@@ -118,6 +118,7 @@ export function useLiveKit({
   const micCheckErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micCheckRestoreMicRef = useRef(false);
   const micCheckPrevMixGainRef = useRef<number | null>(null);
+  const mixMicGainValueRef = useRef(1); // last slider value, applied when the pipeline (re)builds
   const isSingingInFlightRef = useRef(false); // guard against concurrent startSinging/stopSinging
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
@@ -1005,7 +1006,7 @@ export function useLiveKit({
           const dest = mixDestRef.current;
           const micSource = ctx.createMediaStreamSource(stream);
           const micGain = ctx.createGain();
-          micGain.gain.value = 1.0;
+          micGain.gain.value = mixMicGainValueRef.current;
 
           const chain = createEffectChain(ctx, voiceEffectRef.current);
           chain.setWetDry?.(effectWetDryRef.current);
@@ -1106,6 +1107,7 @@ export function useLiveKit({
 
   // Expose the published voice gain so the singer can set their own level
   const setMixMicGain = useCallback((val: number) => {
+    mixMicGainValueRef.current = val;
     if (micCheckAbortRef.current) {
       // During a mic check the slider drives the loopback; the published gain is
       // silenced, so stash the value for restore instead of un-silencing it.
@@ -1181,7 +1183,7 @@ export function useLiveKit({
 
       const micSource = ctx.createMediaStreamSource(micStream);
       const micGain = ctx.createGain();
-      micGain.gain.value = 1.0;
+      micGain.gain.value = mixMicGainValueRef.current;
 
       const chain = createEffectChain(ctx, voiceEffectRef.current);
       micSource.connect(chain.input);
