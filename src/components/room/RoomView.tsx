@@ -196,9 +196,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const broadcastNowRef = useRef(broadcastNow);
   broadcastNowRef.current = broadcastNow;
 
+  // The mic check mutes remote audio itself, but the music is local now, so it
+  // has to be silenced here or the loopback is drowned out.
+  const micChecking = micCheckState !== "idle" && micCheckState !== "error";
   useEffect(() => {
-    player.setVolume(mixMusicValue);
-  }, [player, mixMusicValue]);
+    player.setVolume(micChecking ? 0 : mixMusicValue);
+  }, [player, mixMusicValue, micChecking]);
 
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
@@ -226,15 +229,23 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const applyAllVolumes = useCallback(() => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
+      // savedVolume marks elements the mic check muted; leave those alone, and
+      // mute elements that attached after the check started so they join the hush
+      if (el.dataset.savedVolume !== undefined) return;
       const identity = el.dataset.lkIdentity ?? "";
       const personVol = personVolumes[identity] ?? 1;
+      if (micChecking) {
+        el.dataset.savedVolume = String(voiceVolume * personVol);
+        el.volume = 0;
+        return;
+      }
       el.volume = voiceVolume * personVol;
     });
-  }, [voiceVolume, personVolumes]);
+  }, [voiceVolume, personVolumes, micChecking]);
 
   useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
 
-  // Ref-stable callback for MutationObserver — avoids re-registering on volume changes
+  // Ref-stable callback for MutationObserver - avoids re-registering on volume changes
   const applyVolumesRef = useRef(applyAllVolumes);
   applyVolumesRef.current = applyAllVolumes;
 

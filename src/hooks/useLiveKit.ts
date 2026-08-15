@@ -34,6 +34,35 @@ interface UseLiveKitParams {
 
 export type MicCheckState = "idle" | "monitoring-talk" | "monitoring-sing" | "error";
 
+const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
+
+// A hung permission prompt would otherwise leave the mic check unstartable forever
+function getMicStreamWithTimeout(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  return new Promise<MediaStream>((resolve, reject) => {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error("Microphone request timed out"));
+    }, MIC_CHECK_GUM_TIMEOUT_MS);
+    navigator.mediaDevices.getUserMedia(constraints).then(
+      (stream) => {
+        if (timedOut) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        clearTimeout(timer);
+        resolve(stream);
+      },
+      (err) => {
+        if (!timedOut) {
+          clearTimeout(timer);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      },
+    );
+  });
+}
+
 interface UseLiveKitReturn {
   room: Room | null;
   isConnected: boolean;
@@ -80,12 +109,15 @@ export function useLiveKit({
 
   const roomRef = useRef<Room | null>(null);
   const micCheckAbortRef = useRef<(() => void) | null>(null);
-  // Mic check Web Audio refs — stored so effects can hot-swap NC/effect during monitoring
+  // Mic check Web Audio refs, stored so effects can hot-swap NC/effect during monitoring
   const micCheckCtxRef = useRef<AudioContext | null>(null);
   const micCheckSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micCheckGainRef = useRef<GainNode | null>(null);
   const micCheckStreamRef = useRef<MediaStream | null>(null);
   const micCheckEffectChainRef = useRef<EffectChain | null>(null);
+  const micCheckErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micCheckRestoreMicRef = useRef(false);
+  const micCheckPrevMixGainRef = useRef<number | null>(null);
   const isSingingInFlightRef = useRef(false); // guard against concurrent startSinging/stopSinging
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
@@ -600,27 +632,10 @@ export function useLiveKit({
 
   const micCheckInFlightRef = useRef(false);
 
-  // Safety: if mic check state gets stuck (e.g., getUserMedia hangs), force reset after 30s
-  useEffect(() => {
-    if (micCheckState === "idle" || micCheckState === "error") return;
-    const safety = setTimeout(() => {
-      console.warn("[LiveKit] Mic check state stuck at", micCheckState, "— force resetting");
-      micCheckAbortRef.current?.();
-      micCheckAbortRef.current = null;
-      micCheckInFlightRef.current = false;
-      setMicCheckState("idle");
-      // Restore remote audio in case it was muted
-      document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-        const saved = el.dataset.savedVolume;
-        if (saved !== undefined) { el.volume = parseFloat(saved); delete el.dataset.savedVolume; }
-      });
-    }, 30000);
-    return () => clearTimeout(safety);
-  }, [micCheckState]);
-
   // Mute/restore remote audio elements during mic check
   const muteRemoteAudio = useCallback(() => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
+      if (el.dataset.savedVolume !== undefined) return;
       el.dataset.savedVolume = String(el.volume);
       el.volume = 0;
     });
@@ -638,11 +653,48 @@ export function useLiveKit({
 
   // Stop any active mic check monitoring
   const stopMicCheck = useCallback(() => {
+    if (micCheckErrorTimerRef.current) {
+      clearTimeout(micCheckErrorTimerRef.current);
+      micCheckErrorTimerRef.current = null;
+    }
     micCheckAbortRef.current?.();
     micCheckAbortRef.current = null;
     restoreRemoteAudio();
+    if (micCheckPrevMixGainRef.current !== null) {
+      if (mixMicGainRef.current) mixMicGainRef.current.gain.value = micCheckPrevMixGainRef.current;
+      micCheckPrevMixGainRef.current = null;
+    }
+    if (micCheckRestoreMicRef.current) {
+      micCheckRestoreMicRef.current = false;
+      const room = roomRef.current;
+      if (room && isMicEnabledRef.current) {
+        void room.localParticipant.setMicrophoneEnabled(true).catch(() => {});
+      }
+    }
     setMicCheckState("idle");
   }, [restoreRemoteAudio]);
+
+  // A private check must not reach the room: silence the published paths and
+  // remember what to restore. Runs after the loopback capture succeeds.
+  const isolateMicCheckFromRoom = useCallback(() => {
+    if (mixMicGainRef.current) {
+      micCheckPrevMixGainRef.current = mixMicGainRef.current.gain.value;
+      mixMicGainRef.current.gain.value = 0;
+    }
+    const room = roomRef.current;
+    if (room && isMicEnabledRef.current && !micCheckRestoreMicRef.current) {
+      micCheckRestoreMicRef.current = true;
+      void room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+    }
+  }, []);
+
+  const scheduleMicCheckErrorReset = useCallback(() => {
+    if (micCheckErrorTimerRef.current) clearTimeout(micCheckErrorTimerRef.current);
+    micCheckErrorTimerRef.current = setTimeout(() => {
+      micCheckErrorTimerRef.current = null;
+      setMicCheckState((prev) => (prev === "error" ? "idle" : prev));
+    }, 2000);
+  }, []);
 
   // Talking Mic Check: live loopback with talking NC constraints
   const startTalkingMicCheck = useCallback(async (noiseCancellation: boolean) => {
@@ -654,9 +706,13 @@ export function useLiveKit({
     if (micCheckState !== "idle" && micCheckState !== "error") return;
     if (micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
+    if (micCheckErrorTimerRef.current) {
+      clearTimeout(micCheckErrorTimerRef.current);
+      micCheckErrorTimerRef.current = null;
+    }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await getMicStreamWithTimeout({
         audio: {
           deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
           echoCancellation: noiseCancellation,
@@ -675,6 +731,12 @@ export function useLiveKit({
       gain.gain.value = 1.0;
       source.connect(gain);
       gain.connect(ctx.destination);
+      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (ctx.state === "suspended") {
+        track.stop();
+        void ctx.close();
+        throw new Error("Audio output is blocked by the browser");
+      }
 
       // Route to selected output device if supported (setSinkId is not in TS types yet)
       if (selectedOutputRef.current && "setSinkId" in ctx) {
@@ -689,13 +751,15 @@ export function useLiveKit({
       micCheckEffectChainRef.current = null; // talking has no effect chain
 
       muteRemoteAudio();
+      isolateMicCheckFromRoom();
       setMicCheckState("monitoring-talk");
       console.log("[LiveKit] Talking mic check: live monitoring started");
 
+      // Read the refs, not the captured locals: hot-swaps replace stream and source
       micCheckAbortRef.current = () => {
-        source.disconnect();
-        gain.disconnect();
-        track.stop();
+        micCheckSourceRef.current?.disconnect();
+        micCheckGainRef.current?.disconnect();
+        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
         if (ctx.state !== "closed") void ctx.close();
         micCheckCtxRef.current = null;
         micCheckSourceRef.current = null;
@@ -708,9 +772,9 @@ export function useLiveKit({
       console.error("[LiveKit] Talking mic check error:", err);
       micCheckInFlightRef.current = false;
       setMicCheckState("error");
-      setTimeout(() => setMicCheckState("idle"), 2000);
+      scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, stopMicCheck]);
+  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // Singing Mic Check: live loopback through voice effect chain
   const startSingingMicCheck = useCallback(async (noiseCancellation: boolean) => {
@@ -722,9 +786,13 @@ export function useLiveKit({
     if (micCheckState !== "idle" && micCheckState !== "error") return;
     if (micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
+    if (micCheckErrorTimerRef.current) {
+      clearTimeout(micCheckErrorTimerRef.current);
+      micCheckErrorTimerRef.current = null;
+    }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await getMicStreamWithTimeout({
         audio: {
           deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
           echoCancellation: noiseCancellation,
@@ -747,6 +815,13 @@ export function useLiveKit({
       source.connect(chain.input);
       chain.output.connect(gain);
       gain.connect(ctx.destination);
+      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (ctx.state === "suspended") {
+        rawTrack.stop();
+        chain.cleanup();
+        void ctx.close();
+        throw new Error("Audio output is blocked by the browser");
+      }
 
       // Apply current wet/dry
       chain.setWetDry?.(effectWetDryRef.current);
@@ -764,14 +839,16 @@ export function useLiveKit({
       micCheckEffectChainRef.current = chain;
 
       muteRemoteAudio();
+      isolateMicCheckFromRoom();
       setMicCheckState("monitoring-sing");
       console.log("[LiveKit] Singing mic check: live monitoring with effect:", voiceEffectRef.current);
 
+      // Read the refs, not the captured locals: hot-swaps replace stream, source, and chain
       micCheckAbortRef.current = () => {
-        source.disconnect();
-        chain.cleanup();
-        gain.disconnect();
-        rawTrack.stop();
+        micCheckSourceRef.current?.disconnect();
+        micCheckEffectChainRef.current?.cleanup();
+        micCheckGainRef.current?.disconnect();
+        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
         if (ctx.state !== "closed") void ctx.close();
         micCheckCtxRef.current = null;
         micCheckSourceRef.current = null;
@@ -784,9 +861,9 @@ export function useLiveKit({
       console.error("[LiveKit] Singing mic check error:", err);
       micCheckInFlightRef.current = false;
       setMicCheckState("error");
-      setTimeout(() => setMicCheckState("idle"), 2000);
+      scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, stopMicCheck]);
+  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // --- Hot-swap NC during talking mic check ---
   // When talkingNC changes while monitoring-talk, re-capture mic with new constraints
@@ -1029,6 +1106,13 @@ export function useLiveKit({
 
   // Expose the published voice gain so the singer can set their own level
   const setMixMicGain = useCallback((val: number) => {
+    if (micCheckAbortRef.current) {
+      // During a mic check the slider drives the loopback; the published gain is
+      // silenced, so stash the value for restore instead of un-silencing it.
+      if (micCheckGainRef.current) micCheckGainRef.current.gain.value = val;
+      if (micCheckPrevMixGainRef.current !== null) micCheckPrevMixGainRef.current = val;
+      return;
+    }
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
   }, []);
 
@@ -1181,12 +1265,19 @@ export function useLiveKit({
   // The singing pipeline follows the stage turn: start on promotion, stop on exit
   useEffect(() => {
     if (isMyTurn && !isSinging && !isSingingInFlightRef.current) {
+      // A leftover loopback would be re-captured by the live mic and heard by the room.
+      // Skip the managed-mic restore: startSinging owns the mic state from here and a
+      // late async re-enable would race its disable.
+      if (micCheckAbortRef.current) {
+        micCheckRestoreMicRef.current = false;
+        stopMicCheck();
+      }
       void startSinging();
     }
     if (!isMyTurn && isSinging) {
       stopSinging();
     }
-  }, [isMyTurn, isSinging, startSinging, stopSinging]);
+  }, [isMyTurn, isSinging, startSinging, stopSinging, stopMicCheck]);
 
   return {
     room: roomRef.current,
