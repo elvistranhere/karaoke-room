@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { readPref, writePref } from "~/lib/prefs";
+
+const INPUT_PREF_KEY = "karaoke-input-device";
+const OUTPUT_PREF_KEY = "karaoke-output-device";
 
 export interface AudioDevice {
   deviceId: string;
@@ -52,11 +56,17 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       setInputDevices(inputs);
       setOutputDevices(outputs);
 
+      // Restore the remembered device only when it is actually plugged in;
+      // a stale exact deviceId constraint would make getUserMedia throw
       if (!selectedInputId && inputs.length > 0) {
-        setSelectedInputId(inputs[0]!.deviceId);
+        const saved = readPref(INPUT_PREF_KEY);
+        const match = saved ? inputs.find((d) => d.deviceId === saved) : undefined;
+        setSelectedInputId((match ?? inputs[0]!).deviceId);
       }
       if (!selectedOutputId && outputs.length > 0) {
-        setSelectedOutputId(outputs[0]!.deviceId);
+        const saved = readPref(OUTPUT_PREF_KEY);
+        const match = saved ? outputs.find((d) => d.deviceId === saved) : undefined;
+        setSelectedOutputId((match ?? outputs[0]!).deviceId);
       }
     } catch (err) {
       console.error("[AudioDevices] Error:", err);
@@ -72,13 +82,23 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     };
   }, [refreshDevices]);
 
+  const rememberInput = useCallback((id: string) => {
+    setSelectedInputId(id);
+    writePref(INPUT_PREF_KEY, id);
+  }, []);
+
+  const rememberOutput = useCallback((id: string) => {
+    setSelectedOutputId(id);
+    writePref(OUTPUT_PREF_KEY, id);
+  }, []);
+
   return {
     inputDevices,
     outputDevices,
     selectedInputId,
     selectedOutputId,
-    setSelectedInputId,
-    setSelectedOutputId,
+    setSelectedInputId: rememberInput,
+    setSelectedOutputId: rememberOutput,
     micMode,
     setMicMode,
     refreshDevices,

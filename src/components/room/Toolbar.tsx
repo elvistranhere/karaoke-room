@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mic, MicOff, Settings, Waves, AudioLines } from "lucide-react";
+import { Mic, MicOff, Settings, Waves, AudioLines, Headphones, HeadphoneOff } from "lucide-react";
 import type { Room } from "livekit-client";
 import type { VoiceEffect } from "~/lib/voiceEffects";
 
@@ -17,12 +17,16 @@ interface ToolbarProps {
   noiseCancellationMode: NoiseCancellationMode;
   onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
   onSoundProfileOpen: () => void;
+  deafened: boolean;
+  onToggleDeafen: () => void;
 }
 
 export function Toolbar({
   room,
   isMicEnabled,
   toggleMic,
+  deafened,
+  onToggleDeafen,
   voiceEffect,
   onVoiceEffectChange,
   onEffectWetDry,
@@ -67,17 +71,35 @@ export function Toolbar({
     >
       <button
         onClick={toggleMic}
-        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 sm:size-16"
+        disabled={deafened}
+        className={`flex size-14 shrink-0 items-center justify-center rounded-full transition-all duration-150 sm:size-16 ${deafened ? "cursor-not-allowed" : "cursor-pointer hover:scale-105 active:scale-95"}`}
         style={{
           background: isMicEnabled ? "#c9a7ff" : "var(--color-dark-card)",
           color: isMicEnabled ? "#4c00af" : "var(--color-text-muted)",
           border: isMicEnabled ? "none" : "1px solid var(--color-dark-border)",
           boxShadow: isMicEnabled ? "0 8px 24px rgba(166, 110, 255, 0.18)" : "none",
+          opacity: deafened ? 0.5 : 1,
         }}
-        title={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
-        aria-label={isMicEnabled ? "Mute microphone" : "Unmute microphone"}
+        title={deafened ? "Turn sound back on to use your mic" : isMicEnabled ? "Mute microphone" : "Unmute microphone"}
+        aria-label={deafened ? "Turn sound back on to use your mic" : isMicEnabled ? "Mute microphone" : "Unmute microphone"}
       >
         {isMicEnabled ? <Mic className="size-6 sm:size-7" strokeWidth={2.3} /> : <MicOff className="size-6 sm:size-7" strokeWidth={2.3} />}
+      </button>
+
+      <button
+        onClick={onToggleDeafen}
+        role="switch"
+        aria-checked={deafened}
+        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 sm:size-16"
+        style={{
+          background: deafened ? "var(--color-danger-dim)" : "var(--color-dark-card)",
+          color: deafened ? "var(--color-danger)" : "var(--color-text-muted)",
+          border: deafened ? "1px solid var(--color-danger)" : "1px solid var(--color-dark-border)",
+        }}
+        title={deafened ? "Turn sound back on" : "Turn off all sound and your mic"}
+        aria-label={deafened ? "Turn sound back on" : "Turn off all sound and your mic"}
+      >
+        {deafened ? <HeadphoneOff className="size-6 sm:size-7" strokeWidth={2.3} /> : <Headphones className="size-6 sm:size-7" strokeWidth={2.3} />}
       </button>
 
       <div

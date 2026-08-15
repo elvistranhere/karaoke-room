@@ -6,6 +6,7 @@ import { Mic, Users, Music, Lock, Search, Plus, LogIn, Eye, EyeOff } from "lucid
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
+const MAX_ROOM_NAME_LENGTH = 30; // must match MAX_ROOM_NAME_LENGTH in party/index.ts
 
 function generateRoomCode(): string {
   const array = new Uint8Array(CODE_LENGTH);
@@ -20,6 +21,8 @@ export default function Home() {
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [roomPassword, setRoomPassword] = useState("");
   const [showRoomPassword, setShowRoomPassword] = useState(false);
+  const [roomName, setRoomName] = useState("");
+  const [showInBrowse, setShowInBrowse] = useState(false);
   const joinCodeClean = joinCode.toUpperCase().trim();
   const canJoin = joinCodeClean.length === CODE_LENGTH;
 
@@ -27,6 +30,12 @@ export default function Home() {
     const code = generateRoomCode();
     if (passwordEnabled && roomPassword.trim()) {
       sessionStorage.setItem(`room-password-${code}`, roomPassword.trim());
+    }
+    if (roomName.trim()) {
+      sessionStorage.setItem(`room-name-${code}`, roomName.trim());
+    }
+    if (showInBrowse) {
+      sessionStorage.setItem(`room-public-${code}`, "1");
     }
     router.push(`/room/${code}`);
   };
@@ -100,7 +109,21 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-7 flex h-5 items-center justify-between gap-3">
+          <label htmlFor="room-name" className="mt-7 flex h-5 items-center text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>
+            Room name <span className="ml-1" style={{ color: "var(--color-text-muted)" }}>(optional)</span>
+          </label>
+          <input
+            id="room-name"
+            type="text"
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value.slice(0, MAX_ROOM_NAME_LENGTH))}
+            placeholder="Friday night karaoke"
+            autoComplete="off"
+            className="mt-2 h-11 w-full rounded-xl border px-3.5 text-sm outline-none transition-all placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)]"
+            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+          />
+
+          <div className="mt-4 flex h-5 items-center justify-between gap-3">
             <label htmlFor="room-password" className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room password</label>
             <button
               type="button"
@@ -158,9 +181,37 @@ export default function Home() {
             )}
           </div>
 
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Show in Browse</p>
+              <p className="mt-0.5 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+                Off means only people with the code can find it
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showInBrowse}
+              aria-label="Show this room in Browse"
+              onClick={() => setShowInBrowse((shown) => !shown)}
+              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
+            >
+              <span className="text-[10px] font-medium" style={{ color: showInBrowse ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+                {showInBrowse ? "Public" : "Private"}
+              </span>
+              <span
+                aria-hidden="true"
+                className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200"
+                style={{ background: showInBrowse ? "var(--color-primary)" : "var(--color-dark-border)" }}
+              >
+                <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${showInBrowse ? "translate-x-4" : "translate-x-0"}`} />
+              </span>
+            </button>
+          </div>
+
           <button
             onClick={handleCreate}
-            className="mt-auto flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.98]"
+            className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.98]"
             style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
           >
             Create room

@@ -19,6 +19,7 @@ export interface ParticipantStatus {
   currentSong: string | null;
   browser?: string;
   lkIdentity?: string;
+  isDeafened?: boolean;
 }
 
 // wallTime is stamped by the server clock on receipt, never by the singer.
@@ -41,16 +42,30 @@ export interface RoomState {
   adminPeerId: string | null;
   isLocked: boolean;
   video: VideoState | null;
+  roomName: string | null;
+  isPublic: boolean;
+}
+
+// Shape returned by GET /parties/registry/global. `name` is optional because
+// entries written by a pre-rename server do not carry it.
+export interface PublicRoomEntry {
+  code: string;
+  name?: string | null;
+  participantCount: number;
+  currentSinger: string | null;
+  currentSong: string | null;
+  isLocked: boolean;
+  updatedAt: number;
 }
 
 // Client -> Server
 export type ClientMessage =
-  | { type: "join"; name: string }
+  | { type: "join"; name: string; clientId?: string }
   | { type: "join-queue" }
   | { type: "leave-queue" }
   | { type: "finish-singing" }
   | { type: "chat"; text: string }
-  | { type: "status-update"; isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string }
+  | { type: "status-update"; isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; isDeafened?: boolean }
   | { type: "reaction"; emoji: string }
   | { type: "mute-all" }
   | { type: "unmute-all" }
@@ -62,6 +77,10 @@ export type ClientMessage =
   | { type: "set-password"; password: string | null }
   | { type: "transfer-admin"; peerId: string }
   | { type: "auth"; password: string }
+  | { type: "set-room-name"; name: string | null }
+  | { type: "set-public"; isPublic: boolean }
+  | { type: "remove-from-queue"; peerId: string }
+  | { type: "skip-singer" }
   | { type: "pong" };
 
 // Server -> Client

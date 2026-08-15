@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
-import { Mic, Music, VolumeX, Volume2, Plus } from "lucide-react";
+import { Mic, MicOff, Music, VolumeX, Volume2, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
 import { VideoUrlInput } from "./VideoUrlInput";
+import { VolumeSlider, MUSIC_MAX } from "./VolumeSlider";
 
 interface StageBannerProps {
   room: Room | null;
@@ -33,9 +34,12 @@ interface StageBannerProps {
   onUnmuteAll?: () => void;
   isMutedAll?: boolean;
   mixMusicValue?: number;
-  // Listener-local mix: voice is the singer's volume on this device only
+  // Listener-local mix: voice is the singer's stage volume on this device only,
+  // the same number the People panel row edits
   listenerVoiceValue?: number;
   onListenerVoiceChange?: (val: number) => void;
+  listenerVoiceMuted?: boolean;
+  onToggleListenerVoiceMute?: () => void;
   // Listener-local sync offset (auto-estimated, manual override remembered per singer)
   syncAuto?: boolean;
   onSyncAutoChange?: (auto: boolean) => void;
@@ -69,6 +73,8 @@ export function StageBanner({
   mixMusicValue = 70,
   listenerVoiceValue = 100,
   onListenerVoiceChange,
+  listenerVoiceMuted = false,
+  onToggleListenerVoiceMute,
   syncAuto = true,
   onSyncAutoChange,
   autoOffsetMs = 150,
@@ -85,7 +91,7 @@ export function StageBanner({
   const video = roomState.video;
   const hasVideo = video !== null;
   const isPlaying = video?.playing ?? false;
-  const voicePercent = Math.round(listenerVoiceValue);
+  const voicePercent = listenerVoiceMuted ? 0 : Math.round(listenerVoiceValue);
   const meterBars = [0.35, 0.55, 0.78, 1, 0.78, 0.55, 0.35];
 
   useEffect(() => {
@@ -192,21 +198,38 @@ export function StageBanner({
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
           <div className="mt-5 space-y-2 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
-            <MixSlider
+            <VolumeSlider
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
               value={listenerVoiceValue}
+              ariaLabel={`Stage volume for ${currentSinger?.name ?? "the singer"}`}
               onChange={onListenerVoiceChange}
+              trailing={onToggleListenerVoiceMute ? (
+                <button
+                  onClick={onToggleListenerVoiceMute}
+                  className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all hover:brightness-125"
+                  style={{
+                    background: listenerVoiceMuted ? "var(--color-danger-dim)" : "transparent",
+                    color: listenerVoiceMuted ? "var(--color-danger)" : "var(--color-text-muted)",
+                  }}
+                  title={listenerVoiceMuted ? "Unmute this singer for yourself" : "Mute this singer for yourself"}
+                  aria-label={listenerVoiceMuted ? "Unmute this singer for yourself" : "Mute this singer for yourself"}
+                >
+                  {listenerVoiceMuted ? <MicOff size={13} /> : <Mic size={13} />}
+                </button>
+              ) : undefined}
             />
-            <MixSlider
+            <VolumeSlider
               label="Music"
               icon={<Music size={14} style={{ color: "var(--color-accent)" }} />}
               value={mixMusicValue}
-              max={100}
+              max={MUSIC_MAX}
               onChange={(v) => onMixMusicGain(v / 100)}
             />
             <p className="pt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-              Only changes what you hear.
+              {listenerVoiceMuted
+                ? "Muted for you. Unmuting restores this level. YouTube caps music at 100%."
+                : "Only changes what you hear. YouTube caps music at 100%."}
             </p>
           </div>
         )}
@@ -302,73 +325,43 @@ export function StageBanner({
 
           {onLoadVideo && <VideoUrlInput onLoad={onLoadVideo} label="Change" />}
 
-          {/* Music volume only; the singer's mic level lives in the toolbar */}
+          {/* Music volume only: the singer never gets a gain stage on their own voice */}
           {onMixMusicGain && (
-            <MixSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={100} onChange={(v) => onMixMusicGain(v / 100)} />
+            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={MUSIC_MAX} onChange={(v) => onMixMusicGain(v / 100)} />
           )}
 
-          <div className="flex flex-wrap gap-2">
-            {onMuteAll && onUnmuteAll && (
+          {/* Stage controls: everything below the separator acts on the room, not on
+              this device's volume */}
+          {onMuteAll && onUnmuteAll && (
+            <div className="border-t pt-3" style={{ borderColor: "var(--color-dark-border)" }}>
               <button
                 onClick={isMutedAll ? onUnmuteAll : onMuteAll}
-                className="flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:brightness-110"
+                className="flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:brightness-110"
                 style={{
                   borderColor: isMutedAll ? "var(--color-accent)" : "var(--color-dark-border)",
                   background: isMutedAll ? "var(--color-accent-dim)" : "transparent",
                   color: isMutedAll ? "var(--color-accent)" : "var(--color-text-muted)",
                 }}
-                title={isMutedAll ? "Unmute everyone" : "Mute all other microphones"}
+                title={isMutedAll ? "Let everyone use their mic again" : "Stop everyone else from publishing their mic"}
               >
                 {isMutedAll ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                {isMutedAll ? "Unmute All" : "Mute All"}
+                {isMutedAll ? "Unmute all mics" : "Mute all mics"}
               </button>
-            )}
-            <button
-              onClick={onFinishSinging}
-              className="flex-1 cursor-pointer rounded-lg py-2 text-xs font-medium transition-all hover:brightness-110"
-              style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
-            >
-              Finish Turn
-            </button>
-          </div>
+            </div>
+          )}
+
+          <button
+            onClick={onFinishSinging}
+            className="w-full cursor-pointer rounded-lg py-2 text-xs font-medium transition-all hover:brightness-110"
+            style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
+          >
+            Finish Turn
+          </button>
         </div>
       )}
 
     </div>
     </AudioVisualizer>
-  );
-}
-
-// max is 100 for music: the YouTube player caps volume there, so a boost half would be dead
-function MixSlider({ label, icon, value, max = 150, onChange }: { label: string; icon: React.ReactNode; value: number; max?: number; onChange: (val: number) => void }) {
-  const fill = Math.min(100, (value / max) * 100);
-  const boosting = value > 100;
-  return (
-    <div className="flex items-center gap-3">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-dark-card)" }}>{icon}</span>
-      <span className="w-11 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--color-text-secondary)" }}>
-        {label}
-        {boosting && (
-          <span className="mt-0.5 block text-[8px] font-bold tracking-wider" style={{ color: "var(--color-accent)" }}>
-            BOOST
-          </span>
-        )}
-      </span>
-      <input
-        type="range"
-        min="0"
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="volume-slider flex-1"
-        style={{
-          background: boosting
-            ? `linear-gradient(to right, var(--color-primary) 0%, var(--color-accent) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`
-            : `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`,
-        }}
-      />
-      <span className="w-7 text-right text-[11px] tabular-nums" style={{ color: boosting ? "var(--color-accent)" : "var(--color-text-secondary)" }}>{value}</span>
-    </div>
   );
 }
 

@@ -47,6 +47,18 @@ NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
 NEXT_PUBLIC_PARTY_HOST=your-project.partykit.dev
 ```
 
+### PartyKit secrets
+
+The public room listing is write-gated on a shared token. Set it once per deployed
+project, before `npm run deploy:party`:
+
+```bash
+partykit env add REGISTRY_TOKEN   # any long random string
+```
+
+Without it, a deployed registry rejects every write and `/browse` stays empty. Local
+dev needs nothing: writes from `localhost` are exempt.
+
 ## Architecture
 
 ```

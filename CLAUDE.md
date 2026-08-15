@@ -89,7 +89,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the singing mix path.
 - **`mutedBySinger` is server-persisted**: Included in `RoomState` so reconnecting clients get the correct mute state. Cleared automatically in `promoteNextSinger()`.
 - **`videoState` is server-owned**: Included in `RoomState` so late joiners catch up mid-song, and cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
-- **Per-person volume**: Uses `lkIdentity` from PartyKit status updates (not DOM queries) to match LiveKit audio elements to participants.
+- **Per-person volume**: `useVolumeMix` is the single source of truth (master, music, per-person `{talk, stage, muted}` keyed by `personMixKey`: the name, or `peer:<peerId>` for the duplicate-friendly "Anonymous"). It pushes gains into `src/lib/voiceMixer.ts`, which runs every remote voice through `source -> personGain -> masterBus -> duck -> limiter -> output`. Names resolve to `lkIdentity` from PartyKit status updates only at apply time, so volumes survive reconnects, and identities stay in the gain map after a participant drops off the roster because their LiveKit track can outlive the WebSocket. The mixer also owns each `<audio>` element's volume: 0 while the graph is audible, the full local mix when the AudioContext is suspended or Web Audio failed. All of it is local: no volume value is ever broadcast.
 
 ## Adding a New PartyKit Message
 
@@ -119,7 +119,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Modal**: Backdrop (`fixed inset-0 z-40`, semi-transparent black, click to close) + centered card (`fixed left-1/2 top-1/2 z-50`). Always add Escape key handler via `useEffect`.
 - **Error display**: Banner div with danger color, or inline text. Hooks return `error: string | null`.
 - **Tabs**: Buttons with dynamic `borderBottom` color, content switching via state.
-- **Volume sliders**: Custom `.volume-slider` CSS class, range input `0-150`.
+- **Volume sliders**: Shared `VolumeSlider` component (`.volume-slider` CSS class). Voice ranges are `0-200` with a detent at 100; music stays `0-100` because YouTube caps it.
 - **Toggle buttons**: Show current state via icon/highlight, label describes the action.
 
 ## Environment
@@ -132,6 +132,7 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 
 - **Next.js**: Vercel (auto-deploy from GitHub on push to main)
 - **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
+- **PartyKit secret**: `partykit env add REGISTRY_TOKEN` must be set on the deployed project. The registry party rejects every POST/DELETE from a non-local host when it is missing, so `/browse` goes empty instead of accepting forged listings.
 - **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
 - Deploy PartyKit before Vercel: the video protocol is additive, so old clients keep working during the gap.
 

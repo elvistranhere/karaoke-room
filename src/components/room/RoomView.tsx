@@ -7,7 +7,7 @@ import { useLiveKit } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
-import { LogOut, Settings as SettingsIcon } from "lucide-react";
+import { LogOut, Pencil, Settings as SettingsIcon, SkipForward } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageBanner } from "./StageBanner";
 import { Toolbar, type NoiseCancellationMode } from "./Toolbar";
@@ -19,8 +19,10 @@ import { SoundProfileModal } from "./SoundProfileModal";
 import { VideoStage } from "./VideoStage";
 import { SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor, storeSyncOffsetFor } from "./SyncOffsetControl";
 import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
+import { useVolumeMix, DEFAULT_PERSON_MIX, personMixKey } from "~/hooks/useVolumeMix";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
+import { readPref, writePref } from "~/lib/prefs";
 import { AuthModal } from "./AuthModal";
 
 const API_WAIT_MS = 5000;
@@ -41,8 +43,19 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFocusRoomName, setSettingsFocusRoomName] = useState(false);
+  // Holds the singer the confirm dialog targets, so the dialog closes itself if that
+  // singer leaves the stage before the admin confirms
+  const [skipTargetId, setSkipTargetId] = useState<string | null>(null);
   const [soundProfileOpen, setSoundProfileOpen] = useState(false);
-  const [noiseCancellationMode, setNoiseCancellationMode] = useState<NoiseCancellationMode>("auto");
+  const [noiseCancellationMode, setNoiseCancellationModeState] = useState<NoiseCancellationMode>(() => {
+    const saved = readPref("karaoke-nc-mode");
+    return saved === "on" || saved === "off" || saved === "auto" ? saved : "auto";
+  });
+  const setNoiseCancellationMode = useCallback((mode: NoiseCancellationMode) => {
+    setNoiseCancellationModeState(mode);
+    writePref("karaoke-nc-mode", mode);
+  }, []);
   const talkingNC = noiseCancellationMode !== "off";
   const singingNC = noiseCancellationMode === "on";
   const [singerMutedAll, setSingerMutedAll] = useState(false);
@@ -80,6 +93,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendTransferAdmin,
     sendSetPassword,
     sendAuth,
+    sendSetRoomName,
+    sendSetPublic,
+    sendRemoveFromQueue,
+    sendSkipSinger,
   } = useRoomState({ roomCode, playerName });
 
   const isAdmin = myPeerId !== null && roomState.adminPeerId === myPeerId;
@@ -107,7 +124,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,
-    setVoiceBoost,
+    mixer,
     singingError,
     activeSpeakers,
     voiceEffect,
@@ -125,16 +142,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     singingNC,
   });
 
-  // Volume controls
-  const [voiceVolume, setVoiceVolume] = useState(1);
-  const [personVolumes, setPersonVolumes] = useState<Record<string, number>>({});
-  // Performance-only layer: applies while that person is the current singer and
-  // expires when they leave the stage, so it never dents their talking volume
-  const [singerVolumes, setSingerVolumes] = useState<Record<string, number>>({});
-
-  // Mix values: voice is the singer's published gain, music is local to each client
-  const [mixMusicValue, setMixMusicValue] = useState(70);
-
   const [songName, setSongName] = useState<string | null>(null);
   const [syncOffsetMs, setSyncOffsetMs] = useState(readStoredSyncOffset);
   const [syncOffsetAuto, setSyncOffsetAuto] = useState(readStoredSyncAuto);
@@ -145,9 +152,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       ?? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name
       ?? null
     : null;
-  const singerName = roomState.currentSingerId
-    ? roomState.participants.find((p) => p.id === roomState.currentSingerId)?.name ?? null
+  const singerParticipant = roomState.currentSingerId
+    ? roomState.participants.find((p) => p.id === roomState.currentSingerId) ?? null
     : null;
+  const singerName = singerParticipant?.name ?? null;
+  const singerMixKey = singerParticipant ? personMixKey(singerParticipant) : null;
   const singerNameRef = useRef(singerName);
   singerNameRef.current = singerName;
 
@@ -202,13 +211,30 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const broadcastNowRef = useRef(broadcastNow);
   broadcastNowRef.current = broadcastNow;
 
-  // The mic check mutes remote audio itself, but the music is local now, so it
-  // has to be silenced here or the loopback is drowned out. App Volume scales
-  // the music too, so it is a true master for everything you hear.
   const micChecking = micCheckState !== "idle" && micCheckState !== "error";
-  useEffect(() => {
-    player.setVolume(micChecking ? 0 : mixMusicValue * voiceVolume);
-  }, [player, mixMusicValue, voiceVolume, micChecking]);
+
+  const {
+    master,
+    music,
+    people,
+    deafened,
+    setMaster,
+    setMusic,
+    setPersonVolume,
+    togglePersonMute,
+    setDeafened,
+    resetPeople,
+    resume: resumeMixer,
+  } = useVolumeMix({
+    mixer,
+    player,
+    participants: roomState.participants,
+    participantStatus,
+    currentSingerId: roomState.currentSingerId,
+    micChecking,
+  });
+
+  const singerMix = singerMixKey ? people[singerMixKey] ?? DEFAULT_PERSON_MIX : DEFAULT_PERSON_MIX;
 
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
@@ -230,56 +256,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendVideoLoad(videoId);
   }, [sendVideoLoad]);
 
-  const applyAllVolumes = useCallback(() => {
-    const singerTotal = singerIdentity
-      ? voiceVolume * (personVolumes[singerIdentity] ?? 1) * (singerVolumes[singerIdentity] ?? 1)
-      : 0;
-    const boosting = singerIdentity !== null && singerTotal > 1 && !micChecking;
-    document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      // savedVolume marks elements the mic check muted; leave those alone, and
-      // mute elements that attached after the check started so they join the hush
-      if (el.dataset.savedVolume !== undefined) return;
-      const identity = el.dataset.lkIdentity ?? "";
-      const personVol = personVolumes[identity] ?? 1;
-      const performanceVol = identity === singerIdentity ? singerVolumes[identity] ?? 1 : 1;
-      // Element volume hard-throws outside [0, 1]; above 1 the Web Audio boost
-      // chain plays the singer instead and the element goes silent
-      const total = voiceVolume * personVol * performanceVol;
-      const volume = boosting && identity === singerIdentity ? 0 : Math.min(1, Math.max(0, total));
-      if (micChecking) {
-        el.dataset.savedVolume = String(volume);
-        el.volume = 0;
-        return;
-      }
-      el.volume = volume;
-    });
-    setVoiceBoost(singerIdentity, micChecking ? 0 : singerTotal);
-  }, [voiceVolume, personVolumes, singerVolumes, singerIdentity, micChecking, setVoiceBoost]);
-
-  useEffect(() => { applyAllVolumes(); }, [applyAllVolumes]);
-
-  // Ref-stable callback for MutationObserver - avoids re-registering on volume changes
-  const applyVolumesRef = useRef(applyAllVolumes);
-  applyVolumesRef.current = applyAllVolumes;
-
-  useEffect(() => {
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node instanceof HTMLAudioElement && node.id?.startsWith("lk-audio-")) {
-            applyVolumesRef.current();
-          }
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true });
-    return () => observer.disconnect();
-  }, []);
-
-  const handlePersonVolumeChange = useCallback((identity: string, vol: number) => {
-    setPersonVolumes((prev) => ({ ...prev, [identity]: vol }));
-  }, []);
-
   // Forward name-taken rejection to parent so it can show the name modal
   useEffect(() => {
     if (!nameTaken) return;
@@ -293,12 +269,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   // Play sound when new reactions arrive
   const prevReactionCountRef = useRef(0);
   useEffect(() => {
-    if (reactions.length > prevReactionCountRef.current && reactions.length > 0) {
+    if (reactions.length > prevReactionCountRef.current && reactions.length > 0 && !deafened) {
       const latest = reactions[reactions.length - 1]!;
       playReactionSound(latest.emoji);
     }
     prevReactionCountRef.current = reactions.length;
-  }, [reactions]);
+  }, [reactions, deafened]);
 
   // Mute/unmute mic when singer sends mute-all
   // Snapshot pre-mute state so unmute only restores those who were unmuted before
@@ -315,12 +291,28 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
     if (!mutedBySinger && wasMutedBySingerRef.current) {
       wasMutedBySingerRef.current = false;
-      if (micWasOnBeforeMuteRef.current) {
+      // Deafen outranks the restore: a deafened mic stays off until they undeafen
+      if (micWasOnBeforeMuteRef.current && !deafened) {
         void setMicMuted(false);
       }
       micWasOnBeforeMuteRef.current = false;
     }
-  }, [mutedBySinger, isMicEnabled, setMicMuted]);
+  }, [mutedBySinger, isMicEnabled, setMicMuted, deafened]);
+
+  // Deafen force-mutes the mic; the snapshot means undeafening only unmutes
+  // people who were unmuted before and are not still under the singer's mute-all
+  const micWasOnBeforeDeafenRef = useRef(false);
+  const handleToggleDeafen = useCallback(() => {
+    if (!deafened) {
+      micWasOnBeforeDeafenRef.current = isMicEnabled;
+      if (isMicEnabled) void setMicMuted(true);
+      setDeafened(true);
+      return;
+    }
+    if (micWasOnBeforeDeafenRef.current && !mutedBySinger) void setMicMuted(false);
+    micWasOnBeforeDeafenRef.current = false;
+    setDeafened(false);
+  }, [deafened, isMicEnabled, setMicMuted, setDeafened, mutedBySinger]);
 
   // Auto-switch to singing mode ONCE when becoming the singer
   const wasMyTurnRef = useRef(false);
@@ -350,8 +342,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       currentSong: songName,
       browser: browser.name + (browser.isMobile ? " (Mobile)" : ""),
       lkIdentity: lkIdentity ?? undefined,
+      isDeafened: deafened,
     });
-  }, [isMicEnabled, isStageVideoPlaying, songName, isPartyConnected, sendStatusUpdate, browser, lkIdentity]);
+  }, [isMicEnabled, isStageVideoPlaying, songName, isPartyConnected, sendStatusUpdate, browser, lkIdentity, deafened]);
 
   // Broadcast to room when quota is hit so existing users know
   const quotaBroadcastedRef = useRef(false);
@@ -382,6 +375,36 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       sessionStorage.removeItem(`room-password-${roomCode}`);
     }
   }, [isAdmin, roomCode, sendSetPassword]);
+
+  // Replay the name and listing choice made on the create card. The keys are kept, not
+  // consumed: a solo host who refreshes empties the room, which resets both server-side.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const storedName = sessionStorage.getItem(`room-name-${roomCode}`);
+    if (storedName) sendSetRoomName(storedName);
+    const storedPublic = sessionStorage.getItem(`room-public-${roomCode}`);
+    if (storedPublic) sendSetPublic(storedPublic === "1");
+  }, [isAdmin, roomCode, sendSetRoomName, sendSetPublic]);
+
+  // Settings edits win over the create-card values on the next replay
+  const handleSetRoomName = useCallback((name: string | null) => {
+    sendSetRoomName(name);
+    try {
+      if (name) sessionStorage.setItem(`room-name-${roomCode}`, name);
+      else sessionStorage.removeItem(`room-name-${roomCode}`);
+    } catch {
+      // storage unavailable, the server still has the change
+    }
+  }, [sendSetRoomName, roomCode]);
+
+  const handleSetPublic = useCallback((isPublic: boolean) => {
+    sendSetPublic(isPublic);
+    try {
+      sessionStorage.setItem(`room-public-${roomCode}`, isPublic ? "1" : "0");
+    } catch {
+      // storage unavailable, the server still has the change
+    }
+  }, [sendSetPublic, roomCode]);
 
   // Kicked state - show banner and stop
   if (kicked) {
@@ -421,7 +444,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden">
       {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
-      <AudioUnlockOverlay onUnlock={createPlayer} apiReady={apiReady} />
+      <AudioUnlockOverlay onUnlock={() => { createPlayer(); resumeMixer(); }} apiReady={apiReady} />
 
       {/* Ambient background — driven by audio visualizer when someone sings */}
       <div
@@ -451,6 +474,28 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           </h1>
           <div className="hidden h-7 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
           <div className="min-w-0">
+            {roomState.roomName ? (
+              <div className="flex min-w-0 items-center gap-1">
+                <p
+                  className="truncate text-sm font-bold sm:text-base"
+                  style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
+                  title={roomState.roomName}
+                >
+                  {roomState.roomName}
+                </p>
+                {isAdmin && (
+                  <button
+                    onClick={() => { setSettingsFocusRoomName(true); setSettingsOpen(true); }}
+                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-60 transition-all hover:bg-[var(--color-dark-card)] hover:opacity-100"
+                    style={{ color: "var(--color-text-muted)" }}
+                    title="Rename room"
+                    aria-label="Rename room"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                )}
+              </div>
+            ) : null}
             <InviteCode code={roomCode} />
           </div>
         </div>
@@ -549,10 +594,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             onLeaveQueue={leaveQueue}
             participantStatus={participantStatus}
             activeSpeakers={activeSpeakers}
-            personVolumes={personVolumes}
-            onPersonVolumeChange={handlePersonVolumeChange}
+            people={people}
+            master={master}
+            onPersonVolumeChange={setPersonVolume}
+            onTogglePersonMute={togglePersonMute}
             onKick={isAdmin ? sendKick : undefined}
             onTransferAdmin={isAdmin ? sendTransferAdmin : undefined}
+            onRemoveFromQueue={isAdmin ? sendRemoveFromQueue : undefined}
           />
         </aside>
 
@@ -566,8 +614,25 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             errorCode={playerErrorCode}
             isSinger={isMyTurn}
             showTapToPlay={playbackBlocked && !isMyTurn}
-            onTapToPlay={() => player.play()}
+            onTapToPlay={() => { resumeMixer(); player.play(); }}
           />
+          {isAdmin && roomState.currentSingerId !== null && !isMyTurn && (
+            <div className="flex shrink-0 justify-end">
+              <button
+                onClick={() => setSkipTargetId(roomState.currentSingerId)}
+                className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all hover:brightness-110 active:scale-[0.98]"
+                style={{
+                  fontFamily: "var(--font-display)",
+                  background: "var(--color-dark-card)",
+                  borderColor: "var(--color-dark-border)",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                <SkipForward size={13} />
+                Skip singer
+              </button>
+            </div>
+          )}
           <div
             className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
             style={{
@@ -610,11 +675,15 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
               onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
               playbackReady={playerReady}
-              onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
-              mixMusicValue={mixMusicValue}
-              listenerVoiceValue={Math.round((singerIdentity ? singerVolumes[singerIdentity] ?? 1 : 1) * 100)}
-              onListenerVoiceChange={!isMyTurn && singerIdentity
-                ? (v) => setSingerVolumes((prev) => ({ ...prev, [singerIdentity]: v / 100 }))
+              onMixMusicGain={setMusic}
+              mixMusicValue={Math.round(music * 100)}
+              listenerVoiceValue={Math.round(singerMix.stage * 100)}
+              listenerVoiceMuted={singerMix.muted}
+              onListenerVoiceChange={!isMyTurn && singerMixKey
+                ? (v) => setPersonVolume(singerMixKey, "stage", v / 100)
+                : undefined}
+              onToggleListenerVoiceMute={!isMyTurn && singerMixKey
+                ? () => togglePersonMute(singerMixKey)
                 : undefined}
               syncAuto={syncOffsetAuto}
               onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
@@ -700,6 +769,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             noiseCancellationMode={noiseCancellationMode}
             onNoiseCancellationModeChange={setNoiseCancellationMode}
             onSoundProfileOpen={() => setSoundProfileOpen(true)}
+            deafened={deafened}
+            onToggleDeafen={handleToggleDeafen}
           />
         </section>
 
@@ -717,15 +788,30 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       {/* Settings drawer */}
       <SettingsDrawer
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        voiceVolume={voiceVolume}
-        onVoiceVolumeChange={setVoiceVolume}
+        onClose={() => { setSettingsOpen(false); setSettingsFocusRoomName(false); }}
+        master={master}
+        onMasterChange={setMaster}
+        onResetPeopleVolumes={resetPeople}
         displayName={playerName}
         onRename={onRename}
         isAdmin={isAdmin}
         isLocked={roomState.isLocked}
         onSetPassword={isAdmin ? sendSetPassword : undefined}
+        roomName={roomState.roomName}
+        onSetRoomName={isAdmin ? handleSetRoomName : undefined}
+        isPublic={roomState.isPublic}
+        onSetPublic={isAdmin ? handleSetPublic : undefined}
+        focusRoomName={settingsFocusRoomName}
       />
+
+      {/* Skip singer confirm */}
+      {isAdmin && skipTargetId !== null && skipTargetId === roomState.currentSingerId && (
+        <SkipSingerConfirm
+          singerName={singerName}
+          onCancel={() => setSkipTargetId(null)}
+          onConfirm={() => { sendSkipSinger(); setSkipTargetId(null); }}
+        />
+      )}
 
       {/* Sound Profile Modal */}
       <SoundProfileModal
@@ -752,6 +838,58 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       />
 
     </main>
+  );
+}
+
+function SkipSingerConfirm({
+  singerName,
+  onCancel,
+  onConfirm,
+}: {
+  singerName: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel} />
+      <div
+        className="fixed left-1/2 top-1/2 z-50 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Skip the current singer"
+        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
+      >
+        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+          Skip {singerName ?? "the current singer"}?
+        </p>
+        <p className="mt-1.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
+          Their turn ends right away, the video stops for everyone, and the next person in the queue goes on stage. The room is told in chat.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="cursor-pointer rounded-lg border px-3 py-2 text-xs font-semibold transition-all hover:brightness-110"
+            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold transition-all hover:brightness-110"
+            style={{ fontFamily: "var(--font-display)", background: "var(--color-danger)", color: "#fff" }}
+          >
+            Skip singer
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Mic, MicOff, Music, Globe, Crown, MoreVertical, Plus } from "lucide-react";
-import type { Participant, ParticipantStatus, RoomState } from "~/types/room";
+import { Mic, MicOff, Music, Globe, Crown, MoreVertical, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
+import type { ParticipantStatus, RoomState } from "~/types/room";
+import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/hooks/useVolumeMix";
+import { VolumeSlider } from "./VolumeSlider";
 
 interface PeoplePanelProps {
   roomState: RoomState;
@@ -11,8 +13,10 @@ interface PeoplePanelProps {
   onLeaveQueue: () => void;
   participantStatus: Record<string, ParticipantStatus>;
   activeSpeakers: Set<string>;
-  personVolumes: Record<string, number>;
-  onPersonVolumeChange: (identity: string, vol: number) => void;
+  people: Record<string, PersonMix>;
+  master: number;
+  onPersonVolumeChange: (name: string, key: PersonMixKey, value: number) => void;
+  onTogglePersonMute: (name: string) => void;
   onKick?: (peerId: string) => void;
   onTransferAdmin?: (peerId: string) => void;
   onRemoveFromQueue?: (peerId: string) => void;
@@ -25,8 +29,10 @@ export function PeoplePanel({
   onLeaveQueue,
   participantStatus,
   activeSpeakers,
-  personVolumes,
+  people,
+  master,
   onPersonVolumeChange,
+  onTogglePersonMute,
   onKick,
   onTransferAdmin,
   onRemoveFromQueue,
@@ -64,15 +70,19 @@ export function PeoplePanel({
           const status = participantStatus[p.id];
           const isExpanded = expandedId === p.id && !isMe;
 
-          // Use LiveKit identity from status (broadcast via PartyKit) — no DOM queries needed
-          const lkIdentity = status?.lkIdentity ?? p.name;
-          const personVol = personVolumes[lkIdentity] ?? 1;
+          // Keyed by name so it survives reconnects, except for duplicate "Anonymous"
+          const mixKeyId = personMixKey(p);
+          const mix = people[mixKeyId] ?? DEFAULT_PERSON_MIX;
+          const mixKey: PersonMixKey = isSinger ? "stage" : "talk";
+          const personVol = mixKey === "stage" ? mix.stage : mix.talk;
+          const personPercent = Math.round(personVol * 100);
+          const outPercent = Math.round(personVol * master * 100);
 
           return (
             <li key={p.id}>
               <div
                 onClick={() => !isMe && setExpandedId(isExpanded ? null : p.id)}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${!isMe ? "row-clickable cursor-pointer" : ""}`}
+                className={`group/person flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${!isMe ? "row-clickable cursor-pointer" : ""}`}
                 onContextMenu={(e) => { if (!isMe) { e.preventDefault(); setExpandedId(isExpanded ? null : p.id); } }}
                 style={{
                   background: isSpeaking
@@ -160,6 +170,20 @@ export function PeoplePanel({
                   {status?.isSharingAudio && (
                     <Music size={12} style={{ color: "var(--color-accent)" }} />
                   )}
+                  {status?.isDeafened && (
+                    <HeadphoneOff size={12} style={{ color: "var(--color-text-muted)" }} aria-label={`${p.name} has sound off`} />
+                  )}
+                  {!isMe && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onTogglePersonMute(mixKeyId); }}
+                      className={`cursor-pointer rounded p-0.5 transition-all hover:bg-[var(--color-dark-card)] ${mix.muted ? "" : "opacity-100 md:opacity-0 md:group-hover/person:opacity-100 md:focus-visible:opacity-100"}`}
+                      style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)" }}
+                      title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                      aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                    >
+                      {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    </button>
+                  )}
                   {isAdmin && !isMe && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setAdminMenuId(adminMenuId === p.id ? null : p.id); }}
@@ -209,20 +233,39 @@ export function PeoplePanel({
               {/* Per-person volume slider */}
               {isExpanded && (
                 <div
-                  className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2"
+                  className="mt-1 space-y-1.5 rounded-lg px-3 py-2"
                   style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="shrink-0 text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Vol</span>
-                  <input
-                    type="range" min="0" max="100"
-                    value={Math.round(personVol * 100)}
-                    onChange={(e) => onPersonVolumeChange(lkIdentity, Number(e.target.value) / 100)}
-                    className="volume-slider flex-1"
+                  <VolumeSlider
+                    label={isSinger ? "Stage" : "Volume"}
+                    compact
+                    value={personPercent}
+                    ariaLabel={isSinger ? `Stage volume for ${p.name}` : `Volume for ${p.name}`}
+                    onChange={(v) => onPersonVolumeChange(mixKeyId, mixKey, v / 100)}
+                    trailing={
+                      <button
+                        onClick={() => onTogglePersonMute(mixKeyId)}
+                        className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all hover:brightness-125"
+                        style={{
+                          background: mix.muted ? "var(--color-danger-dim)" : "transparent",
+                          color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)",
+                        }}
+                        title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                        aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                      >
+                        {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                      </button>
+                    }
                   />
-                  <span className="w-5 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>
-                    {Math.round(personVol * 100)}
-                  </span>
+                  <p className="text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+                    {mix.muted
+                      ? "Muted for you. Unmuting restores this level."
+                      : isSinger
+                        ? "Their level while on stage. Kept apart from their talking level."
+                        : "Their level while chatting. Kept apart from their stage level."}
+                    {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
+                  </p>
                 </div>
               )}
             </li>

@@ -3,20 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Mic, Lock, ArrowLeft, RefreshCw } from "lucide-react";
-
-interface RoomEntry {
-  code: string;
-  participantCount: number;
-  currentSinger: string | null;
-  currentSong: string | null;
-  isLocked: boolean;
-}
+import type { PublicRoomEntry } from "~/types/room";
 
 const POLL_INTERVAL_MS = 10_000;
 
+// Live rooms first, then the busiest, then alphabetical so the list is stable between polls
+function sortRooms(a: PublicRoomEntry, b: PublicRoomEntry): number {
+  const aLive = a.currentSinger ? 1 : 0;
+  const bLive = b.currentSinger ? 1 : 0;
+  if (aLive !== bLive) return bLive - aLive;
+  if (a.participantCount !== b.participantCount) return b.participantCount - a.participantCount;
+  return (a.name ?? a.code).localeCompare(b.name ?? b.code);
+}
+
 export default function BrowsePage() {
   const router = useRouter();
-  const [rooms, setRooms] = useState<RoomEntry[]>([]);
+  const [rooms, setRooms] = useState<PublicRoomEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +31,8 @@ export default function BrowsePage() {
         `${protocol}://${host}/parties/registry/global`
       );
       if (!res.ok) throw new Error("Failed to fetch rooms");
-      const data = (await res.json()) as RoomEntry[];
-      setRooms(data);
+      const data = (await res.json()) as PublicRoomEntry[];
+      setRooms(data.filter((room) => room.participantCount > 0).sort(sortRooms));
       setError(null);
     } catch {
       setError("Could not load rooms");
@@ -68,7 +70,7 @@ export default function BrowsePage() {
             className="text-2xl font-bold tracking-tight"
             style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
           >
-            Active Rooms
+            Public Rooms
           </h1>
           <button
             onClick={() => void fetchRooms()}
@@ -105,10 +107,10 @@ export default function BrowsePage() {
         {!loading && !error && rooms.length === 0 && (
           <div className="py-20 text-center">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              No active rooms
+              No public rooms right now
             </p>
             <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)", opacity: 0.6 }}>
-              Create one from the home page
+              Create one and turn on Show in Browse to list it here
             </p>
           </div>
         )}
@@ -125,15 +127,15 @@ export default function BrowsePage() {
                   borderColor: "var(--color-dark-border)",
                 }}
               >
-                {/* Top row: code + lock */}
-                <div className="flex items-center justify-between">
+                {/* Top row: name + lock */}
+                <div className="flex items-start justify-between gap-2">
                   <span
-                    className="font-mono text-lg font-bold tracking-[0.15em]"
-                    style={{ color: "var(--color-text-primary)" }}
+                    className="min-w-0 truncate text-base font-bold"
+                    style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
                   >
-                    {room.code}
+                    {room.name || `Room ${room.code}`}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {room.isLocked && (
                       <Lock size={14} style={{ color: "var(--color-accent)" }} />
                     )}
@@ -144,23 +146,40 @@ export default function BrowsePage() {
                 {/* Singer or video info */}
                 {(room.currentSinger || room.currentSong) && (
                   <p
-                    className="truncate text-xs"
+                    className="flex items-center gap-1.5 truncate text-xs"
                     style={{ color: "var(--color-text-secondary)" }}
                   >
                     {room.currentSinger && (
-                      <span style={{ color: "var(--color-accent)" }}>
-                        {room.currentSinger}
+                      <span className="relative inline-flex h-1.5 w-1.5 shrink-0" aria-label="Live now">
+                        <span
+                          className="absolute inset-0 rounded-full"
+                          style={{ background: "var(--color-success)", animation: "pulse-ring 1.6s ease-out infinite" }}
+                        />
+                        <span className="relative h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)" }} />
                       </span>
                     )}
-                    {room.currentSinger && room.currentSong && " - "}
-                    {room.currentSong}
+                    <span className="truncate">
+                      {room.currentSinger && (
+                        <span style={{ color: "var(--color-accent)" }}>
+                          {room.currentSinger}
+                        </span>
+                      )}
+                      {room.currentSinger && room.currentSong && " - "}
+                      {room.currentSong}
+                    </span>
                   </p>
                 )}
 
-                {/* Bottom: participant count */}
-                <div className="flex items-center gap-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  <Users size={12} />
-                  <span>
+                {/* Bottom: code chip + participant count */}
+                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  <span
+                    className="rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.12em]"
+                    style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}
+                  >
+                    {room.code}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Users size={12} />
                     {room.participantCount} {room.participantCount === 1 ? "person" : "people"}
                   </span>
                 </div>

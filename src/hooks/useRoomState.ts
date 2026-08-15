@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePartySocket } from "./usePartySocket";
 import { usePartyClock } from "./usePartyClock";
+import { getClientId } from "~/lib/clientId";
 import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "~/types/room";
 
 interface UseRoomStateParams {
@@ -34,7 +35,7 @@ interface UseRoomStateReturn {
   isMyTurn: boolean;
   send: (msg: ClientMessage) => void;
   sendChat: (text: string) => void;
-  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string }) => void;
+  sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; isDeafened?: boolean }) => void;
   sendReaction: (emoji: string) => void;
   sendMuteAll: () => void;
   sendUnmuteAll: () => void;
@@ -60,6 +61,10 @@ interface UseRoomStateReturn {
   sendTransferAdmin: (peerId: string) => void;
   sendSetPassword: (password: string | null) => void;
   sendAuth: (password: string) => void;
+  sendSetRoomName: (name: string | null) => void;
+  sendSetPublic: (isPublic: boolean) => void;
+  sendRemoveFromQueue: (peerId: string) => void;
+  sendSkipSinger: () => void;
 }
 
 const INITIAL_ROOM_STATE: RoomState = {
@@ -72,6 +77,8 @@ const INITIAL_ROOM_STATE: RoomState = {
   adminPeerId: null,
   isLocked: false,
   video: null,
+  roomName: null,
+  isPublic: false,
 };
 
 export function useRoomState({
@@ -91,6 +98,7 @@ export function useRoomState({
   const [kicked, setKicked] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
+  const [clientId] = useState<string | null>(() => getClientId());
   const reactionIdRef = useRef(0);
   const floatingChatIdRef = useRef(0);
   const hasSentJoinRef = useRef(false);
@@ -101,7 +109,9 @@ export function useRoomState({
   }, [onRawMessage]);
 
   const hasReceivedInitialStateRef = useRef(false);
+  const myPeerIdRef = useRef<string | null>(null);
   const sendRef = useRef<((msg: ClientMessage) => void) | null>(null);
+  const closeSocketRef = useRef<(() => void) | null>(null);
   const handleTimeSyncRef = useRef<(t0: number, t1: number) => void>(() => {});
 
   // Timing fields land in a ref only: video-state arrives every ~2s and the drift
@@ -135,9 +145,18 @@ export function useRoomState({
           adminPeerId: msg.state.adminPeerId ?? null,
           isLocked: msg.state.isLocked ?? false,
           video: msg.state.video ?? null,
+          roomName: msg.state.roomName ?? null,
+          isPublic: msg.state.isPublic ?? false,
         };
         setRoomState(state);
         videoRef.current = state.video;
+        // Landing in the roster is the only proof auth cleared, whether it came from a
+        // correct password or the admin removing the password entirely
+        const myId = myPeerIdRef.current;
+        if (myId !== null && state.participants.some((p) => p.id === myId)) {
+          setAuthRequired(false);
+          setAuthFailed(false);
+        }
         // Sync mutedBySinger from server state (persisted across reconnects)
         setMutedBySinger(state.mutedBySinger ?? null);
         setParticipantStatus(state.participantStatus);
@@ -214,11 +233,14 @@ export function useRoomState({
         break;
       case "you-joined":
         console.log("[RoomState] My peer ID:", msg.peerId);
+        myPeerIdRef.current = msg.peerId;
         setMyPeerId(msg.peerId);
         break;
       case "kicked":
         console.log("[RoomState] Kicked by:", msg.by);
         setKicked(msg.by);
+        // Stop the socket, otherwise it reconnects into the ban check forever
+        closeSocketRef.current?.();
         break;
       case "auth-required":
         console.log("[RoomState] Auth required for room");
@@ -241,8 +263,9 @@ export function useRoomState({
     }
   }, [applyVideoState]);
 
-  const { send, isConnected } = usePartySocket({ roomCode, onMessage });
+  const { send, isConnected, close } = usePartySocket({ roomCode, onMessage });
   sendRef.current = send;
+  closeSocketRef.current = close;
 
   const { serverOffsetRef, clockSyncedRef, handleTimeSync } = usePartyClock(sendRef, isConnected);
   handleTimeSyncRef.current = handleTimeSync;
@@ -253,11 +276,11 @@ export function useRoomState({
     if (!isConnected) return;
     // Send join on first connect or when name changes
     if (!hasSentJoinRef.current || prevNameRef.current !== playerName) {
-      send({ type: "join", name: playerName });
+      send({ type: "join", name: playerName, clientId: clientId ?? undefined });
       hasSentJoinRef.current = true;
       prevNameRef.current = playerName;
     }
-  }, [isConnected, playerName, send]);
+  }, [isConnected, playerName, send, clientId]);
 
   // Reset flags if disconnected
   useEffect(() => {
@@ -285,7 +308,7 @@ export function useRoomState({
     }
   }, [send]);
 
-  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string }) => {
+  const sendStatusUpdate = useCallback((status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; isDeafened?: boolean }) => {
     send({
       type: "status-update",
       isMuted: status.isMuted,
@@ -293,6 +316,7 @@ export function useRoomState({
       currentSong: status.currentSong,
       browser: status.browser,
       lkIdentity: status.lkIdentity,
+      isDeafened: status.isDeafened,
     });
   }, [send]);
 
@@ -344,6 +368,22 @@ export function useRoomState({
     send({ type: "auth", password });
   }, [send]);
 
+  const sendSetRoomName = useCallback((name: string | null) => {
+    send({ type: "set-room-name", name });
+  }, [send]);
+
+  const sendSetPublic = useCallback((isPublic: boolean) => {
+    send({ type: "set-public", isPublic });
+  }, [send]);
+
+  const sendRemoveFromQueue = useCallback((peerId: string) => {
+    send({ type: "remove-from-queue", peerId });
+  }, [send]);
+
+  const sendSkipSinger = useCallback(() => {
+    send({ type: "skip-singer" });
+  }, [send]);
+
   const isMyTurn = myPeerId !== null && roomState.currentSingerId === myPeerId;
 
   return {
@@ -382,5 +422,9 @@ export function useRoomState({
     sendTransferAdmin,
     sendSetPassword,
     sendAuth,
+    sendSetRoomName,
+    sendSetPublic,
+    sendRemoveFromQueue,
+    sendSkipSinger,
   };
 }

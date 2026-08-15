@@ -16,6 +16,8 @@ import {
 
 import type { MicMode } from "./useAudioDevices";
 import { createEffectChain, type VoiceEffect, type EffectChain } from "~/lib/voiceEffects";
+import { readPref, writePref } from "~/lib/prefs";
+import { createVoiceMixer, type VoiceMixer } from "~/lib/voiceMixer";
 
 // The singer publishes this alongside LiveKit's muted managed mic, so both carry
 // Track.Source.Microphone and only the name tells them apart.
@@ -80,7 +82,7 @@ interface UseLiveKitReturn {
   singingError: string | null;
   activeSpeakers: Set<string>;
   setMixMicGain: (val: number) => void;
-  setVoiceBoost: (identity: string | null, gain: number) => void;
+  mixer: VoiceMixer;
   voiceEffect: VoiceEffect;
   setVoiceEffect: (effect: VoiceEffect) => void;
   effectWetDry: number;
@@ -109,6 +111,9 @@ export function useLiveKit({
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
 
   const roomRef = useRef<Room | null>(null);
+  const mixerRef = useRef<VoiceMixer | null>(null);
+  if (!mixerRef.current) mixerRef.current = createVoiceMixer();
+  const mixer = mixerRef.current;
   const micCheckAbortRef = useRef<(() => void) | null>(null);
   // Mic check Web Audio refs, stored so effects can hot-swap NC/effect during monitoring
   const micCheckCtxRef = useRef<AudioContext | null>(null);
@@ -120,8 +125,6 @@ export function useLiveKit({
   const micCheckRestoreMicRef = useRef(false);
   const micCheckPrevMixGainRef = useRef<number | null>(null);
   const mixMicGainValueRef = useRef(1); // last slider value, applied when the pipeline (re)builds
-  const boostCtxRef = useRef<AudioContext | null>(null);
-  const boostChainRef = useRef<{ identity: string; trackSid: string; source: MediaStreamAudioSourceNode; gain: GainNode } | null>(null);
   const isSingingInFlightRef = useRef(false); // guard against concurrent startSinging/stopSinging
   const micModeRef = useRef<MicMode>(micMode);
   micModeRef.current = micMode;
@@ -149,9 +152,16 @@ export function useLiveKit({
   const [mixMicStreamState, setMixMicStreamState] = useState<MediaStream | null>(null);
   const mixPubRef = useRef<LocalTrackPublication | null>(null);
   const effectChainRef = useRef<EffectChain | null>(null);
-  const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>("none");
+  const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>(() => {
+    const saved = readPref("karaoke-voice-effect");
+    return saved === "hall" || saved === "echo" || saved === "warm" || saved === "bright" || saved === "chorus" ? saved : "none";
+  });
   const voiceEffectRef = useRef<VoiceEffect>("none");
-  const [effectWetDry, setEffectWetDryState] = useState(0.5);
+  const [effectWetDry, setEffectWetDryState] = useState(() => {
+    const raw = readPref("karaoke-effect-wetdry");
+    const saved = raw === null ? NaN : Number(raw);
+    return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 0.5;
+  });
   const effectWetDryRef = useRef(0.5); // synchronous value for active audio chains
 
   const tokenRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -196,7 +206,7 @@ export function useLiveKit({
       RoomEvent.TrackSubscribed,
       (
         track: RemoteTrack,
-        _pub: RemoteTrackPublication,
+        pub: RemoteTrackPublication,
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return;
@@ -216,6 +226,10 @@ export function useLiveKit({
         el.play().catch(() => {
           console.log("[LiveKit] Autoplay blocked for", participant.identity, "— will resume on user click");
         });
+        // The element stays attached and playing: browsers only feed a remote WebRTC
+        // track into Web Audio while it also has a live media sink, and the mixer
+        // owns its volume (0 while the graph is audible, the local mix otherwise).
+        mixer.attach(participant.identity, track.mediaStreamTrack, pub.trackSid, el);
       },
     );
 
@@ -223,11 +237,12 @@ export function useLiveKit({
       RoomEvent.TrackUnsubscribed,
       (
         track: RemoteTrack,
-        _pub: RemoteTrackPublication,
+        pub: RemoteTrackPublication,
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return;
         console.log("[LiveKit] Unsubscribed audio from", participant.identity);
+        mixer.detach(pub.trackSid);
         for (const el of track.detach()) {
           el.remove();
         }
@@ -364,6 +379,7 @@ export function useLiveKit({
     // Fires on each interaction until audio context is running, then no-ops.
     let audioResumed = false;
     const resumeAudio = () => {
+      mixer.resume();
       if (audioResumed) return;
       room.startAudio().then(() => {
         audioResumed = true;
@@ -376,33 +392,27 @@ export function useLiveKit({
         if (el.paused) el.play().catch(() => {});
       });
     };
+    // Returning to the tab after an interruption (call, backgrounding) is the other
+    // moment a suspended context can come back without waiting for a tap
+    const resumeOnVisible = () => {
+      if (document.visibilityState === "visible") resumeAudio();
+    };
     document.addEventListener("click", resumeAudio, { once: false });
     document.addEventListener("keydown", resumeAudio, { once: false });
     document.addEventListener("touchstart", resumeAudio, { once: false });
+    document.addEventListener("visibilitychange", resumeOnVisible);
 
     return () => {
       cancelled = true;
       document.removeEventListener("click", resumeAudio);
       document.removeEventListener("keydown", resumeAudio);
       document.removeEventListener("touchstart", resumeAudio);
+      document.removeEventListener("visibilitychange", resumeOnVisible);
       // Abort any in-progress mic check and restore remote audio
       micCheckAbortRef.current?.();
       micCheckAbortRef.current = null;
       if (micErrorTimerRef.current) { clearTimeout(micErrorTimerRef.current); micErrorTimerRef.current = null; }
-      document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-        const saved = el.dataset.savedVolume;
-        if (saved !== undefined) { el.volume = Math.min(1, Math.max(0, parseFloat(saved) || 0)); delete el.dataset.savedVolume; }
-      });
-      // Tear down the voice boost chain
-      if (boostChainRef.current) {
-        boostChainRef.current.source.disconnect();
-        boostChainRef.current.gain.disconnect();
-        boostChainRef.current = null;
-      }
-      if (boostCtxRef.current && boostCtxRef.current.state !== "closed") {
-        void boostCtxRef.current.close();
-        boostCtxRef.current = null;
-      }
+      mixer.destroy();
       // Clean up mix context if active
       if (mixPubRef.current?.track) {
         void room.localParticipant?.unpublishTrack(mixPubRef.current.track);
@@ -617,6 +627,9 @@ export function useLiveKit({
     const room = roomRef.current;
     if (!room || !isConnected || !selectedOutputDeviceId) return;
 
+    // Every remote voice leaves through the mixer, so it carries the routing
+    mixer.setSinkId(selectedOutputDeviceId);
+
     // Only switch output if the browser supports it (setSinkId / speaker-selection)
     const supportsOutput = typeof HTMLAudioElement.prototype.setSinkId === "function";
     if (!supportsOutput) {
@@ -633,9 +646,6 @@ export function useLiveKit({
       void el.setSinkId(selectedOutputDeviceId).catch(() => {});
     });
 
-    if (boostCtxRef.current && "setSinkId" in boostCtxRef.current) {
-      void (boostCtxRef.current as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputDeviceId).catch(() => {});
-    }
     // Also route mic check AudioContext to new output if active
     if (micCheckCtxRef.current && "setSinkId" in micCheckCtxRef.current) {
       void (micCheckCtxRef.current as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputDeviceId).catch(() => {});
@@ -649,24 +659,14 @@ export function useLiveKit({
 
   const micCheckInFlightRef = useRef(false);
 
-  // Mute/restore remote audio elements during mic check
+  // One duck gain on the mixer bus hushes every remote voice for the check
   const muteRemoteAudio = useCallback(() => {
-    document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      if (el.dataset.savedVolume !== undefined) return;
-      el.dataset.savedVolume = String(el.volume);
-      el.volume = 0;
-    });
-  }, []);
+    mixer.setDuck(0);
+  }, [mixer]);
 
   const restoreRemoteAudio = useCallback(() => {
-    document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-      const saved = el.dataset.savedVolume;
-      if (saved !== undefined) {
-        el.volume = Math.min(1, Math.max(0, parseFloat(saved) || 0));
-        delete el.dataset.savedVolume;
-      }
-    });
-  }, []);
+    mixer.setDuck(1);
+  }, [mixer]);
 
   // Stop any active mic check monitoring
   const stopMicCheck = useCallback(() => {
@@ -1134,64 +1134,9 @@ export function useLiveKit({
     if (mixMicGainRef.current) mixMicGainRef.current.gain.value = val;
   }, []);
 
-  // Element volume caps at 1.0, so boosting the singer above 100% routes their
-  // track through a Web Audio gain stage; the element stays attached muted
-  // (Safari needs a live sink for remote WebRTC audio to flow through WebAudio).
-  const setVoiceBoost = useCallback((identity: string | null, gainValue: number) => {
-    const existing = boostChainRef.current;
-    const wanted = identity !== null && gainValue > 1.001;
-    if (!wanted) {
-      if (existing) {
-        existing.source.disconnect();
-        existing.gain.disconnect();
-        boostChainRef.current = null;
-      }
-      return;
-    }
-
-    const room = roomRef.current;
-    if (!room || !identity) return;
-    const participant = Array.from(room.remoteParticipants.values()).find(
-      (p) => p.identity === identity || p.identity.startsWith(`${identity}-`),
-    );
-    const publications = participant ? Array.from(participant.audioTrackPublications.values()) : [];
-    const publication = publications.find((pub) => pub.trackName === VOICE_TRACK_NAME && pub.track)
-      ?? publications.find((pub) => pub.track);
-    const mediaTrack = publication?.track?.mediaStreamTrack;
-    const trackSid = publication?.trackSid ?? "";
-    if (!mediaTrack) return;
-
-    const clamped = Math.min(2, gainValue);
-    if (existing && existing.trackSid === trackSid) {
-      existing.gain.gain.value = clamped;
-      return;
-    }
-    if (existing) {
-      existing.source.disconnect();
-      existing.gain.disconnect();
-      boostChainRef.current = null;
-    }
-
-    let ctx = boostCtxRef.current;
-    if (!ctx || ctx.state === "closed") {
-      ctx = new AudioContext();
-      boostCtxRef.current = ctx;
-      if (selectedOutputRef.current && "setSinkId" in ctx) {
-        void (ctx as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(selectedOutputRef.current).catch(() => {});
-      }
-    }
-    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
-
-    const source = ctx.createMediaStreamSource(new MediaStream([mediaTrack]));
-    const gain = ctx.createGain();
-    gain.gain.value = clamped;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    boostChainRef.current = { identity, trackSid, source, gain };
-  }, []);
-
   // Swap voice effect live while singing
   const setVoiceEffect = useCallback((effect: VoiceEffect) => {
+    writePref("karaoke-voice-effect", effect);
     setVoiceEffectState(effect);
     voiceEffectRef.current = effect;
     const ctx = mixCtxRef.current;
@@ -1217,6 +1162,7 @@ export function useLiveKit({
     const normalizedWet = Math.min(1, Math.max(0, wet));
     effectWetDryRef.current = normalizedWet;
     setEffectWetDryState(normalizedWet);
+    writePref("karaoke-effect-wetdry", String(normalizedWet));
     effectChainRef.current?.setWetDry?.(normalizedWet);
     // Also apply to mic check effect chain if monitoring
     micCheckEffectChainRef.current?.setWetDry?.(normalizedWet);
@@ -1370,7 +1316,7 @@ export function useLiveKit({
     singingError,
     activeSpeakers,
     setMixMicGain,
-    setVoiceBoost,
+    mixer,
     voiceEffect,
     setVoiceEffect,
     effectWetDry,

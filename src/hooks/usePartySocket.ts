@@ -11,6 +11,7 @@ interface UsePartySocketParams {
 
 interface UsePartySocketReturn {
   send: (msg: ClientMessage) => void;
+  close: () => void;
   isConnected: boolean;
   socket: PartySocket | null;
 }
@@ -71,5 +72,11 @@ export function usePartySocket({
     }
   }, []);
 
-  return { send, isConnected, socket: socketRef.current };
+  // PartySocket.close() also switches off its auto-reconnect
+  const close = useCallback(() => {
+    socketRef.current?.close();
+    setIsConnected(false);
+  }, []);
+
+  return { send, close, isConnected, socket: socketRef.current };
 }

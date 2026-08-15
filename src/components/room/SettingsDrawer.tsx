@@ -1,39 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock, LockOpen } from "lucide-react";
+import { VolumeSlider, VOLUME_MAX } from "./VolumeSlider";
+
+const MAX_ROOM_NAME_LENGTH = 30; // must match MAX_ROOM_NAME_LENGTH in party/index.ts
 
 interface SettingsDrawerProps {
   open: boolean;
   onClose: () => void;
-  voiceVolume: number;
-  onVoiceVolumeChange: (vol: number) => void;
+  master: number;
+  onMasterChange: (value: number) => void;
+  onResetPeopleVolumes: () => void;
   displayName?: string;
   onRename?: (name: string) => void;
   isAdmin?: boolean;
   isLocked?: boolean;
   onSetPassword?: (password: string | null) => void;
+  roomName?: string | null;
+  onSetRoomName?: (name: string | null) => void;
+  isPublic?: boolean;
+  onSetPublic?: (isPublic: boolean) => void;
+  focusRoomName?: boolean;
 }
 
 export function SettingsDrawer({
   open,
   onClose,
-  voiceVolume,
-  onVoiceVolumeChange,
+  master,
+  onMasterChange,
+  onResetPeopleVolumes,
   displayName = "",
   onRename,
   isAdmin = false,
   isLocked = false,
   onSetPassword,
+  roomName = null,
+  onSetRoomName,
+  isPublic = false,
+  onSetPublic,
+  focusRoomName = false,
 }: SettingsDrawerProps) {
   const [password, setPassword] = useState("");
   const [nameDraft, setNameDraft] = useState(displayName);
+  const [roomNameDraft, setRoomNameDraft] = useState(roomName ?? "");
+  const roomNameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setPassword("");
     setNameDraft(displayName);
-  }, [open, isLocked, displayName]);
+    setRoomNameDraft(roomName ?? "");
+  }, [open, isLocked, displayName, roomName]);
+
+  useEffect(() => {
+    if (!open || !focusRoomName) return;
+    roomNameInputRef.current?.focus();
+  }, [open, focusRoomName]);
 
   useEffect(() => {
     if (!open) return;
@@ -44,12 +67,21 @@ export function SettingsDrawer({
 
   if (!open) return null;
 
+  const masterPercent = Math.round(master * 100);
+
   const savePassword = () => {
     if (!onSetPassword) return;
     const trimmed = password.trim();
     if (!trimmed) return;
     onSetPassword(trimmed);
     setPassword("");
+  };
+
+  const saveRoomName = () => {
+    if (!onSetRoomName) return;
+    const trimmed = roomNameDraft.trim();
+    if (trimmed === (roomName ?? "")) return;
+    onSetRoomName(trimmed || null);
   };
 
   const removePassword = () => {
@@ -127,26 +159,105 @@ export function SettingsDrawer({
             </section>
           ) : null}
 
-          {/* App Volume */}
+          {/* Output volume */}
           <div className={onRename ? "border-t pt-5" : ""} style={{ borderColor: "var(--color-dark-border)" }}>
             <label className="mb-2 block text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-              App Volume
+              Output Volume
             </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range" min="0" max="100"
-                value={Math.round(voiceVolume * 100)}
-                onChange={(e) => onVoiceVolumeChange(Number(e.target.value) / 100)}
-                className="volume-slider flex-1"
-              />
-              <span className="w-8 text-right text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
-                {Math.round(voiceVolume * 100)}
-              </span>
-            </div>
-            <p className="mt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-              Overall volume of everything you hear: voices and music
+            <VolumeSlider
+              label="Output"
+              value={masterPercent}
+              max={VOLUME_MAX}
+              ariaLabel="Output volume"
+              onChange={(v) => onMasterChange(v / 100)}
+            />
+            <p className="mt-2 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+              Scales every voice you hear. Per-person volumes multiply on top. YouTube music is capped at 100%.
             </p>
+            {masterPercent > 100 ? (
+              <p className="mt-1 text-[10px] leading-4" style={{ color: "var(--color-accent)" }}>
+                Boost applies to voices only, so the music sits lower against them.
+              </p>
+            ) : null}
+            <button
+              onClick={onResetPeopleVolumes}
+              className="mt-3 cursor-pointer text-[11px] font-medium underline-offset-2 transition-all hover:underline"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              Reset all per-person volumes
+            </button>
           </div>
+
+          <section className="border-t pt-5" style={{ borderColor: "var(--color-dark-border)" }}>
+            <h3 className="mb-3 text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+              Room
+            </h3>
+
+            <label htmlFor="room-name" className="mb-2 block text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>
+              Room name
+            </label>
+            {isAdmin && onSetRoomName ? (
+              <>
+                <div className="flex gap-2">
+                  <input
+                    id="room-name"
+                    ref={roomNameInputRef}
+                    value={roomNameDraft}
+                    onChange={(e) => setRoomNameDraft(e.target.value.slice(0, MAX_ROOM_NAME_LENGTH))}
+                    placeholder="Unnamed room"
+                    className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
+                    style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveRoomName(); }}
+                  />
+                  <button
+                    onClick={saveRoomName}
+                    disabled={roomNameDraft.trim() === (roomName ?? "")}
+                    className="rounded-lg px-3 text-xs font-semibold transition-all enabled:cursor-pointer enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
+                  >
+                    Save
+                  </button>
+                </div>
+                <p className="mt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                  Shown in the room header and on browse cards. Leave empty to clear it.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm" style={{ color: roomName ? "var(--color-text-primary)" : "var(--color-text-muted)" }}>
+                {roomName || "Unnamed room"}
+              </p>
+            )}
+
+            {isAdmin && onSetPublic ? (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Show in Browse</p>
+                  <p className="mt-0.5 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+                    Anyone can find and join this room from the browse page
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isPublic}
+                  aria-label="Show this room in Browse"
+                  onClick={() => onSetPublic(!isPublic)}
+                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                >
+                  <span className="text-[10px] font-medium" style={{ color: isPublic ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+                    {isPublic ? "Public" : "Private"}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200"
+                    style={{ background: isPublic ? "var(--color-primary)" : "var(--color-dark-border)" }}
+                  >
+                    <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isPublic ? "translate-x-4" : "translate-x-0"}`} />
+                  </span>
+                </button>
+              </div>
+            ) : null}
+          </section>
 
           {isAdmin && onSetPassword ? (
             <section className="border-t pt-5" style={{ borderColor: "var(--color-dark-border)" }}>
