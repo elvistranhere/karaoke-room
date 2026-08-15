@@ -89,6 +89,12 @@ export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, 
           <span className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
             Voice sync{singerName ? ` for ${singerName}` : ""}
           </span>
+          <span
+            className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+            style={{ background: "var(--color-accent-dim, rgba(245, 158, 11, 0.15))", color: "var(--color-accent)" }}
+          >
+            Experimental
+          </span>
         </div>
         <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
           {auto ? `Auto (${autoOffsetMs} ms)` : `${offsetMs} ms`}

@@ -130,7 +130,7 @@ export function SettingsDrawer({
           {/* App Volume */}
           <div className={onRename ? "border-t pt-5" : ""} style={{ borderColor: "var(--color-dark-border)" }}>
             <label className="mb-2 block text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-              Voice volume
+              App Volume
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -144,7 +144,7 @@ export function SettingsDrawer({
               </span>
             </div>
             <p className="mt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-              Volume of everyone&apos;s voices. Music has its own slider on the stage.
+              Overall volume of everything you hear: voices and music
             </p>
           </div>
 

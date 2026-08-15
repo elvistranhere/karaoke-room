@@ -207,11 +207,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   broadcastNowRef.current = broadcastNow;
 
   // The mic check mutes remote audio itself, but the music is local now, so it
-  // has to be silenced here or the loopback is drowned out.
+  // has to be silenced here or the loopback is drowned out. App Volume scales
+  // the music too, so it is a true master for everything you hear.
   const micChecking = micCheckState !== "idle" && micCheckState !== "error";
   useEffect(() => {
-    player.setVolume(micChecking ? 0 : mixMusicValue);
-  }, [player, mixMusicValue, micChecking]);
+    player.setVolume(micChecking ? 0 : mixMusicValue * voiceVolume);
+  }, [player, mixMusicValue, voiceVolume, micChecking]);
 
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
@@ -610,9 +611,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
               onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
               playbackReady={playerReady}
-              onMixMicGain={(v) => { setMixMicGain(v); setMixVoiceValue(Math.round(v * 100)); }}
               onMixMusicGain={(v) => { setMixMusicValue(Math.round(v * 100)); }}
-              mixVoiceValue={mixVoiceValue}
               mixMusicValue={mixMusicValue}
               listenerVoiceValue={Math.round((singerIdentity ? singerVolumes[singerIdentity] ?? 1 : 1) * 100)}
               onListenerVoiceChange={!isMyTurn && singerIdentity
