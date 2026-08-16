@@ -21,10 +21,6 @@ describe("clientMessageSchema", () => {
         isDeafened: true,
       },
       { type: "reaction", emoji: "🔥" },
-      { type: "mute-all" },
-      { type: "unmute-all" },
-      { type: "mix-adjust", voice: 1 },
-      { type: "mix-adjust", voice: 1, music: 0.5 },
       { type: "video-load", videoId: "dQw4w9WgXcQ" },
       { type: "video-sync", playing: true, videoTime: 12.5 },
       { type: "video-sync", playing: true, videoTime: 12.5, videoId: "dQw4w9WgXcQ", stalled: true },
@@ -63,6 +59,10 @@ describe("clientMessageSchema", () => {
       { type: "status-update", isMuted: false, isSharingAudio: true },
       { type: "set-public", isPublic: "yes" },
       { type: "kick" },
+      // Removed: no participant may mute, unmute or set another participant's gain
+      { type: "mute-all" },
+      { type: "unmute-all" },
+      { type: "mix-adjust", voice: 1 },
     ];
     for (const message of bad) {
       expect(clientMessageSchema.safeParse(message).success, JSON.stringify(message)).toBe(false);
@@ -91,7 +91,6 @@ describe("roomStateSchema", () => {
     participantStatus: {
       "peer-1": { isMuted: false, isSharingAudio: true, currentSong: null },
     },
-    mutedBySinger: null,
     adminPeerId: "peer-1",
     isLocked: false,
     video: {
@@ -137,9 +136,6 @@ describe("serverMessageSchema", () => {
       { type: "error", message: "Unknown message type" },
       { type: "chat", from: "peer-1", fromName: "Elvis", text: "hi", timestamp: 1 },
       { type: "reaction", from: "peer-1", fromName: "Elvis", emoji: "🔥" },
-      { type: "mute-all", singerName: "Elvis" },
-      { type: "unmute-all" },
-      { type: "mix-adjust", fromName: "Elvis", voice: 1, music: 1 },
       { type: "video-state", video: null },
       { type: "time-sync", t0: 1, t1: 2 },
       { type: "name-taken", name: "Elvis", suggestions: ["Elvis2"] },
@@ -156,6 +152,9 @@ describe("serverMessageSchema", () => {
 
   it("rejects a variant with the wrong payload", () => {
     expect(serverMessageSchema.safeParse({ type: "kicked" }).success).toBe(false);
+    expect(serverMessageSchema.safeParse({ type: "mute-all", singerName: "Elvis" }).success).toBe(false);
+    expect(serverMessageSchema.safeParse({ type: "unmute-all" }).success).toBe(false);
+    expect(serverMessageSchema.safeParse({ type: "mix-adjust", fromName: "Elvis", voice: 1, music: 1 }).success).toBe(false);
     expect(serverMessageSchema.safeParse({ type: "time-sync", t0: 1 }).success).toBe(false);
   });
 });

@@ -40,7 +40,6 @@ export const roomStateSchema = z.object({
   currentSingerId: z.string().nullable(),
   chatMessages: z.array(chatMessageSchema),
   participantStatus: z.record(participantStatusSchema),
-  mutedBySinger: z.string().nullable(),
   adminPeerId: z.string().nullable(),
   isLocked: z.boolean(),
   video: videoStateSchema.nullable(),
@@ -80,9 +79,6 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     isDeafened: z.boolean().optional(),
   }),
   z.object({ type: z.literal("reaction"), emoji: z.string() }),
-  z.object({ type: z.literal("mute-all") }),
-  z.object({ type: z.literal("unmute-all") }),
-  z.object({ type: z.literal("mix-adjust"), voice: z.number(), music: z.number().optional() }),
   z.object({ type: z.literal("video-load"), videoId: z.string() }),
   // stalled: the singer is rebuffering, so this only re-arms the server stall timer
   z.object({
@@ -120,9 +116,6 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("participant-status"), peerId: z.string(), status: participantStatusSchema }),
   z.object({ type: z.literal("reaction"), from: z.string(), fromName: z.string(), emoji: z.string() }),
-  z.object({ type: z.literal("mute-all"), singerName: z.string() }),
-  z.object({ type: z.literal("unmute-all") }),
-  z.object({ type: z.literal("mix-adjust"), fromName: z.string(), voice: z.number(), music: z.number() }),
   z.object({ type: z.literal("video-state"), video: videoStateSchema.nullable() }),
   z.object({ type: z.literal("time-sync"), t0: z.number(), t1: z.number() }),
   z.object({ type: z.literal("name-taken"), name: z.string(), suggestions: z.array(z.string()) }),

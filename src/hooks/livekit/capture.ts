@@ -152,7 +152,7 @@ export function useCapture(
   const pendingMicStateRef = useRef<{ state: boolean; persist: boolean } | null>(null);
   const applyMicStateSelfRef = useRef<((state: boolean, persist: boolean) => Promise<void>) | null>(null);
 
-  // persist is false for forced changes (mute-all, deafen): only a deliberate toggle
+  // persist is false for forced changes (deafen): only a deliberate toggle
   // may rewrite the join preference
   const applyMicState = useCallback(async (newState: boolean, persist: boolean) => {
     const room = roomRef.current;
@@ -257,8 +257,8 @@ export function useCapture(
     await applyMicState(target ?? !isMicEnabledRef.current, true);
   }, [applyMicState]);
 
-  // Force mute/unmute - used by mute-all to handle both the singing and idle paths.
-  // Unlike toggleMic, this sets a specific state rather than toggling.
+  // Force mute/unmute - used by deafen and the join gesture, and handles both the
+  // singing and idle paths. Unlike toggleMic, it sets a specific state.
   const setMicMuted = useCallback(async (muted: boolean) => {
     const currentlyEnabled = isMicEnabledRef.current;
     if ((muted && !currentlyEnabled) || (!muted && currentlyEnabled)) return; // already in desired state

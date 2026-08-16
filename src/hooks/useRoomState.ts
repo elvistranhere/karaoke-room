@@ -37,17 +37,11 @@ interface UseRoomStateReturn {
   sendChat: (text: string) => void;
   sendStatusUpdate: (status: { isMuted: boolean; isSharingAudio: boolean; currentSong: string | null; browser?: string; lkIdentity?: string; isDeafened?: boolean }) => void;
   sendReaction: (emoji: string) => void;
-  sendMuteAll: () => void;
-  sendUnmuteAll: () => void;
-  sendMixAdjust: (voice: number) => void;
-  clearPendingMixAdjust: () => void;
   sendVideoLoad: (videoId: string) => void;
   sendVideoSync: (playing: boolean, videoTime: number, stalled?: boolean) => void;
   videoRef: React.RefObject<VideoState | null>;
   serverOffsetRef: React.RefObject<number>;
   clockSyncedRef: React.RefObject<boolean>;
-  mutedBySinger: string | null;
-  pendingMixAdjust: { fromName: string; voice: number } | null;
   nameTaken: { name: string; suggestions: string[] } | null;
   clearNameTaken: () => void;
   chatMessages: ChatMessage[];
@@ -73,7 +67,6 @@ const INITIAL_ROOM_STATE: RoomState = {
   currentSingerId: null,
   chatMessages: [],
   participantStatus: {},
-  mutedBySinger: null,
   adminPeerId: null,
   isLocked: false,
   video: null,
@@ -93,8 +86,6 @@ export function useRoomState({
   const [floatingChatMessages, setFloatingChatMessages] = useState<FloatingChatMessage[]>([]);
   const [participantStatus, setParticipantStatus] = useState<Record<string, ParticipantStatus>>({});
   const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [mutedBySinger, setMutedBySinger] = useState<string | null>(null);
-  const [pendingMixAdjust, setPendingMixAdjust] = useState<{ fromName: string; voice: number } | null>(null);
   const [nameTaken, setNameTaken] = useState<{ name: string; suggestions: string[] } | null>(null);
   const [kicked, setKicked] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -159,8 +150,6 @@ export function useRoomState({
           setAuthRequired(false);
           setAuthFailed(false);
         }
-        // Sync mutedBySinger from server state (persisted across reconnects)
-        setMutedBySinger(state.mutedBySinger ?? null);
         setParticipantStatus(state.participantStatus);
         // Only sync chat from room-state on first load (catch-up).
         // After that, chat arrives via individual "chat" events.
@@ -214,15 +203,6 @@ export function useRoomState({
         }, 3000);
         break;
       }
-      case "mute-all":
-        setMutedBySinger(msg.singerName);
-        break;
-      case "unmute-all":
-        setMutedBySinger(null);
-        break;
-      case "mix-adjust":
-        setPendingMixAdjust({ fromName: msg.fromName, voice: msg.voice });
-        break;
       case "video-state":
         applyVideoState(msg.video);
         break;
@@ -326,22 +306,6 @@ export function useRoomState({
     send({ type: "reaction", emoji });
   }, [send]);
 
-  const sendMuteAll = useCallback(() => {
-    send({ type: "mute-all" });
-  }, [send]);
-
-  const sendUnmuteAll = useCallback(() => {
-    send({ type: "unmute-all" });
-  }, [send]);
-
-  const sendMixAdjust = useCallback((voice: number) => {
-    send({ type: "mix-adjust", voice });
-  }, [send]);
-
-  const clearPendingMixAdjust = useCallback(() => {
-    setPendingMixAdjust(null);
-  }, []);
-
   const sendVideoLoad = useCallback((videoId: string) => {
     send({ type: "video-load", videoId });
   }, [send]);
@@ -400,17 +364,11 @@ export function useRoomState({
     sendChat,
     sendStatusUpdate,
     sendReaction,
-    sendMuteAll,
-    sendUnmuteAll,
-    sendMixAdjust,
-    clearPendingMixAdjust,
     sendVideoLoad,
     sendVideoSync,
     videoRef,
     serverOffsetRef,
     clockSyncedRef,
-    mutedBySinger,
-    pendingMixAdjust,
     nameTaken,
     clearNameTaken,
     chatMessages,

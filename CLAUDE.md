@@ -39,7 +39,7 @@ Never use em dashes (—). Use regular dashes (-) or rewrite the sentence.
 
 **Karaoke Now** is a real-time karaoke room app. Three systems work together:
 
-1. **PartyKit** (`party/`) — Cloudflare Durable Objects for room state (participants, queue, chat, mute-all). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
+1. **PartyKit** (`party/`) — Cloudflare Durable Objects for room state (participants, queue, chat, playback). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
 
 2. **LiveKit** - SFU for WebRTC audio transport. Voice only: the singer publishes their mic through the voice effect chain as one track. Music never crosses LiveKit.
 
@@ -84,7 +84,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 
 ## Key Hooks
 
-- **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions, mute-all. Returns `send()` for raw messages.
+- **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions. Returns `send()` for raw messages.
 - **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook, and the only one that is split: `src/hooks/useLiveKit.ts` is a ~115-line facade that composes four modules under `src/hooks/livekit/`. `context.ts` owns the shared refs, state and `UseLiveKitParams`; `connection.ts` owns the room connection and the device/NC switch effects; `capture.ts` owns the singer path (`startSinging`, `stopSinging`, `cleanupMix`, `toggleMic`, the voice effect chain); `micCheck.ts` owns the isolated loopback context.
 - **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable handle.
 - **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast. The policy itself is `computeSyncAction`/`computeTarget` in `src/lib/syncMath.ts`; the hook only owns the interval, the refs and the seek cooldown.
@@ -105,7 +105,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Refs over state** for values accessed in callbacks/timeouts to avoid stale closures (`isMicEnabledRef`, `talkingNCRef`, `singingNCRef`, `voiceEffectRef`).
 - **Hot-swap while singing**: NC toggle and voice effect changes re-capture the mic stream or rebuild the effect chain live without stopping the published track.
 - **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the singing mix path.
-- **`mutedBySinger` is server-persisted**: Included in `RoomState` so reconnecting clients get the correct mute state. Cleared automatically in `promoteNextSinger()`.
+- **Listening is local, per user**: no participant may change another participant's audio state. The wire carries no message that mutes, unmutes or sets the gain of anyone else, and `RoomState` carries no per-user audio field. The singer controls shared playback (`video-load`, `video-sync`, play/pause/restart) and their own pipeline; the admin allowlist is kick, transfer admin, skip singer, remove from queue and room settings (name, public, password). `isDeafened` crosses the wire as a read-only roster glyph and no receiving client acts on it.
 - **`videoState` is server-owned**: Included in `RoomState` so late joiners catch up mid-song, and cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
 - **Room identity is persisted, the session is not**: `roomName`, `isPublic`, `passwordHash`, `adminClientId`, `adminVacatedAt` and `bannedClientIds` are write-through to `this.room.storage` and rehydrated in `onStart()`, so a DO restart or an empty-room moment keeps the room's identity. Chat, queue, participants and `videoState` stay in memory by design and are still cleared when the room empties. Because a password now outlives an empty room, there is no first-joiner exemption on `auth`. A kick ban outlives it too: there is no unban message, so a kick is permanent for that room code until the 200-entry LRU evicts it.
 - **Admin succession never deadlocks**: a vacant seat with a known `adminClientId` belongs to the departed admin for `ADMIN_GRACE_MS`, but only the timer hands it on. `armAdminGrace()` is therefore called from `claimAdminOnJoin` as well as `startAdminGrace`, arming whatever is left of the window (`adminVacatedAt` is persisted for exactly this), because a room that emptied never armed a timer and a DO restart loses both the timer and `adminVacatedAt`.
@@ -178,7 +178,9 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 - **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
 - **PartyKit secret**: `partykit env add REGISTRY_TOKEN` must be set on the deployed project. The registry party rejects every POST/DELETE from a non-local host when it is missing, so `/browse` goes empty instead of accepting forged listings.
 - **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
-- Deploy PartyKit before Vercel: the protocol is additive, so old clients keep working during the gap. `.github/workflows/deploy-partykit.yml` carries `concurrency: partykit-deploy` with `cancel-in-progress: false`, so two merges in quick succession cannot deploy out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR. After a successful `npx partykit deploy`, the workflow health-checks `/parties/main/health-probe` (the `onRequest` GET), then POSTs to a Vercel deploy hook.
+- **PartyKit ships first, and the merge cannot choose otherwise.** `.github/workflows/deploy-partykit.yml` fires on every push to main touching `party/**`, `partykit.json` or `src/shared/**`, runs `npx partykit deploy`, health-checks `/parties/main/health-probe` (the `onRequest` GET) and only then POSTs the Vercel deploy hook, while Vercel's own git integration builds the same push in parallel. Nothing sequences those two, so the real order is PartyKit-first racing an independent Vercel build. That is what an additive protocol change wants anyway: old clients keep working during the gap. A change that needs Vercel-first needs a mechanism, not a rule: path-filter the workflow off that commit, or split it across two merges, client-side first and server-side second.
+- **A protocol removal therefore has to be safe in either order.** Two bars. A stale cached client that still sends the removed variant fails `clientMessageSchema.safeParse` and gets the `Unknown message type` error reply, which `useRoomState` logs and otherwise ignores, so the socket stays up. And a removed `RoomState` field has to degrade on the already-deployed bundle instead of throwing: the client never validates server messages at runtime (`usePartySocket` casts the `JSON.parse` result), so the field simply arrives as `undefined` and the old code has to read that as a sane default. Removing `mutedBySinger` cleared both bars, with one side effect worth expecting rather than debugging: the deployed client reads `state.mutedBySinger ?? null`, so the moment the worker ships, every old client the singer had muted (mic on before the mute, not deafened) unmutes itself mid-song.
+- `concurrency: partykit-deploy` with `cancel-in-progress: false` keeps two merges in quick succession from deploying out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR.
 - **`VERCEL_DEPLOY_HOOK_URL` secret** (optional, GitHub Actions): a Vercel deploy hook URL that chains a Vercel redeploy onto the tail of `deploy-partykit.yml`, after the health check passes. Create one under Vercel project settings > Git > Deploy Hooks and add it as a repo secret. When absent, the workflow logs a line and skips the trigger instead of failing.
 
 ## Skills and Workflows
@@ -215,4 +217,4 @@ For production readiness:
 2. Check PartyKit health: `curl https://karaoke-room.elvistranhere.partykit.dev/parties/main/test`
 3. Verify all AudioContexts closed on disconnect
 4. Verify all setInterval/setTimeout cleared on unmount
-5. Verify mutedBySinger/videoState cleared on room empty
+5. Verify videoState cleared on room empty

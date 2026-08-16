@@ -80,7 +80,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   }, []);
   const talkingNC = noiseCancellationMode !== "off";
   const singingNC = noiseCancellationMode === "on";
-  const [singerMutedAll, setSingerMutedAll] = useState(false);
   const authAutoSubmittedRef = useRef(false);
   // Set by the join click: the chime and the mic both wait on that gesture
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -97,14 +96,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendChat,
     sendStatusUpdate,
     sendReaction,
-    sendMuteAll,
-    sendUnmuteAll,
     sendVideoLoad,
     sendVideoSync,
     videoRef,
     serverOffsetRef,
     clockSyncedRef,
-    mutedBySinger,
     nameTaken,
     clearNameTaken,
     chatMessages,
@@ -309,31 +305,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     prevReactionCountRef.current = reactions.length;
   }, [reactions, deafened]);
 
-  // Mute/unmute mic when singer sends mute-all
-  // Snapshot pre-mute state so unmute only restores those who were unmuted before
-  const wasMutedBySingerRef = useRef(false);
-  const micWasOnBeforeMuteRef = useRef(false);
-  useEffect(() => {
-    if (mutedBySinger && !wasMutedBySingerRef.current) {
-      wasMutedBySingerRef.current = true;
-      micWasOnBeforeMuteRef.current = isMicEnabled;
-      if (isMicEnabled) {
-        // setMicMuted handles both the singing mix and the idle managed-mic path
-        void setMicMuted(true);
-      }
-    }
-    if (!mutedBySinger && wasMutedBySingerRef.current) {
-      wasMutedBySingerRef.current = false;
-      // Deafen outranks the restore: a deafened mic stays off until they undeafen
-      if (micWasOnBeforeMuteRef.current && !deafened) {
-        void setMicMuted(false);
-      }
-      micWasOnBeforeMuteRef.current = false;
-    }
-  }, [mutedBySinger, isMicEnabled, setMicMuted, deafened]);
-
   // Deafen force-mutes the mic; the snapshot means undeafening only unmutes
-  // people who were unmuted before and are not still under the singer's mute-all
+  // people who were unmuted before
   const micWasOnBeforeDeafenRef = useRef(false);
   const handleToggleDeafen = useCallback(() => {
     if (!deafened) {
@@ -342,10 +315,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       setDeafened(true);
       return;
     }
-    if (micWasOnBeforeDeafenRef.current && !mutedBySinger) void setMicMuted(false);
+    if (micWasOnBeforeDeafenRef.current) void setMicMuted(false);
     micWasOnBeforeDeafenRef.current = false;
     setDeafened(false);
-  }, [deafened, isMicEnabled, setMicMuted, setDeafened, mutedBySinger]);
+  }, [deafened, isMicEnabled, setMicMuted, setDeafened]);
 
   // Auto-switch to singing mode ONCE when becoming the singer
   const wasMyTurnRef = useRef(false);
@@ -356,13 +329,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
     if (!isMyTurn && wasMyTurnRef.current) {
       wasMyTurnRef.current = false;
-      if (singerMutedAll) setSingerMutedAll(false);
       setSongName(null);
       // Switch back to talking mode when done singing
       if (micMode === "raw") setMicMode("voice");
     }
     if (!isMyTurn) wasMyTurnRef.current = false;
-  }, [isMyTurn, micMode, setMicMode, singerMutedAll]);
+  }, [isMyTurn, micMode, setMicMode]);
 
   // Send status updates (includes LiveKit identity). isSharingAudio now means
   // "the stage video is playing", which is what suspends the 60s singer timer.
@@ -444,9 +416,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   useEffect(() => {
     if (!micOnJoinPending || !isLiveKitConnected) return;
     setMicOnJoinPending(false);
-    if (deafened || mutedBySinger) return;
+    if (deafened) return;
     void setMicMuted(false);
-  }, [micOnJoinPending, isLiveKitConnected, deafened, mutedBySinger, setMicMuted]);
+  }, [micOnJoinPending, isLiveKitConnected, deafened, setMicMuted]);
 
   useEffect(() => {
     document.title = `${roomState.roomName || `Room ${roomCode}`} · Karaoke Now`;
@@ -731,16 +703,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
-      {/* Muted by singer banner */}
-      {mutedBySinger && (
-        <div
-          className="relative z-10 mx-4 mt-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
-          style={{ background: "var(--color-accent-dim)", color: "var(--color-accent)" }}
-        >
-          {mutedBySinger} muted everyone&apos;s mic
-        </div>
-      )}
-
       <RoomShell
         panels={roomPanels}
         stage={
@@ -820,9 +782,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 syncOffsetMs={syncOffsetMs}
                 onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
                 syncSingerName={singerName}
-                onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
-                onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
-                isMutedAll={singerMutedAll}
               />
               </div>
             <StageAnnouncement

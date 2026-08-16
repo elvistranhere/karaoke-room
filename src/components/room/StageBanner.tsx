@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAudioLevel } from "~/hooks/useAudioLevel";
 import type { RoomState } from "~/types/room";
-import { Crown, Mic, MicOff, Music, Pencil, SkipForward, VolumeX, Volume2, Plus } from "lucide-react";
+import { Crown, Mic, MicOff, Music, Pencil, SkipForward, VolumeX, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
@@ -31,9 +31,6 @@ interface StageBannerProps {
   playbackReady?: boolean;
   // Singer-local: own player volume; never broadcast
   onMixMusicGain?: (val: number) => void;
-  onMuteAll?: () => void;
-  onUnmuteAll?: () => void;
-  isMutedAll?: boolean;
   mixMusicValue?: number;
   // Listener-local mix: voice is the singer's stage volume on this device only,
   // the same number the People panel row edits
@@ -67,9 +64,6 @@ export function StageBanner({
   onRestart,
   playbackReady = false,
   onMixMusicGain,
-  onMuteAll,
-  onUnmuteAll,
-  isMutedAll = false,
   mixMusicValue = 70,
   listenerVoiceValue = 100,
   onListenerVoiceChange,
@@ -337,23 +331,7 @@ export function StageBanner({
 
           {onLoadVideo && <VideoUrlInput onLoad={onLoadVideo} label="Change" />}
 
-          {/* Room actions: these act on everyone, not on this device's volume */}
-          <div className={`grid gap-2 pt-1 ${onMuteAll && onUnmuteAll ? "grid-cols-2" : "grid-cols-1"}`}>
-            {onMuteAll && onUnmuteAll && (
-              <button
-                onClick={isMutedAll ? onUnmuteAll : onMuteAll}
-                className="flex min-h-10 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium shadow-[var(--shadow-control)] transition-[background-color,border-color,filter] duration-150 hover:brightness-110"
-                style={{
-                  borderColor: isMutedAll ? "var(--color-accent)" : "transparent",
-                  background: isMutedAll ? "var(--color-accent-dim)" : "var(--color-dark-card)",
-                  color: isMutedAll ? "var(--color-accent)" : "var(--color-text-secondary)",
-                }}
-                title={isMutedAll ? "Let everyone use their mic again" : "Stop everyone else from publishing their mic"}
-              >
-                {isMutedAll ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                {isMutedAll ? "Unmute all mics" : "Mute all mics"}
-              </button>
-            )}
+          <div className="grid grid-cols-1 gap-2 pt-1">
             <button
               onClick={onFinishSinging}
               className="min-h-10 cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold shadow-[var(--shadow-control)] transition-[background-color,filter] duration-150 hover:brightness-125"

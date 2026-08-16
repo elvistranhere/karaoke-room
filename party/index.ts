@@ -42,7 +42,6 @@ export default class KaraokeRoom implements Party.Server {
   currentSingerId: string | null = null;
   chatMessages: ChatMessage[] = [];
   participantStatus: Map<string, ParticipantStatus> = new Map();
-  mutedBySinger: string | null = null; // persisted so reconnecting clients get correct state
   videoState: VideoState | null = null; // current singer's synced YouTube video, null when nobody is on stage
 
   // Room identity & listing
@@ -207,7 +206,6 @@ export default class KaraokeRoom implements Party.Server {
         // Fire for both disconnected AND idle connected singers
         console.log(`[KaraokeRoom] Singer ${this.currentSingerId} timed out - advancing queue`);
         this.currentSingerId = null;
-        this.mutedBySinger = null;
         this.videoState = null;
         this.promoteNextSinger();
         this.broadcastState();
@@ -318,15 +316,6 @@ export default class KaraokeRoom implements Party.Server {
       case "reaction":
         this.handleReaction(sender, msg.emoji);
         break;
-      case "mute-all":
-        this.handleMuteAll(sender);
-        break;
-      case "unmute-all":
-        this.handleUnmuteAll(sender);
-        break;
-      case "mix-adjust":
-        this.handleMixAdjust(sender, msg.voice, msg.music);
-        break;
       case "video-load":
         this.handleVideoLoad(sender, msg.videoId);
         break;
@@ -417,7 +406,6 @@ export default class KaraokeRoom implements Party.Server {
       console.log(`[KaraokeRoom] Room ${this.room.id} is empty - resetting session state`);
       this.queue = [];
       this.currentSingerId = null;
-      this.mutedBySinger = null;
       this.videoState = null;
       this.chatMessages = [];
       this.participantStatus.clear();
@@ -683,68 +671,6 @@ export default class KaraokeRoom implements Party.Server {
       peerId: sender.id,
       status,
     });
-  }
-
-  private handleMuteAll(sender: Party.Connection) {
-    // Only the current singer can mute everyone
-    if (this.currentSingerId !== sender.id) {
-      this.send(sender, { type: "error", message: "Only the singer can mute all" });
-      return;
-    }
-    const participant = this.participants.get(sender.id);
-    if (!participant) return;
-
-    this.mutedBySinger = participant.name;
-
-    // Broadcast to all except the singer
-    for (const [id, entry] of this.participants) {
-      if (id !== sender.id) {
-        this.send(entry.ws, { type: "mute-all", singerName: participant.name });
-      }
-    }
-  }
-
-  private handleUnmuteAll(sender: Party.Connection) {
-    if (this.currentSingerId !== sender.id) {
-      this.send(sender, { type: "error", message: "Only the singer can unmute all" });
-      return;
-    }
-
-    this.mutedBySinger = null;
-
-    // Broadcast to all except the singer
-    for (const [id, entry] of this.participants) {
-      if (id !== sender.id) {
-        this.send(entry.ws, { type: "unmute-all" });
-      }
-    }
-  }
-
-  private handleMixAdjust(sender: Party.Connection, voice: number, music?: number) {
-    if (!this.currentSingerId) return;
-    if (!Number.isFinite(voice)) return;
-    const participant = this.participants.get(sender.id);
-    if (!participant) return;
-
-    const clampedVoice = Math.max(0, Math.min(1.5, voice));
-    // Music is local to each client now, but pre-YouTube clients still read it off
-    // the wire and feed it to an AudioParam, so it always ships with a finite value.
-    const clampedMusic = Number.isFinite(music) ? Math.max(0, Math.min(1.5, music as number)) : 1;
-    const isSinger = sender.id === this.currentSingerId;
-
-    if (isSinger) {
-      // Singer adjusted - broadcast to all listeners so their sliders sync
-      for (const [id, entry] of this.participants) {
-        if (id !== sender.id) {
-          this.send(entry.ws, { type: "mix-adjust", fromName: participant.name, voice: clampedVoice, music: clampedMusic });
-        }
-      }
-    } else {
-      // Listener adjusted - send to singer to apply gain + announce in chat
-      const singer = this.participants.get(this.currentSingerId);
-      if (!singer) return;
-      this.send(singer.ws, { type: "mix-adjust", fromName: participant.name, voice: clampedVoice, music: clampedMusic });
-    }
   }
 
   // ── Synced video playback ───────────────────────────────────
@@ -1022,8 +948,8 @@ export default class KaraokeRoom implements Party.Server {
     this.broadcastState();
   }
 
-  // Mirrors handleFinishSinging exactly: currentSingerId, mutedBySinger and
-  // videoState must all clear before promoteNextSinger or a ghost video keeps playing.
+  // Mirrors handleFinishSinging exactly: currentSingerId and videoState must both
+  // clear before promoteNextSinger or a ghost video keeps playing.
   private handleSkipSinger(sender: Party.Connection) {
     if (this.adminPeerId !== sender.id) {
       this.send(sender, { type: "error", message: "Only the admin can skip the singer" });
@@ -1034,7 +960,6 @@ export default class KaraokeRoom implements Party.Server {
 
     const skippedName = this.participants.get(this.currentSingerId)?.name ?? "The singer";
     this.currentSingerId = null;
-    this.mutedBySinger = null;
     this.videoState = null;
     this.promoteNextSinger();
     this.broadcastSystemChat(`${skippedName} was skipped by ${admin.name}`);
@@ -1153,8 +1078,7 @@ export default class KaraokeRoom implements Party.Server {
 
   private promoteNextSinger() {
     if (this.currentSingerId !== null) return;
-    // Clear mute-all and any leftover video when no singer is active
-    this.mutedBySinger = null;
+    // Clear any leftover video when no singer is active
     this.videoState = null;
     this.resetVideoStallTimer();
     if (this.queue.length === 0) {
@@ -1191,7 +1115,6 @@ export default class KaraokeRoom implements Party.Server {
       currentSingerId: this.currentSingerId,
       chatMessages: [...this.chatMessages],
       participantStatus,
-      mutedBySinger: this.mutedBySinger,
       adminPeerId: this.adminPeerId,
       isLocked: this.passwordHash !== null,
       video: this.videoState,
