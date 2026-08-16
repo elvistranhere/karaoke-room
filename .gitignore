@@ -8,3 +8,8 @@ generated
 .tmp
 .tmp/
 .env*
+test-results
+playwright-report
+blob-report
+.playwright
+tsconfig.tsbuildinfo

@@ -39,3 +39,34 @@ jobs:
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+
+      - name: Health check PartyKit
+        run: |
+          for ATTEMPT in 1 2 3; do
+            RESPONSE=$(curl -sL --max-time 15 -w "\n%{http_code}" https://karaoke-room.elvistranhere.partykit.dev/parties/main/health-probe || true)
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            HTTP_CODE=${HTTP_CODE:-000}
+            BODY=$(echo "$RESPONSE" | head -1)
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "OK ($HTTP_CODE) - $BODY"
+              exit 0
+            fi
+            if [ "$HTTP_CODE" -eq 429 ]; then
+              echo "::warning::Rate-limited (429) on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "::warning::Health check attempt $ATTEMPT returned HTTP $HTTP_CODE"
+            sleep 10
+          done
+          echo "::error::Health check failed with HTTP $HTTP_CODE after 3 attempts"
+          exit 1
+
+      - name: Trigger Vercel deploy hook
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "VERCEL_DEPLOY_HOOK_URL not set, skipping Vercel deploy trigger"
+          else
+            curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL"
+          fi

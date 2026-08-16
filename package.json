@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "next build",
+    "cap:sync": "cap sync",
     "dev": "next dev --turbo",
     "dev:party": "npx partykit dev --port 1999",
     "dev:all": "npx partykit dev --port 1999 & next dev --turbo",
+    "e2e": "playwright test",
     "lint": "biome lint .",
     "deploy:party": "npx partykit deploy",
     "preview": "next build && next start",
@@ -42,6 +44,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/node": "^20.14.10",
     "@types/react": "^19.0.0",

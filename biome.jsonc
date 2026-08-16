@@ -9,7 +9,10 @@
       "!.partykit",
       "!.vercel",
       "!next-env.d.ts",
-      "!tsconfig.tsbuildinfo"
+      "!tsconfig.tsbuildinfo",
+      "!test-results",
+      "!playwright-report",
+      "!blob-report"
     ]
   },
   // Linter only. The formatter and the import assist stay off so adopting Biome
