@@ -39,6 +39,8 @@ export interface VoiceMixer {
   setDuck: (value: number) => void;
   setSinkId: (deviceId: string) => void;
   resume: () => void;
+  // Re-assert element mute/volume after something outside the mixer touched them
+  syncElements: () => void;
   destroy: () => void;
 }
 
@@ -82,14 +84,16 @@ export function createVoiceMixer(): VoiceMixer {
 
   // Element volume is the fallback path: it carries the full local mix whenever the
   // graph is not audible, so a suspended context can never mean a silent room.
+  // INVARIANT: silencing goes through `muted`, never `volume` alone - iOS/iPadOS
+  // WebKit ignores volume writes, so a volume-only mute doubles every remote voice.
   const syncElements = () => {
     const audible = graphAudible();
     for (const chain of chains.values()) {
       const el = chain.element;
       if (!el) continue;
-      el.volume = audible && chain.gain !== null
-        ? 0
-        : Math.min(1, resolveGain(chain.identity) * masterValue * duckValue);
+      const useGraph = audible && chain.gain !== null;
+      el.muted = useGraph;
+      el.volume = useGraph ? 0 : Math.min(1, resolveGain(chain.identity) * masterValue * duckValue);
     }
   };
 
@@ -178,11 +182,18 @@ export function createVoiceMixer(): VoiceMixer {
     if (!chain) return;
     chain.source?.disconnect();
     chain.gain?.disconnect();
+    // syncElements only walks live chains, so an element the mixer stops owning
+    // has to be left inert or it keeps playing that voice unmixed
+    if (chain.element) {
+      chain.element.muted = true;
+      chain.element.volume = 0;
+    }
     chains.delete(trackSid);
   };
 
   const attach = (identity: string, track: MediaStreamTrack, trackSid: string, element: HTMLAudioElement | null): boolean => {
     detach(trackSid);
+    if (element) element.muted = true;
     const audioCtx = ensureGraph();
     const master = masterNode;
     let chain: MixChain = { identity, element, stream: null, source: null, gain: null };
@@ -232,10 +243,13 @@ export function createVoiceMixer(): VoiceMixer {
   };
 
   const destroy = () => {
-    for (const chain of chains.values()) {
-      if (chain.element) chain.element.volume = 1;
-    }
+    const elements = Array.from(chains.values()).map((chain) => chain.element);
     for (const trackSid of Array.from(chains.keys())) detach(trackSid);
+    for (const el of elements) {
+      if (!el) continue;
+      el.muted = false;
+      el.volume = 1;
+    }
     ctx?.removeEventListener("statechange", syncElements);
     masterNode?.disconnect();
     duckNode?.disconnect();
@@ -249,5 +263,5 @@ export function createVoiceMixer(): VoiceMixer {
     streamSink = null;
   };
 
-  return { attach, detach, setPersonGains, setMaster, setDuck, setSinkId, resume, destroy };
+  return { attach, detach, setPersonGains, setMaster, setDuck, setSinkId, resume, syncElements, destroy };
 }

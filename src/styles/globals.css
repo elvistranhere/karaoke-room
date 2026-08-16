@@ -155,6 +155,25 @@ body {
   border-radius: 3px;
   background: var(--color-dark-border);
 }
+/* Touch hit-slop: the padding grows the draggable box while background-clip keeps the
+   visible bar 6px. The !important is load-bearing: VolumeSlider sets the fill gradient
+   with the inline `background` shorthand, which resets background-clip to border-box. */
+@media (pointer: coarse) {
+  .volume-slider {
+    box-sizing: content-box;
+    padding-block: 12px;
+    background-clip: content-box !important;
+  }
+  .volume-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .volume-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+}
+
 .volume-slider--music::-webkit-slider-thumb {
   background: var(--color-accent);
 }

@@ -47,7 +47,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-10">
+    <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden pb-[max(env(safe-area-inset-bottom),2.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] pt-[max(env(safe-area-inset-top),2.5rem)]">
       {/* Background */}
       <div className="pointer-events-none absolute -top-60 left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[120px]" style={{ background: "var(--color-primary)" }} />
       <div className="pointer-events-none absolute -bottom-40 right-1/4 h-[300px] w-[400px] rounded-full opacity-[0.04] blur-[100px]" style={{ background: "var(--color-accent)" }} />
@@ -123,7 +123,7 @@ export default function Home() {
             style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
           />
 
-          <div className="mt-4 flex h-5 items-center justify-between gap-3">
+          <div className="mt-2 flex min-h-10 items-center justify-between gap-3">
             <label htmlFor="room-password" className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Room password</label>
             <button
               type="button"
@@ -139,7 +139,7 @@ export default function Home() {
                   return !enabled;
                 });
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
+              className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
             >
               <span className="text-[10px] font-medium" style={{ color: passwordEnabled ? "var(--color-primary)" : "var(--color-text-muted)" }}>Required</span>
               <span
@@ -194,7 +194,7 @@ export default function Home() {
               aria-checked={showInBrowse}
               aria-label="Show this room in Browse"
               onClick={() => setShowInBrowse((shown) => !shown)}
-              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
+              className="flex min-h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-dark-surface)]"
             >
               <span className="text-[10px] font-medium" style={{ color: showInBrowse ? "var(--color-primary)" : "var(--color-text-muted)" }}>
                 {showInBrowse ? "Public" : "Private"}

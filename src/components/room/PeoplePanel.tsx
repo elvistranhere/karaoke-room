@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mic, MicOff, Music, Globe, Crown, MoreVertical, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
 import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/hooks/useVolumeMix";
@@ -39,6 +39,7 @@ export function PeoplePanel({
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adminMenuId, setAdminMenuId] = useState<string | null>(null);
+  const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = myPeerId !== null && roomState.adminPeerId === myPeerId;
 
   const isInQueue = myPeerId ? roomState.queue.includes(myPeerId) : false;
@@ -176,7 +177,7 @@ export function PeoplePanel({
                   {!isMe && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onTogglePersonMute(mixKeyId); }}
-                      className={`cursor-pointer rounded p-0.5 transition-all hover:bg-[var(--color-dark-card)] ${mix.muted ? "" : "opacity-100 md:opacity-0 md:group-hover/person:opacity-100 md:focus-visible:opacity-100"}`}
+                      className={`inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded transition-all hover:bg-[var(--color-dark-card)] ${mix.muted ? "" : "opacity-100 [@media(hover:hover)]:opacity-0 group-hover/person:opacity-100 focus-visible:opacity-100"}`}
                       style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)" }}
                       title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
                       aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
@@ -187,9 +188,11 @@ export function PeoplePanel({
                   {isAdmin && !isMe && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setAdminMenuId(adminMenuId === p.id ? null : p.id); }}
-                      className="cursor-pointer rounded p-0.5 transition-all hover:bg-[var(--color-dark-card)]"
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded transition-all hover:bg-[var(--color-dark-card)]"
                       style={{ color: "var(--color-text-muted)" }}
                       title="Admin actions"
+                      aria-label={`Admin actions for ${p.name}`}
+                      aria-expanded={adminMenuId === p.id}
                     >
                       <MoreVertical size={14} />
                     </button>
@@ -200,32 +203,32 @@ export function PeoplePanel({
               {/* Admin actions menu */}
               {adminMenuId === p.id && isAdmin && !isMe && (
                 <div
-                  className="ml-9 flex flex-wrap gap-1 rounded-lg px-2 py-1.5"
+                  className="ml-9 flex flex-wrap items-center gap-2 rounded-lg px-2 py-2"
                   style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {onRemoveFromQueue && queuePos ? (
                     <button
                       onClick={() => { onRemoveFromQueue(p.id); setAdminMenuId(null); }}
-                      className="cursor-pointer rounded px-2.5 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+                      className="min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
                       style={{ background: "var(--color-dark-surface)", color: "var(--color-text-secondary)" }}
                     >
                       Remove from queue
                     </button>
                   ) : null}
                   <button
-                    onClick={() => { onKick?.(p.id); setAdminMenuId(null); }}
-                    className="cursor-pointer rounded px-2.5 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-                    style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
-                  >
-                    Kick
-                  </button>
-                  <button
                     onClick={() => { onTransferAdmin?.(p.id); setAdminMenuId(null); }}
-                    className="cursor-pointer rounded px-2.5 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
+                    className="min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
                     style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
                   >
                     Make Admin
+                  </button>
+                  <button
+                    onClick={() => setKickTarget({ id: p.id, name: p.name })}
+                    className="ml-auto min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
+                    style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
+                  >
+                    Kick
                   </button>
                 </div>
               )}
@@ -346,6 +349,66 @@ export function PeoplePanel({
         )}
         </div>
       </section>}
+
+      {kickTarget && onKick ? (
+        <KickConfirm
+          name={kickTarget.name}
+          onCancel={() => setKickTarget(null)}
+          onConfirm={() => { onKick(kickTarget.id); setKickTarget(null); setAdminMenuId(null); }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function KickConfirm({
+  name,
+  onCancel,
+  onConfirm,
+}: {
+  name: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel} />
+      <div
+        className="fixed left-1/2 top-1/2 z-50 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Remove someone from the room"
+        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
+      >
+        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+          Kick {name}?
+        </p>
+        <p className="mt-1.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
+          They leave the room right away, drop out of the queue, and cannot rejoin this room from that device.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-xs font-semibold transition-all hover:brightness-110"
+            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="min-h-10 cursor-pointer rounded-lg px-3 py-2 text-xs font-bold transition-all hover:brightness-110"
+            style={{ fontFamily: "var(--font-display)", background: "var(--color-danger)", color: "#fff" }}
+          >
+            Kick
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

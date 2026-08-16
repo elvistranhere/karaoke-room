@@ -165,6 +165,11 @@ export function useLiveKit({
   const effectWetDryRef = useRef(0.5); // synchronous value for active audio chains
 
   const tokenRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The hook owns the elements it appended: LiveKit empties attachedElements before
+  // it emits TrackUnsubscribed, so track.detach() can no longer find them.
+  const remoteAudioElsRef = useRef(new Map<string, HTMLAudioElement>());
+  const micCheckGenRef = useRef(0);
+  const mixOwnsMicRef = useRef(false);
 
   // --- Connect to LiveKit room ---
 
@@ -221,6 +226,9 @@ export function useLiveKit({
         if (selectedOutputRef.current && typeof el.setSinkId === "function") {
           void el.setSinkId(selectedOutputRef.current).catch(() => {});
         }
+        const stale = remoteAudioElsRef.current.get(pub.trackSid);
+        if (stale && stale !== el) stale.remove();
+        remoteAudioElsRef.current.set(pub.trackSid, el);
         document.body.appendChild(el);
         // Force play — may fail due to autoplay policy, but startAudio handles that
         el.play().catch(() => {
@@ -243,8 +251,11 @@ export function useLiveKit({
         if (track.kind !== Track.Kind.Audio) return;
         console.log("[LiveKit] Unsubscribed audio from", participant.identity);
         mixer.detach(pub.trackSid);
-        for (const el of track.detach()) {
-          el.remove();
+        const owned = remoteAudioElsRef.current.get(pub.trackSid);
+        if (owned) {
+          track.detach(owned);
+          owned.remove();
+          remoteAudioElsRef.current.delete(pub.trackSid);
         }
       },
     );
@@ -340,9 +351,11 @@ export function useLiveKit({
 
         // Resume audio context so remote audio plays without needing mic toggle.
         // Browsers block autoplay — also retried via manual click/keydown listeners below.
+        // startAudio unmutes every attached element, so the mixer has to re-assert
+        // its element state afterwards or each remote voice plays twice.
         room.startAudio().catch((e) => {
           console.warn("[LiveKit] startAudio failed (will retry on user click):", e);
-        });
+        }).finally(() => mixer.syncElements());
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : "Connection failed";
@@ -386,7 +399,10 @@ export function useLiveKit({
         document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
           if (el.paused) el.play().catch(() => {});
         });
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => {
+        // startAudio sets muted = false on every attached element
+        mixer.syncElements();
+      });
       // Also try immediately
       document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
         if (el.paused) el.play().catch(() => {});
@@ -408,9 +424,13 @@ export function useLiveKit({
       document.removeEventListener("keydown", resumeAudio);
       document.removeEventListener("touchstart", resumeAudio);
       document.removeEventListener("visibilitychange", resumeOnVisible);
-      // Abort any in-progress mic check and restore remote audio
+      // Abort any in-progress mic check and restore remote audio. Bumping the
+      // generation also cancels a check still waiting on getUserMedia.
+      micCheckGenRef.current++;
+      micCheckInFlightRef.current = false;
       micCheckAbortRef.current?.();
       micCheckAbortRef.current = null;
+      micCheckRestoreMicRef.current = false;
       if (micErrorTimerRef.current) { clearTimeout(micErrorTimerRef.current); micErrorTimerRef.current = null; }
       mixer.destroy();
       // Clean up mix context if active
@@ -418,6 +438,7 @@ export function useLiveKit({
         void room.localParticipant?.unpublishTrack(mixPubRef.current.track);
       }
       mixPubRef.current = null;
+      mixOwnsMicRef.current = false;
       mixMicSourceRef.current?.disconnect();
       mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
       mixMicStreamRef.current = null; setMixMicStreamState(null);
@@ -432,6 +453,7 @@ export function useLiveKit({
       if (tokenRefreshRef.current) { clearInterval(tokenRefreshRef.current); tokenRefreshRef.current = null; }
       // Remove all remote audio elements to prevent duplicates on reconnect
       document.querySelectorAll('audio[id^="lk-audio-"]').forEach((el) => el.remove());
+      remoteAudioElsRef.current.clear();
       room.disconnect();
       roomRef.current = null;
       setIsConnected(false);
@@ -454,6 +476,7 @@ export function useLiveKit({
 
     // If mix is active, re-capture the mic from the new device
     if (mixPubRef.current && mixMicStreamRef.current) {
+      const ctx = mixCtxRef.current;
       void (async () => {
         try {
           const nc = singingNCRef.current;
@@ -468,11 +491,17 @@ export function useLiveKit({
             },
           });
 
+          // The mix can be torn down while getUserMedia is pending: without this the
+          // fresh capture is parked in a ref nobody stops and the mic stays open.
+          if (mixCtxRef.current !== ctx || !mixPubRef.current) {
+            newStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+
           mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
           mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
           mixMicSourceRef.current?.disconnect();
-          const ctx = mixCtxRef.current;
           const chain = effectChainRef.current;
           const gain = mixMicGainRef.current;
           if (ctx) {
@@ -506,8 +535,9 @@ export function useLiveKit({
     if (prevMicModeRef.current === micMode) return;
 
     const room = roomRef.current;
-    // Skip if mix is active — mix already uses raw mode
-    if (!room || !isConnected || !isMicEnabled || mixPubRef.current) {
+    // Skip if the mix owns the mic (it already uses raw mode) or a mic check is
+    // running: republishing there would put a live managed mic back in the room.
+    if (!room || !isConnected || !isMicEnabled || mixOwnsMicRef.current || micCheckAbortRef.current) {
       // Still update ref so we don't re-fire when the guard clears
       prevMicModeRef.current = micMode;
       return;
@@ -554,7 +584,9 @@ export function useLiveKit({
 
     const activeProfileChanged = micMode === "voice" ? talkingChanged : singingChanged;
     const room = roomRef.current;
-    if (!activeProfileChanged || !room || !isConnected || !isMicEnabled || mixPubRef.current) return;
+    // A running mic check has muted the managed mic on purpose: stopMicCheck syncs
+    // the new NC to the room when it restores it.
+    if (!activeProfileChanged || !room || !isConnected || !isMicEnabled || mixOwnsMicRef.current || micCheckAbortRef.current) return;
 
     const isRaw = micMode === "raw";
     const nc = isRaw ? singingNC : talkingNC;
@@ -587,6 +619,7 @@ export function useLiveKit({
     if (!mixPubRef.current || !mixMicStreamRef.current || !mixCtxRef.current) return;
 
     console.log("[LiveKit] Hot-swapping NC while singing:", singingNC ? "ON" : "OFF");
+    const ctx = mixCtxRef.current;
     void (async () => {
       try {
         const nc = singingNC;
@@ -601,13 +634,19 @@ export function useLiveKit({
           },
         });
 
+        // The turn can end while getUserMedia is pending; the fresh capture would
+        // otherwise stay open with nothing left holding a reference to it.
+        if (mixCtxRef.current !== ctx || !mixPubRef.current) {
+          newStream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         // Stop old mic stream
         mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
         mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
         // Reconnect in the Web Audio graph
         mixMicSourceRef.current?.disconnect();
-        const ctx = mixCtxRef.current;
         const chain = effectChainRef.current;
         if (ctx && chain) {
           const newSource = ctx.createMediaStreamSource(newStream);
@@ -668,8 +707,26 @@ export function useLiveKit({
     mixer.setDuck(1);
   }, [mixer]);
 
+  // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
+  const syncNCToRoom = useCallback(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    const isRaw = micModeRef.current === "raw";
+    const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
+    room.options.audioCaptureDefaults = {
+      ...room.options.audioCaptureDefaults,
+      echoCancellation: nc,
+      noiseSuppression: nc,
+      autoGainControl: nc,
+    };
+  }, []);
+
   // Stop any active mic check monitoring
   const stopMicCheck = useCallback(() => {
+    // Cancels a check still waiting on getUserMedia: it checks the generation
+    // before it arms anything.
+    micCheckGenRef.current++;
+    micCheckInFlightRef.current = false;
     if (micCheckErrorTimerRef.current) {
       clearTimeout(micCheckErrorTimerRef.current);
       micCheckErrorTimerRef.current = null;
@@ -684,12 +741,15 @@ export function useLiveKit({
     if (micCheckRestoreMicRef.current) {
       micCheckRestoreMicRef.current = false;
       const room = roomRef.current;
-      if (room && isMicEnabledRef.current) {
+      // The singing mix carries the voice while it is live: re-enabling the managed
+      // mic here would publish a second, raw copy of the singer.
+      if (room && isMicEnabledRef.current && !mixOwnsMicRef.current) {
+        syncNCToRoom();
         void room.localParticipant.setMicrophoneEnabled(true).catch(() => {});
       }
     }
     setMicCheckState("idle");
-  }, [restoreRemoteAudio]);
+  }, [restoreRemoteAudio, syncNCToRoom]);
 
   // A private check must not reach the room: silence the published paths and
   // remember what to restore. Runs after the loopback capture succeeds.
@@ -698,6 +758,9 @@ export function useLiveKit({
       micCheckPrevMixGainRef.current = mixMicGainRef.current.gain.value;
       mixMicGainRef.current.gain.value = 0;
     }
+    // While singing, the zeroed mix gain is the isolation: the managed mic is
+    // already muted and must stay that way.
+    if (mixOwnsMicRef.current) return;
     const room = roomRef.current;
     if (room && isMicEnabledRef.current && !micCheckRestoreMicRef.current) {
       micCheckRestoreMicRef.current = true;
@@ -723,6 +786,7 @@ export function useLiveKit({
     if (micCheckState !== "idle" && micCheckState !== "error") return;
     if (micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
+    const gen = ++micCheckGenRef.current;
     if (micCheckErrorTimerRef.current) {
       clearTimeout(micCheckErrorTimerRef.current);
       micCheckErrorTimerRef.current = null;
@@ -738,6 +802,12 @@ export function useLiveKit({
           channelCount: 1,
         },
       });
+      // Cancelled while the permission prompt was up: arming now would duck the
+      // room and hold the mic with no UI left to stop it.
+      if (gen !== micCheckGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const track = stream.getAudioTracks()[0];
       if (!track) { micCheckInFlightRef.current = false; return; }
 
@@ -749,6 +819,11 @@ export function useLiveKit({
       source.connect(gain);
       gain.connect(ctx.destination);
       if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (gen !== micCheckGenRef.current) {
+        track.stop();
+        void ctx.close();
+        return;
+      }
       if (ctx.state === "suspended") {
         track.stop();
         void ctx.close();
@@ -803,6 +878,7 @@ export function useLiveKit({
     if (micCheckState !== "idle" && micCheckState !== "error") return;
     if (micCheckInFlightRef.current) return;
     micCheckInFlightRef.current = true;
+    const gen = ++micCheckGenRef.current;
     if (micCheckErrorTimerRef.current) {
       clearTimeout(micCheckErrorTimerRef.current);
       micCheckErrorTimerRef.current = null;
@@ -819,6 +895,12 @@ export function useLiveKit({
           sampleRate: 48000,
         },
       });
+      // Cancelled while the permission prompt was up: arming now would silence the
+      // singing mix and duck the room with no UI left to stop it.
+      if (gen !== micCheckGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const rawTrack = stream.getAudioTracks()[0];
       if (!rawTrack) { micCheckInFlightRef.current = false; return; }
 
@@ -833,6 +915,12 @@ export function useLiveKit({
       chain.output.connect(gain);
       gain.connect(ctx.destination);
       if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (gen !== micCheckGenRef.current) {
+        rawTrack.stop();
+        chain.cleanup();
+        void ctx.close();
+        return;
+      }
       if (ctx.state === "suspended") {
         rawTrack.stop();
         chain.cleanup();
@@ -905,6 +993,13 @@ export function useLiveKit({
           },
         });
 
+        // The check can be stopped mid-capture: the old refs are already null, so
+        // parking the new stream there would leave the mic open with no owner.
+        if (micCheckCtxRef.current !== ctx) {
+          newStream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         // Stop old mic stream
         micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
         micCheckStreamRef.current = newStream;
@@ -946,6 +1041,13 @@ export function useLiveKit({
             sampleRate: 48000,
           },
         });
+
+        // The check can be stopped mid-capture: the old refs are already null, so
+        // parking the new stream there would leave the mic open with no owner.
+        if (micCheckCtxRef.current !== ctx) {
+          newStream.getTracks().forEach((t) => t.stop());
+          return;
+        }
 
         // Stop old mic stream
         micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -989,10 +1091,36 @@ export function useLiveKit({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceEffect]);
 
+  // Backgrounding the tab interrupts the mic check AudioContext and it cannot be
+  // resumed off a gesture on iOS, so stop the check instead of leaving the room
+  // ducked, the music at 0 and the mic held by dead monitoring.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (!micCheckAbortRef.current && !micCheckInFlightRef.current) return;
+      stopMicCheck();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => document.removeEventListener("visibilitychange", onHidden);
+  }, [stopMicCheck]);
+
   // --- Microphone ---
 
   const isTogglingMicRef = useRef(false);
   const micErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const detachMicFromMix = useCallback(() => {
+    if (!mixMicStreamRef.current) return;
+    effectChainRef.current?.cleanup();
+    effectChainRef.current = null;
+    mixMicSourceRef.current?.disconnect();
+    mixMicSourceRef.current = null;
+    mixMicGainRef.current?.disconnect();
+    mixMicGainRef.current = null;
+    mixMicStreamRef.current.getTracks().forEach((t) => t.stop());
+    mixMicStreamRef.current = null; setMixMicStreamState(null);
+  }, []);
+
   const toggleMic = useCallback(async () => {
     const room = roomRef.current;
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
@@ -1002,9 +1130,14 @@ export function useLiveKit({
     try {
       console.log("[LiveKit] Setting mic enabled:", newState);
 
-      // If the singing mix is live, add/remove mic there instead of the LiveKit managed mic
-      if (mixPubRef.current && mixCtxRef.current && mixDestRef.current) {
-        if (newState && !mixMicStreamRef.current) {
+      // If the mix owns the mic, add/remove it there instead of the LiveKit managed
+      // mic. mixOwnsMicRef, not mixPubRef: startSinging claims the mic before its
+      // awaits, so a toggle mid-promotion cannot re-arm the managed mic on top.
+      if (mixOwnsMicRef.current) {
+        if (!mixCtxRef.current || !mixDestRef.current || !mixPubRef.current) {
+          // startSinging is still building the pipeline; it reconciles this state
+          isMicEnabledRef.current = newState;
+        } else if (newState && !mixMicStreamRef.current) {
           // Add mic to mix
           const nc = singingNCRef.current;
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -1037,16 +1170,7 @@ export function useLiveKit({
 
           console.log("[LiveKit] Mic added to mix on the fly");
         } else if (!newState && mixMicStreamRef.current) {
-          // Remove mic from mix
-          effectChainRef.current?.cleanup();
-          effectChainRef.current = null;
-          mixMicSourceRef.current?.disconnect();
-          mixMicSourceRef.current = null;
-          mixMicGainRef.current?.disconnect();
-          mixMicGainRef.current = null;
-          mixMicStreamRef.current.getTracks().forEach((t) => t.stop());
-          mixMicStreamRef.current = null; setMixMicStreamState(null);
-
+          detachMicFromMix();
           console.log("[LiveKit] Mic removed from mix on the fly");
         }
         setIsMicEnabled(newState);
@@ -1078,7 +1202,7 @@ export function useLiveKit({
     } finally {
       isTogglingMicRef.current = false;
     }
-  }, [selectedInputDeviceId]);
+  }, [selectedInputDeviceId, detachMicFromMix]);
 
   // Force mute/unmute - used by mute-all to handle both the singing and idle paths.
   // Unlike toggleMic, this sets a specific state rather than toggling.
@@ -1093,6 +1217,7 @@ export function useLiveKit({
   // published as one LiveKit track. Music is played locally by every client.
 
   const cleanupMix = useCallback(() => {
+    mixOwnsMicRef.current = false;
     effectChainRef.current?.cleanup();
     effectChainRef.current = null;
     mixMicSourceRef.current?.disconnect();
@@ -1105,20 +1230,6 @@ export function useLiveKit({
       void mixCtxRef.current?.close();
     }
     mixCtxRef.current = null;
-  }, []);
-
-  // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
-  const syncNCToRoom = useCallback(() => {
-    const room = roomRef.current;
-    if (!room) return;
-    const isRaw = micModeRef.current === "raw";
-    const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
-    room.options.audioCaptureDefaults = {
-      ...room.options.audioCaptureDefaults,
-      echoCancellation: nc,
-      noiseSuppression: nc,
-      autoGainControl: nc,
-    };
   }, []);
 
   // Expose the published voice gain so the singer can set their own level
@@ -1176,6 +1287,9 @@ export function useLiveKit({
     }
 
     isSingingInFlightRef.current = true;
+    // Claimed before the first await so no other path re-arms the managed mic
+    // while the pipeline is still being built.
+    mixOwnsMicRef.current = true;
     try {
       // Auto-enable the mic when taking the stage so the singer can be heard.
       // They can still mute afterwards.
@@ -1234,6 +1348,8 @@ export function useLiveKit({
       console.log("[LiveKit] Voice track published!", pub.trackSid);
 
       mixPubRef.current = pub;
+      // A mute that landed while the pipeline was building only moved the flag
+      if (!isMicEnabledRef.current) detachMicFromMix();
       setIsSinging(true);
       setSingingError(null);
     } catch (err) {
@@ -1256,7 +1372,7 @@ export function useLiveKit({
     } finally {
       isSingingInFlightRef.current = false;
     }
-  }, [selectedInputDeviceId, cleanupMix, syncNCToRoom]);
+  }, [selectedInputDeviceId, cleanupMix, syncNCToRoom, detachMicFromMix]);
 
   const stopSinging = useCallback(() => {
     const room = roomRef.current;
@@ -1273,6 +1389,13 @@ export function useLiveKit({
     setIsSinging(false);
     setSingingError(null);
 
+    // A mic check outlives the turn: leave the managed mic muted and hand the
+    // restore to stopMicCheck, or the room hears the private check.
+    if (micCheckAbortRef.current) {
+      micCheckRestoreMicRef.current = isMicEnabledRef.current;
+      return;
+    }
+
     // Restore managed mic with current NC settings
     syncNCToRoom();
     if (room && isMicEnabledRef.current) {
@@ -1286,12 +1409,11 @@ export function useLiveKit({
   useEffect(() => {
     if (isMyTurn && !isSinging && !isSingingInFlightRef.current) {
       // A leftover loopback would be re-captured by the live mic and heard by the room.
-      // Skip the managed-mic restore: startSinging owns the mic state from here and a
-      // late async re-enable would race its disable.
-      if (micCheckAbortRef.current) {
-        micCheckRestoreMicRef.current = false;
-        stopMicCheck();
-      }
+      // Unconditional: a check still waiting on getUserMedia has no abort yet, and it
+      // would arm itself mid-song. Skip the managed-mic restore too - startSinging owns
+      // the mic state from here and a late async re-enable would race its disable.
+      micCheckRestoreMicRef.current = false;
+      stopMicCheck();
       void startSinging();
     }
     if (!isMyTurn && isSinging) {

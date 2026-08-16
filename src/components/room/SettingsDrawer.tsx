@@ -108,7 +108,7 @@ export function SettingsDrawer({
           animation: "slide-in-right 0.2s ease-out",
         }}
       >
-        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--color-dark-border)" }}>
+        <div className="flex items-center justify-between border-b px-5 pb-4 pt-[max(env(safe-area-inset-top),1rem)]" style={{ borderColor: "var(--color-dark-border)" }}>
           <h2
             className="text-lg font-medium"
             style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
@@ -117,7 +117,8 @@ export function SettingsDrawer({
           </h2>
           <button
             onClick={onClose}
-            className="cursor-pointer rounded-lg p-1.5 text-sm transition-all hover:bg-[var(--color-dark-card)]"
+            aria-label="Close settings"
+            className="flex size-10 cursor-pointer items-center justify-center rounded-lg text-sm transition-all hover:bg-[var(--color-dark-card)]"
             style={{ color: "var(--color-text-muted)" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -126,7 +127,7 @@ export function SettingsDrawer({
           </button>
         </div>
 
-        <div className="flex-1 space-y-6 overflow-auto p-5">
+        <div className="flex-1 space-y-6 overflow-auto p-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
           {onRename ? (
             <section>
               <label htmlFor="display-name" className="mb-2 block text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
@@ -181,7 +182,7 @@ export function SettingsDrawer({
             ) : null}
             <button
               onClick={onResetPeopleVolumes}
-              className="mt-3 cursor-pointer text-[11px] font-medium underline-offset-2 transition-all hover:underline"
+              className="mt-1 inline-flex min-h-10 cursor-pointer items-center py-2 text-[11px] font-medium underline-offset-2 transition-all hover:underline"
               style={{ color: "var(--color-text-secondary)" }}
             >
               Reset all per-person volumes
@@ -242,7 +243,7 @@ export function SettingsDrawer({
                   aria-checked={isPublic}
                   aria-label="Show this room in Browse"
                   onClick={() => onSetPublic(!isPublic)}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                  className="flex min-h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
                 >
                   <span className="text-[10px] font-medium" style={{ color: isPublic ? "var(--color-primary)" : "var(--color-text-muted)" }}>
                     {isPublic ? "Public" : "Private"}

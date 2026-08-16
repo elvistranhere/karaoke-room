@@ -48,7 +48,7 @@ export default function BrowsePage() {
   }, [fetchRooms]);
 
   return (
-    <main className="relative flex min-h-dvh flex-col items-center overflow-hidden px-4 py-10">
+    <main className="relative flex min-h-dvh flex-col items-center overflow-hidden pb-[max(env(safe-area-inset-bottom),2.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] pt-[max(env(safe-area-inset-top),2.5rem)]">
       {/* Background */}
       <div
         className="pointer-events-none absolute -top-60 left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[120px]"
@@ -59,7 +59,7 @@ export default function BrowsePage() {
       <div className="mb-8 w-full max-w-2xl" style={{ animation: "fade-in 0.5s ease-out" }}>
         <button
           onClick={() => router.push("/")}
-          className="mb-4 flex items-center gap-1.5 text-sm transition-colors hover:brightness-125"
+          className="mb-2 flex min-h-10 items-center gap-1.5 py-2 text-sm transition-colors hover:brightness-125"
           style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-display)" }}
         >
           <ArrowLeft size={14} />
@@ -74,7 +74,7 @@ export default function BrowsePage() {
           </h1>
           <button
             onClick={() => void fetchRooms()}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all hover:border-[var(--color-primary)]"
+            className="flex min-h-10 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-all hover:border-[var(--color-primary)]"
             style={{
               borderColor: "var(--color-dark-border)",
               color: "var(--color-text-muted)",

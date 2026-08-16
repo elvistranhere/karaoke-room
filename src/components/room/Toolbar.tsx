@@ -140,7 +140,7 @@ export function Toolbar({
               id="noise-cancellation"
               value={noiseCancellationMode}
               onChange={(event) => onNoiseCancellationModeChange(event.target.value as NoiseCancellationMode)}
-              className="h-8 w-full min-w-28 cursor-pointer appearance-none rounded-lg border pl-8 pr-7 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)]"
+              className="h-10 w-full min-w-28 cursor-pointer appearance-none rounded-lg border pl-8 pr-7 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)] sm:h-8"
               style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
               title="Choose noise cancellation behavior"
             >
@@ -159,7 +159,7 @@ export function Toolbar({
             role="switch"
             aria-checked={echoEnabled}
             onClick={toggleEcho}
-            className="flex h-8 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
+            className="flex h-10 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)] sm:h-8"
             style={{
               background: echoEnabled ? "var(--color-primary-dim)" : "var(--color-dark-card)",
               borderColor: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)",
@@ -187,7 +187,7 @@ export function Toolbar({
           <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Effects</p>
           <button
             onClick={onSoundProfileOpen}
-            className="flex h-8 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)]"
+            className="flex h-10 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)] sm:h-8"
             style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
             title="Open advanced sound effects and settings"
           >

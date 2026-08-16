@@ -406,6 +406,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
   }, [sendSetPublic, roomCode]);
 
+  // These screens unmount the modal that owns the mic check while useLiveKit stays
+  // mounted, so the loopback would keep running with no button left to stop it.
+  useEffect(() => {
+    if (kicked || authRequired) stopMicCheck();
+  }, [kicked, authRequired, stopMicCheck]);
+
   // Kicked state - show banner and stop
   if (kicked) {
     return (
@@ -442,7 +448,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   }
 
   return (
-    <main className="relative flex h-dvh flex-col overflow-hidden">
+    <main className="relative flex h-dvh flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
       <AudioUnlockOverlay onUnlock={() => { createPlayer(); resumeMixer(); }} apiReady={apiReady} />
 
@@ -457,7 +463,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
       {/* Header */}
       <header
-        className="relative z-10 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-3 sm:px-5 lg:px-7"
+        className="relative z-10 flex shrink-0 items-center justify-between gap-2 border-b px-3 pb-3 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-5 lg:px-7"
         style={{ borderColor: "var(--color-dark-border)", background: "color-mix(in srgb, var(--color-dark-surface) 82%, transparent)" }}
       >
         <div className="flex min-w-0 items-center gap-2 sm:gap-4">
@@ -561,7 +567,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
       {/* Main content */}
       <div
-        className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden p-2 lg:flex-row lg:gap-3 lg:p-4 xl:gap-4"
+        className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 lg:flex-row lg:gap-3 lg:px-4 lg:pb-[max(env(safe-area-inset-bottom),1rem)] lg:pt-4 xl:gap-4"
       >
         {/* Mobile section switcher */}
         <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border p-1 lg:hidden" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-surface)" }}>
@@ -573,7 +579,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             <button
               key={item.key}
               onClick={() => setMobileSection(item.key as "stage" | "chat" | "people")}
-              className="rounded-md px-2 py-2 text-xs font-semibold transition-all"
+              className="min-h-10 rounded-md px-2 py-3 text-xs font-semibold transition-all"
               style={{
                 fontFamily: "var(--font-display)",
                 background: mobileSection === item.key ? "var(--color-primary-dim)" : "transparent",

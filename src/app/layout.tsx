@@ -34,6 +34,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#12121a",
   viewportFit: "cover",
+  // The room is h-dvh with no scrollable ancestor, so the layout viewport has to
+  // shrink for the software keyboard or the chat input ends up behind it.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
