@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mic, MicOff, Music, Globe, Crown, MoreVertical, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, Music, Crown, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
 import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/hooks/useVolumeMix";
 import { VolumeSlider } from "./VolumeSlider";
@@ -38,7 +38,6 @@ export function PeoplePanel({
   onRemoveFromQueue,
 }: PeoplePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [adminMenuId, setAdminMenuId] = useState<string | null>(null);
   const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = myPeerId !== null && roomState.adminPeerId === myPeerId;
 
@@ -157,19 +156,8 @@ export function PeoplePanel({
                       #{queuePos}
                     </span>
                   )}
-                  {status?.browser && (
-                    <span className="flex items-center gap-0.5 text-[9px]" style={{ color: "var(--color-text-muted)", opacity: 0.6 }}>
-                      <Globe size={9} />
-                      {status.browser}
-                    </span>
-                  )}
-                  {status && (
-                    status.isMuted
-                      ? <MicOff size={12} style={{ color: "var(--color-text-muted)", opacity: 0.5 }} />
-                      : <Mic size={12} style={{ color: "var(--color-primary)" }} />
-                  )}
-                  {status?.isSharingAudio && (
-                    <Music size={12} style={{ color: "var(--color-accent)" }} />
+                  {status?.isMuted && (
+                    <MicOff size={12} style={{ color: "var(--color-text-muted)", opacity: 0.6 }} aria-label={`${p.name} is muted`} />
                   )}
                   {status?.isDeafened && (
                     <HeadphoneOff size={12} style={{ color: "var(--color-text-muted)" }} aria-label={`${p.name} has sound off`} />
@@ -185,53 +173,9 @@ export function PeoplePanel({
                       {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                     </button>
                   )}
-                  {isAdmin && !isMe && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setAdminMenuId(adminMenuId === p.id ? null : p.id); }}
-                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded transition-all hover:bg-[var(--color-dark-card)]"
-                      style={{ color: "var(--color-text-muted)" }}
-                      title="Admin actions"
-                      aria-label={`Admin actions for ${p.name}`}
-                      aria-expanded={adminMenuId === p.id}
-                    >
-                      <MoreVertical size={14} />
-                    </button>
-                  )}
                 </div>
               </div>
 
-              {/* Admin actions menu */}
-              {adminMenuId === p.id && isAdmin && !isMe && (
-                <div
-                  className="ml-9 flex flex-wrap items-center gap-2 rounded-lg px-2 py-2"
-                  style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {onRemoveFromQueue && queuePos ? (
-                    <button
-                      onClick={() => { onRemoveFromQueue(p.id); setAdminMenuId(null); }}
-                      className="min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
-                      style={{ background: "var(--color-dark-surface)", color: "var(--color-text-secondary)" }}
-                    >
-                      Remove from queue
-                    </button>
-                  ) : null}
-                  <button
-                    onClick={() => { onTransferAdmin?.(p.id); setAdminMenuId(null); }}
-                    className="min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
-                    style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
-                  >
-                    Make Admin
-                  </button>
-                  <button
-                    onClick={() => setKickTarget({ id: p.id, name: p.name })}
-                    className="ml-auto min-h-10 cursor-pointer rounded px-3 py-2 text-[11px] font-medium transition-all hover:brightness-110"
-                    style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
-                  >
-                    Kick
-                  </button>
-                </div>
-              )}
 
               {/* Per-person volume slider */}
               {isExpanded && (
@@ -269,6 +213,34 @@ export function PeoplePanel({
                         : "Their level while chatting. Kept apart from their stage level."}
                     {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
                   </p>
+                  {isAdmin && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-dark-border)" }}>
+                      <button
+                        onClick={() => onTransferAdmin?.(p.id)}
+                        className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-primary-dim)]"
+                        style={{ color: "var(--color-primary)" }}
+                      >
+                        <Crown size={12} />
+                        Make host
+                      </button>
+                      {onRemoveFromQueue && queuePos ? (
+                        <button
+                          onClick={() => onRemoveFromQueue(p.id)}
+                          className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-white/5"
+                          style={{ color: "var(--color-text-secondary)" }}
+                        >
+                          Remove from queue
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => setKickTarget({ id: p.id, name: p.name })}
+                        className="ml-auto flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-danger-dim)]"
+                        style={{ color: "var(--color-danger)" }}
+                      >
+                        Kick
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </li>
@@ -354,7 +326,7 @@ export function PeoplePanel({
         <KickConfirm
           name={kickTarget.name}
           onCancel={() => setKickTarget(null)}
-          onConfirm={() => { onKick(kickTarget.id); setKickTarget(null); setAdminMenuId(null); }}
+          onConfirm={() => { onKick(kickTarget.id); setKickTarget(null); }}
         />
       ) : null}
     </div>

@@ -21,6 +21,8 @@ interface ToolbarProps {
   onToggleDeafen: () => void;
 }
 
+const METER_BARS = [0.4, 0.65, 1, 0.65, 0.4];
+
 export function Toolbar({
   room,
   isMicEnabled,
@@ -42,7 +44,6 @@ export function Toolbar({
       onVoiceEffectChange("none");
       return;
     }
-
     onEffectWetDry(0.2);
     onVoiceEffectChange("echo");
   };
@@ -52,7 +53,6 @@ export function Toolbar({
       setMicLevel(0);
       return;
     }
-
     const updateLevel = () => {
       const liveLevel = Math.min(1, Math.max(0, room.localParticipant.audioLevel || 0));
       setMicLevel((previous) => previous * 0.55 + liveLevel * 0.45);
@@ -62,35 +62,37 @@ export function Toolbar({
     return () => window.clearInterval(interval);
   }, [room, isMicEnabled]);
 
-  const meterBars = [0.35, 0.55, 0.78, 1, 0.78, 0.55, 0.35];
-
   return (
     <div
-      className="flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 sm:gap-4"
-      style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
+      className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-[20px] border px-3 py-2.5"
+      style={{
+        background: "var(--color-dark-surface)",
+        borderColor: "var(--color-dark-border)",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.03) inset",
+      }}
     >
       <button
         onClick={toggleMic}
         disabled={deafened}
-        className={`flex size-14 shrink-0 items-center justify-center rounded-full transition-all duration-150 sm:size-16 ${deafened ? "cursor-not-allowed" : "cursor-pointer hover:scale-105 active:scale-95"}`}
+        className={`flex size-12 shrink-0 items-center justify-center rounded-full transition-[transform,background-color,box-shadow] duration-150 ${deafened ? "cursor-not-allowed" : "cursor-pointer hover:scale-105 active:scale-[0.97]"}`}
         style={{
           background: isMicEnabled ? "#c9a7ff" : "var(--color-dark-card)",
           color: isMicEnabled ? "#4c00af" : "var(--color-text-muted)",
           border: isMicEnabled ? "none" : "1px solid var(--color-dark-border)",
-          boxShadow: isMicEnabled ? "0 8px 24px rgba(166, 110, 255, 0.18)" : "none",
+          boxShadow: isMicEnabled ? "0 6px 20px rgba(166, 110, 255, 0.22)" : "none",
           opacity: deafened ? 0.5 : 1,
         }}
         title={deafened ? "Turn sound back on to use your mic" : isMicEnabled ? "Mute microphone" : "Unmute microphone"}
         aria-label={deafened ? "Turn sound back on to use your mic" : isMicEnabled ? "Mute microphone" : "Unmute microphone"}
       >
-        {isMicEnabled ? <Mic className="size-6 sm:size-7" strokeWidth={2.3} /> : <MicOff className="size-6 sm:size-7" strokeWidth={2.3} />}
+        {isMicEnabled ? <Mic className="size-5" strokeWidth={2.3} /> : <MicOff className="size-5" strokeWidth={2.3} />}
       </button>
 
       <button
         onClick={onToggleDeafen}
         role="switch"
         aria-checked={deafened}
-        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 sm:size-16"
+        className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[transform,background-color] duration-150 hover:scale-105 active:scale-[0.97]"
         style={{
           background: deafened ? "var(--color-danger-dim)" : "var(--color-dark-card)",
           color: deafened ? "var(--color-danger)" : "var(--color-text-muted)",
@@ -99,11 +101,11 @@ export function Toolbar({
         title={deafened ? "Turn sound back on" : "Turn off all sound and your mic"}
         aria-label={deafened ? "Turn sound back on" : "Turn off all sound and your mic"}
       >
-        {deafened ? <HeadphoneOff className="size-6 sm:size-7" strokeWidth={2.3} /> : <Headphones className="size-6 sm:size-7" strokeWidth={2.3} />}
+        {deafened ? <HeadphoneOff className="size-5" strokeWidth={2.3} /> : <Headphones className="size-5" strokeWidth={2.3} />}
       </button>
 
       <div
-        className="hidden h-10 items-center gap-1 md:flex"
+        className="hidden h-8 w-9 items-end justify-center gap-[3px] pb-1.5 md:flex"
         role="meter"
         aria-label="Live microphone level"
         aria-valuemin={0}
@@ -111,12 +113,12 @@ export function Toolbar({
         aria-valuenow={Math.round(micLevel * 100)}
         title={isMicEnabled ? `Microphone level ${Math.round(micLevel * 100)}%` : "Microphone muted"}
       >
-        {meterBars.map((shape, index) => (
+        {METER_BARS.map((shape, index) => (
           <span
-            key={`${shape}-${index}`}
-            className="w-0.5 rounded-full"
+            key={index}
+            className="w-[3px] rounded-full"
             style={{
-              height: `${Math.max(5, Math.min(38, 5 + micLevel * 40 * shape))}px`,
+              height: `${Math.max(4, Math.min(20, 4 + micLevel * 22 * shape))}px`,
               background: isMicEnabled ? "#b78cff" : "var(--color-text-muted)",
               opacity: isMicEnabled ? 0.55 + micLevel * 0.45 : 0.25,
               transition: "height 90ms ease-out, opacity 120ms ease-out",
@@ -125,77 +127,60 @@ export function Toolbar({
         ))}
       </div>
 
-      <div className="hidden h-10 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
+      <div className="h-8 w-px shrink-0" style={{ background: "var(--color-dark-border)" }} />
 
-      <div className="flex-1" />
-
-      <div className="grid w-full grid-cols-3 gap-2 border-t pt-3 sm:flex sm:w-auto sm:border-0 sm:pt-0" style={{ borderColor: "var(--color-dark-border)" }}>
-        <div className="min-w-0">
-          <label htmlFor="noise-cancellation" className="mb-1.5 block truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
-            Noise cancellation
-          </label>
-          <div className="relative">
-            <Waves className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" size={13} style={{ color: "#c9a7ff" }} />
-            <select
-              id="noise-cancellation"
-              value={noiseCancellationMode}
-              onChange={(event) => onNoiseCancellationModeChange(event.target.value as NoiseCancellationMode)}
-              className="h-10 w-full min-w-28 cursor-pointer appearance-none rounded-lg border pl-8 pr-7 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)] sm:h-8"
-              style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-              title="Choose noise cancellation behavior"
-            >
-              <option value="auto">Auto</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>⌄</span>
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Echo</p>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={echoEnabled}
-            onClick={toggleEcho}
-            className="flex h-10 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)] sm:h-8"
-            style={{
-              background: echoEnabled ? "var(--color-primary-dim)" : "var(--color-dark-card)",
-              borderColor: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)",
-              color: echoEnabled ? "#d7bbff" : "var(--color-text-primary)",
-            }}
-            title="Toggle a 20% echo effect"
-          >
-            <span className="flex items-center gap-1.5">
-              <AudioLines size={13} style={{ color: echoEnabled ? "#c9a7ff" : "var(--color-text-muted)" }} />
-              <span>{echoEnabled ? "On" : "Off"}</span>
-            </span>
-            <span
-              className="relative h-4 w-7 rounded-full transition-colors"
-              style={{ background: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)" }}
-            >
-              <span
-                className="absolute top-0.5 size-3 rounded-full bg-white transition-transform"
-                style={{ left: 2, transform: echoEnabled ? "translateX(12px)" : "translateX(0)" }}
-              />
-            </span>
-          </button>
-        </div>
-
-        <div className="min-w-0">
-          <p className="mb-1.5 truncate text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>Effects</p>
-          <button
-            onClick={onSoundProfileOpen}
-            className="flex h-10 w-full min-w-24 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors hover:border-[var(--color-primary)] sm:h-8"
-            style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-            title="Open advanced sound effects and settings"
-          >
-            <span>Advanced</span>
-            <Settings size={12} style={{ color: "var(--color-text-muted)" }} />
-          </button>
-        </div>
+      <div className="relative shrink-0" title="Noise cancellation">
+        <Waves className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" size={13} style={{ color: "#c9a7ff" }} />
+        <select
+          id="noise-cancellation"
+          aria-label="Noise cancellation"
+          value={noiseCancellationMode}
+          onChange={(event) => onNoiseCancellationModeChange(event.target.value as NoiseCancellationMode)}
+          className="h-10 w-[104px] cursor-pointer appearance-none rounded-xl border pl-8 pr-6 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)]"
+          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+        >
+          <option value="auto">NC Auto</option>
+          <option value="on">NC On</option>
+          <option value="off">NC Off</option>
+        </select>
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>⌄</span>
       </div>
+
+      <button
+        type="button"
+        role="switch"
+        aria-checked={echoEnabled}
+        onClick={toggleEcho}
+        className="flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs transition-colors hover:border-[var(--color-primary)] active:scale-[0.97]"
+        style={{
+          background: echoEnabled ? "var(--color-primary-dim)" : "var(--color-dark-card)",
+          borderColor: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)",
+          color: echoEnabled ? "#d7bbff" : "var(--color-text-primary)",
+        }}
+        title="Toggle a light echo on your voice"
+      >
+        <AudioLines size={13} style={{ color: echoEnabled ? "#c9a7ff" : "var(--color-text-muted)" }} />
+        <span>Echo</span>
+        <span
+          className="relative h-4 w-7 rounded-full transition-colors"
+          style={{ background: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)" }}
+        >
+          <span
+            className="absolute top-0.5 size-3 rounded-full bg-white transition-transform"
+            style={{ left: 2, transform: echoEnabled ? "translateX(12px)" : "translateX(0)" }}
+          />
+        </span>
+      </button>
+
+      <button
+        onClick={onSoundProfileOpen}
+        className="flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs transition-colors hover:border-[var(--color-primary)] active:scale-[0.97]"
+        style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+        title="Voice effects, mic check, and devices"
+      >
+        <Settings size={13} style={{ color: "var(--color-text-muted)" }} />
+        <span>Effects</span>
+      </button>
     </div>
   );
 }
