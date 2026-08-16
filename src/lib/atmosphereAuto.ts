@@ -31,6 +31,33 @@ function pullToward(hue: number, anchor: number, amount: number): number {
   return wrapHue(hue + delta * amount);
 }
 
+// The palette extracts hues on the HSL wheel, but every token below is oklch, whose
+// hue wheel is rotated (HSL blue 240 reads as oklch teal). Convert through a
+// representative sRGB color so a blue thumbnail actually yields a blue accent.
+export function hslHueToOklchHue(hslHue: number): number {
+  const h = wrapHue(hslHue) / 60;
+  const c = 0.63;
+  const x = c * (1 - Math.abs((h % 2) - 1));
+  const m = 0.235;
+  const sector = Math.floor(h) % 6;
+  const rgb: [number, number, number] = sector === 0 ? [c, x, 0]
+    : sector === 1 ? [x, c, 0]
+    : sector === 2 ? [0, c, x]
+    : sector === 3 ? [0, x, c]
+    : sector === 4 ? [x, 0, c]
+    : [c, 0, x];
+  const [r, g, b] = rgb.map((channel) => {
+    const v = channel + m;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const mm = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const aAxis = 1.9779984951 * l - 2.428592205 * mm + 0.4505937099 * s;
+  const bAxis = 0.0259040371 * l + 0.7827717662 * mm - 0.808675766 * s;
+  return wrapHue((Math.atan2(bAxis, aAxis) * 180) / Math.PI);
+}
+
 function oklch(lightness: number, chroma: number, hue: number): string {
   return `oklch(${lightness.toFixed(3)} ${chroma.toFixed(3)} ${wrapHue(hue).toFixed(1)})`;
 }
@@ -88,7 +115,7 @@ export function avoidDangerHue(hue: number): number {
 }
 
 export function composeAtmosphere(palette: HuePalette | null, preset: GenrePreset): AtmosphereTokens {
-  const sourceHue = palette ? palette.hue : IDLE_HUE;
+  const sourceHue = palette ? hslHueToOklchHue(palette.hue) : IDLE_HUE;
   const sourceChroma = palette ? palette.chroma : IDLE_CHROMA;
   const anchor = preset.warmth >= 0 ? WARM_ANCHOR : COOL_ANCHOR;
   const hue = pullToward(sourceHue, anchor, (Math.abs(preset.warmth) * MAX_ANCHOR_PULL) / 100);

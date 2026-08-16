@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avoidDangerHue, composeAtmosphere, oklchToLinearSrgb } from "./atmosphereAuto";
+import { avoidDangerHue, composeAtmosphere, hslHueToOklchHue, oklchToLinearSrgb } from "./atmosphereAuto";
 import { GENRE_PRESETS } from "./atmosphereGenre";
 
 function hueOf(color: string): number {
@@ -35,10 +35,11 @@ describe("composeAtmosphere", () => {
     }
   });
 
-  it("keeps the thumbnail hue as the anchor of the mesh", () => {
+  it("keeps the converted thumbnail hue as the anchor of the mesh", () => {
     const tokens = composeAtmosphere({ hue: 200, chroma: 0.8 }, GENRE_PRESETS.default);
-    expect(hueOf(tokens.a)).toBeCloseTo(200, 0);
-    expect(hueOf(tokens.glow)).toBeCloseTo(200, 0);
+    const expected = hslHueToOklchHue(200);
+    expect(hueOf(tokens.a)).toBeCloseTo(expected, 0);
+    expect(hueOf(tokens.glow)).toBeCloseTo(expected, 0);
   });
 
   it("spreads the mesh by the preset amount and wraps past 360", () => {
@@ -47,7 +48,7 @@ describe("composeAtmosphere", () => {
     expect(hueOf(tokens.b)).toBeLessThan(360);
     expect(hueOf(tokens.b)).toBeGreaterThanOrEqual(0);
     expect(hueOf(tokens.b)).toBeCloseTo((base + GENRE_PRESETS.dance.spread) % 360, 0);
-    expect(hueOf(tokens.c)).toBeCloseTo(base - GENRE_PRESETS.dance.spread, 0);
+    expect(hueOf(tokens.c)).toBeCloseTo((base - GENRE_PRESETS.dance.spread + 360) % 360, 0);
   });
 
   it("falls back to the idle violet hue without a palette", () => {
@@ -78,13 +79,14 @@ describe("composeAtmosphere", () => {
 
   it("pulls a warm preset toward amber and a cool preset toward blue", () => {
     const palette = { hue: 200, chroma: 0.7 };
-    expect(hueOf(composeAtmosphere(palette, GENRE_PRESETS.folk).a)).toBeLessThan(200);
-    expect(hueOf(composeAtmosphere(palette, GENRE_PRESETS.dance).a)).toBeGreaterThan(200);
+    const base = hslHueToOklchHue(200);
+    expect(hueOf(composeAtmosphere(palette, GENRE_PRESETS.folk).a)).toBeLessThan(base);
+    expect(hueOf(composeAtmosphere(palette, GENRE_PRESETS.dance).a)).toBeGreaterThan(base);
   });
 
   it("locks the accent lightness so contrast never rides on the thumbnail", () => {
-    const dull = composeAtmosphere({ hue: 200, chroma: 0.1 }, GENRE_PRESETS.lofi);
-    const neon = composeAtmosphere({ hue: 200, chroma: 1 }, GENRE_PRESETS.dance);
+    const dull = composeAtmosphere({ hue: 200, chroma: 0.1 }, GENRE_PRESETS.default);
+    const neon = composeAtmosphere({ hue: 200, chroma: 1 }, GENRE_PRESETS.default);
     expect(dull.accent).toMatch(/^oklch\(0\.606 /);
     expect(neon.accent).toMatch(/^oklch\(0\.606 /);
     expect(dull.accentSoft).toMatch(/^oklch\(0\.791 /);
@@ -120,9 +122,9 @@ describe("composeAtmosphere", () => {
     expect(encode(b)).toBeCloseTo(246, -0.5);
   });
 
-  it("keeps the accent on the thumbnail hue when it clears the danger window", () => {
+  it("keeps the accent on the converted thumbnail hue when it clears the danger window", () => {
     expect(avoidDangerHue(200)).toBe(200);
-    expect(hueOf(composeAtmosphere({ hue: 200, chroma: 0.7 }, GENRE_PRESETS.default).accent)).toBeCloseTo(200, 0);
+    expect(hueOf(composeAtmosphere({ hue: 200, chroma: 0.7 }, GENRE_PRESETS.default).accent)).toBeCloseTo(hslHueToOklchHue(200), 0);
   });
 
   it("pushes a hue that lands inside the danger window out to the nearest edge", () => {
@@ -138,5 +140,22 @@ describe("composeAtmosphere", () => {
       const distance = Math.abs(((accentHue - 25 + 540) % 360) - 180);
       expect(distance).toBeGreaterThanOrEqual(18);
     }
+  });
+});
+
+describe("hslHueToOklchHue", () => {
+  it("maps HSL primaries onto the oklch wheel", () => {
+    expect(hslHueToOklchHue(0)).toBeGreaterThan(20);
+    expect(hslHueToOklchHue(0)).toBeLessThan(32);
+    expect(hslHueToOklchHue(120)).toBeGreaterThan(135);
+    expect(hslHueToOklchHue(120)).toBeLessThan(150);
+    expect(hslHueToOklchHue(240)).toBeGreaterThan(258);
+    expect(hslHueToOklchHue(240)).toBeLessThan(280);
+  });
+
+  it("keeps a blue thumbnail blue instead of teal", () => {
+    const converted = hslHueToOklchHue(225);
+    expect(converted).toBeGreaterThan(250);
+    expect(converted).toBeLessThan(275);
   });
 });
