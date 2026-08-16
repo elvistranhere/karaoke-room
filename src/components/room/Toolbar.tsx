@@ -172,8 +172,8 @@ export function Toolbar({
                   <SelectValue>
                     {(value: NoiseCancellationMode) =>
                       value === "auto"
-                        ? `Auto · ${ncActive ? "on" : "off"}`
-                        : NC_LABELS[value] ?? NC_LABELS.auto}
+                        ? `NC Auto · ${ncActive ? "on" : "off"}`
+                        : `NC ${NC_LABELS[value] ?? NC_LABELS.auto}`}
                   </SelectValue>
                 </span>
               </SelectTrigger>
