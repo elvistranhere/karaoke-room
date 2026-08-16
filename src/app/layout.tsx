@@ -1,6 +1,6 @@
 import "~/styles/globals.css";
 
-import { type Metadata } from "next";
+import { type Metadata, type Viewport } from "next";
 import { Outfit, DM_Sans } from "next/font/google";
 import { TRPCReactProvider } from "~/trpc/react";
 
@@ -17,10 +17,23 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Karaoke Now — Sing Together Online",
+  title: "Karaoke Now - Sing Together Online",
   description:
     "Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, and sing with friends.",
-  icons: [{ rel: "icon", url: "/favicon.svg", type: "image/svg+xml" }],
+  icons: [
+    { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
+    { rel: "apple-touch-icon", url: "/apple-touch-icon.png" },
+  ],
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Karaoke",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#12121a",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
