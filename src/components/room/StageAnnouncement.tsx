@@ -61,7 +61,7 @@ function StageSweep({
     return () => clearTimeout(timer);
   }, [onDismiss]);
 
-  const tint = isMyTurn ? "var(--color-accent)" : "var(--color-primary)";
+  const tint = "var(--color-primary)";
 
   return (
     <div

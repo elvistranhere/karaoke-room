@@ -40,7 +40,7 @@ const CIRCLE_CLASS =
   "flex size-11 shrink-0 items-center justify-center rounded-full outline-none transition-[transform,background-color,box-shadow] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const PILL_CLASS =
-  "flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-3 text-xs shadow-[var(--shadow-elevation-0)] outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]";
+  "flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-3 text-xs shadow-[var(--shadow-elevation-0)] outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97] shadow-[var(--shadow-control)]";
 
 export function Toolbar({
   getMicLevel,
