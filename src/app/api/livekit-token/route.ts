@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { AccessToken, RoomConfiguration, TrackSource } from "livekit-server-sdk";
 import { getKeySets, getKeyForRoom } from "~/lib/keyRotation";
 import { validateRoomCode } from "~/lib/room-code";

@@ -44,6 +44,8 @@ export interface RoomState {
   video: VideoState | null;
   roomName: string | null;
   isPublic: boolean;
+  // Room-scoped feature flags, seeded from the FEATURE_FLAGS env var
+  flags: Record<string, boolean>;
 }
 
 // Shape returned by GET /parties/registry/global. `name` is optional because
@@ -71,7 +73,8 @@ export type ClientMessage =
   | { type: "unmute-all" }
   | { type: "mix-adjust"; voice: number; music?: number }
   | { type: "video-load"; videoId: string }
-  | { type: "video-sync"; playing: boolean; videoTime: number; videoId?: string }
+  // stalled: the singer is rebuffering, so this only re-arms the server stall timer
+  | { type: "video-sync"; playing: boolean; videoTime: number; videoId?: string; stalled?: boolean }
   | { type: "time-sync"; t0: number }
   | { type: "kick"; peerId: string }
   | { type: "set-password"; password: string | null }

@@ -8,6 +8,7 @@
     "dev": "next dev --turbo",
     "dev:party": "npx partykit dev --port 1999",
     "dev:all": "npx partykit dev --port 1999 & next dev --turbo",
+    "lint": "biome lint .",
     "deploy:party": "npx partykit deploy",
     "preview": "next build && next start",
     "start": "next start",
@@ -39,6 +40,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.8",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/node": "^20.14.10",
     "@types/react": "^19.0.0",

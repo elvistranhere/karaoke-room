@@ -19,9 +19,7 @@ export function detectBrowser(): BrowserInfo {
 
   // Check Chromium-based browsers (Chrome, Edge, Brave, Opera, Arc, Vivaldi)
   // They all have "Chrome/" in UA. Safari has "Safari/" but not "Chrome/".
-  const isChromium = /Chrome\//.test(ua) && !/Edg\//.test(ua) ? true
-    : /Edg\//.test(ua) ? true  // Edge is Chromium-based
-    : false;
+  const isChromium = /Chrome\//.test(ua) || /Edg\//.test(ua);
 
   // Firefox detection
   const isFirefox = /Firefox\//.test(ua);

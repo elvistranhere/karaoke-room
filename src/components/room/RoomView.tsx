@@ -7,7 +7,8 @@ import { useLiveKit, MIC_ON_PREF_KEY } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
-import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, SkipForward } from "lucide-react";
+import { useWakeLock } from "~/hooks/useWakeLock";
+import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, SkipForward, WifiOff } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -18,6 +19,7 @@ import { InviteCode } from "./InviteCode";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { VideoStage } from "./VideoStage";
+import { VideoProgress } from "./VideoProgress";
 import { SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor, storeSyncOffsetFor } from "./SyncOffsetControl";
 import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { useVolumeMix, DEFAULT_PERSON_MIX, personMixKey } from "~/hooks/useVolumeMix";
@@ -393,8 +395,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
   }, [isAdmin, roomCode, sendSetPassword]);
 
-  // Replay the name and listing choice made on the create card. The keys are kept, not
-  // consumed: a solo host who refreshes empties the room, which resets both server-side.
+  // Replay the name and listing choice made on the create card. The server persists both,
+  // so this is a no-op for a room that already knows them.
   useEffect(() => {
     if (!isAdmin) return;
     const storedName = sessionStorage.getItem(`room-name-${roomCode}`);
@@ -436,6 +438,36 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     document.title = `${roomState.roomName || `Room ${roomCode}`} · Karaoke Now`;
     return () => { document.title = DEFAULT_TITLE; };
   }, [roomState.roomName, roomCode]);
+
+  // Held from the join gesture onward and released when the room view unmounts
+  useWakeLock(audioUnlocked);
+
+  // The singer is the room's clock, so a hidden page hands it back immediately rather
+  // than waiting for the server stall timeout, and takes it back when the page returns.
+  const pausedWhileHiddenRef = useRef(false);
+  useEffect(() => {
+    if (!isMyTurn) {
+      pausedWhileHiddenRef.current = false;
+      return;
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (!videoRef.current?.playing) return;
+        const at = playerRef.current?.getTime() ?? 0;
+        pausedWhileHiddenRef.current = true;
+        playerRef.current?.pause();
+        broadcastNowRef.current(false, at);
+        return;
+      }
+      if (!pausedWhileHiddenRef.current) return;
+      pausedWhileHiddenRef.current = false;
+      if (videoRef.current?.playing) return;
+      playerRef.current?.play();
+      broadcastNowRef.current(true, playerRef.current?.getTime() ?? 0);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isMyTurn, videoRef]);
 
   // These screens unmount the modal that owns the mic check while useLiveKit stays
   // mounted, so the loopback would keep running with no button left to stop it.
@@ -616,6 +648,19 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
+      {/* Reconnect banner - the join overlay covers the first connect, so this only
+          ever means a socket that dropped after the user was in the room */}
+      {!isPartyConnected && (
+        <div
+          className="relative z-10 mx-4 mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
+          style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
+          role="status"
+        >
+          <WifiOff size={14} />
+          <span>Reconnecting to the room. Chat, the queue and playback sync are paused.</span>
+        </div>
+      )}
+
       {/* Muted by singer banner */}
       {mutedBySinger && (
         <div
@@ -683,6 +728,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             showTapToPlay={playbackBlocked && !isMyTurn}
             onTapToPlay={() => { resumeMixer(); player.play(); }}
           />
+          <VideoProgress player={player} active={roomState.video !== null && playerReady} />
           {isAdmin && roomState.currentSingerId !== null && !isMyTurn && (
             <div className="flex shrink-0 justify-end">
               <button

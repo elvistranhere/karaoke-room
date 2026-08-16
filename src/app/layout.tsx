@@ -1,9 +1,10 @@
 import "~/styles/globals.css";
 
-import { type Metadata, type Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit, DM_Sans } from "next/font/google";
 import { TRPCReactProvider } from "~/trpc/react";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { ServiceWorkerRegistrar } from "~/components/ServiceWorkerRegistrar";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -49,6 +50,7 @@ export default function RootLayout({
         <TRPCReactProvider>
           <TooltipProvider delay={250}>{children}</TooltipProvider>
         </TRPCReactProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

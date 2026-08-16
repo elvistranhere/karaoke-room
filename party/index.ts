@@ -15,12 +15,23 @@ const ALLOWED_EMOJIS = new Set(["🔥", "💯", "😢", "🎵", "❤️"]);
 const HEARTBEAT_INTERVAL_MS = 15_000; // ping every 15s
 const HEARTBEAT_TIMEOUT_MS = 40_000;  // evict after 40s of no pong
 const SINGER_TIMEOUT_MS = 60_000;     // auto-advance queue after 60s of inactive singer
+const VIDEO_STALL_MS = 10_000;        // pause the room if the singer stops sending video-sync (broadcast every 2s, buffering heartbeats included)
 const ADMIN_GRACE_MS = 45_000;        // admin seat stays vacant this long so a refresh can reclaim it
 const REGISTRY_KEEPALIVE_MS = 60_000; // re-report a quiet public room before its registry entry expires
 const MAX_AUTH_FAILURES = 5;          // wrong-password attempts allowed per client
 const AUTH_FAILURE_WINDOW_MS = 10 * 60_000; // failures decay after this, so honest typos are not a life sentence
 const MAX_AUTH_FAILURE_KEYS = 200;    // failure counters kept per room, oldest evicted first
 const MAX_BANNED_CLIENTS = 200;       // kick bans kept per room, oldest evicted first
+// Durable Object storage keys. Only room identity is persisted: chat, queue and
+// participants stay in memory by design.
+const STORAGE_KEYS = {
+  roomName: "roomName",
+  isPublic: "isPublic",
+  passwordHash: "passwordHash",
+  adminClientId: "adminClientId",
+  adminVacatedAt: "adminVacatedAt",
+  bannedClientIds: "bannedClientIds",
+} as const;
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/g;
 
@@ -45,6 +56,9 @@ export default class KaraokeRoom implements Party.Server {
   // Admin succession: adminClientId is the localStorage identity of whoever holds the
   // crown, so a refresh can reclaim it while the seat is vacant. Never broadcast.
   private adminClientId: string | null = null;
+  // When the seat went vacant. Persisted, because the grace timer does not survive an
+  // empty room and something has to tell the next joiner the wait is over.
+  private adminVacatedAt: number | null = null;
   private adminGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private clientIdByPeer: Map<string, string> = new Map();
   private bannedClientIds: Map<string, string> = new Map(); // clientId -> banning admin name
@@ -57,18 +71,94 @@ export default class KaraokeRoom implements Party.Server {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   // Singer timeout: auto-advance if singer goes inactive
   private singerTimer: ReturnType<typeof setTimeout> | null = null;
+  // Clock-authority stall: the singer's video-sync stream is the room's heartbeat for playback
+  private videoStallTimer: ReturnType<typeof setTimeout> | null = null;
+  // Room-scoped feature flags, parsed once from the FEATURE_FLAGS env var
+  private flags: Record<string, boolean> | null = null;
+  private hydrated = false;
   // Registry reporting (debounced - max once per 30s)
   private lastRegistryReport = 0;
   private registryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly room: Party.Room) {}
 
+  // ── Persistence ─────────────────────────────────────────────
+
+  // Runs before the first onConnect/onRequest, so a woken DO already knows who it is
+  async onStart() {
+    await this.hydrate();
+  }
+
+  private async hydrate() {
+    if (this.hydrated) return;
+    this.hydrated = true;
+    try {
+      const stored = await this.room.storage.get([
+        STORAGE_KEYS.roomName,
+        STORAGE_KEYS.isPublic,
+        STORAGE_KEYS.passwordHash,
+        STORAGE_KEYS.adminClientId,
+        STORAGE_KEYS.adminVacatedAt,
+        STORAGE_KEYS.bannedClientIds,
+      ]);
+      const roomName = stored.get(STORAGE_KEYS.roomName);
+      const isPublic = stored.get(STORAGE_KEYS.isPublic);
+      const passwordHash = stored.get(STORAGE_KEYS.passwordHash);
+      const adminClientId = stored.get(STORAGE_KEYS.adminClientId);
+      const adminVacatedAt = stored.get(STORAGE_KEYS.adminVacatedAt);
+      const bans = stored.get(STORAGE_KEYS.bannedClientIds);
+
+      if (typeof roomName === "string") this.roomName = roomName;
+      if (typeof isPublic === "boolean") this.isPublic = isPublic;
+      if (typeof passwordHash === "string") this.passwordHash = passwordHash;
+      if (typeof adminClientId === "string") this.adminClientId = adminClientId;
+      if (typeof adminVacatedAt === "number") this.adminVacatedAt = adminVacatedAt;
+      if (Array.isArray(bans)) {
+        for (const entry of bans as unknown[]) {
+          if (!Array.isArray(entry)) continue;
+          const [clientId, bannedBy] = entry as unknown[];
+          if (typeof clientId === "string" && typeof bannedBy === "string") {
+            this.bannedClientIds.set(clientId, bannedBy);
+          }
+        }
+      }
+    } catch {
+      // A room that cannot read its identity still works, it just starts fresh
+    }
+  }
+
+  private persist(patch: Record<string, unknown>) {
+    void this.room.storage.put(patch).catch((err: unknown) => {
+      console.error(`[KaraokeRoom] Failed to persist ${Object.keys(patch).join(", ")} for ${this.room.id}`, err);
+    });
+  }
+
+  private persistBans() {
+    this.persist({ [STORAGE_KEYS.bannedClientIds]: Array.from(this.bannedClientIds.entries()) });
+  }
+
+  // ── Feature flags ───────────────────────────────────────────
+
+  private getFlags(): Record<string, boolean> {
+    if (this.flags) return this.flags;
+    const parsed: Record<string, boolean> = {};
+    const raw = this.room.env.FEATURE_FLAGS;
+    if (typeof raw === "string") {
+      for (const part of raw.split(",")) {
+        const name = part.trim();
+        if (name) parsed[name] = true;
+      }
+    }
+    this.flags = parsed;
+    return parsed;
+  }
+
   private startHeartbeat() {
     if (this.heartbeatTimer) return;
     this.heartbeatTimer = setInterval(() => {
       const now = Date.now();
       // Ping all connections
-      for (const [id, entry] of this.participants) {
+      for (const entry of this.participants.values()) {
         try {
           entry.ws.send(JSON.stringify({ type: "ping" }));
         } catch {
@@ -122,6 +212,31 @@ export default class KaraokeRoom implements Party.Server {
         this.broadcastState();
       }, SINGER_TIMEOUT_MS);
     }
+  }
+
+  // Armed on every video-sync while playing, so a singer whose device sleeps or
+  // backgrounds stops being the clock instead of leaving the room drifting.
+  private resetVideoStallTimer() {
+    if (this.videoStallTimer) clearTimeout(this.videoStallTimer);
+    this.videoStallTimer = null;
+    if (!this.videoState?.playing) return;
+    this.videoStallTimer = setTimeout(() => {
+      this.videoStallTimer = null;
+      this.handleVideoStall();
+    }, VIDEO_STALL_MS);
+  }
+
+  private handleVideoStall() {
+    const current = this.videoState;
+    if (!current?.playing) return;
+    console.log(`[KaraokeRoom] Singer ${current.singerId} stopped syncing - pausing playback`);
+    // Hold the last reported position rather than advancing it: the singer's player
+    // most likely froze there, and resuming re-stamps a fresh time anyway.
+    this.videoState = { ...current, playing: false, wallTime: Date.now() };
+    const singerName = this.participants.get(current.singerId)?.name ?? "The singer";
+    this.resetSingerTimer();
+    this.broadcastVideoState();
+    this.broadcastSystemChat(`Playback paused: ${singerName}'s device stopped responding.`);
   }
 
   // HTTP health endpoint for monitoring (GET /parties/main/<room-id>)
@@ -208,7 +323,7 @@ export default class KaraokeRoom implements Party.Server {
         this.handleVideoLoad(sender, msg.videoId);
         break;
       case "video-sync":
-        this.handleVideoSync(sender, msg.playing, msg.videoTime, msg.videoId);
+        this.handleVideoSync(sender, msg.playing, msg.videoTime, msg.videoId, msg.stalled);
         break;
       case "time-sync":
         this.handleTimeSync(sender, msg.t0);
@@ -290,9 +405,10 @@ export default class KaraokeRoom implements Party.Server {
       this.promoteNextSinger();
     }
 
-    // If room is now empty, reset ALL state so the DO can be GC'd cleanly
+    // If the room is now empty, drop the session state so the DO can be GC'd cleanly.
+    // Room identity (name, listing, password, admin, bans) is persisted and deliberately kept.
     if (this.participants.size === 0) {
-      console.log(`[KaraokeRoom] Room ${this.room.id} is empty - resetting state`);
+      console.log(`[KaraokeRoom] Room ${this.room.id} is empty - resetting session state`);
       this.queue = [];
       this.currentSingerId = null;
       this.mutedBySinger = null;
@@ -301,17 +417,14 @@ export default class KaraokeRoom implements Party.Server {
       this.participantStatus.clear();
       this.lastPong.clear();
       this.adminPeerId = null;
-      this.passwordHash = null;
       this.pendingAuth.clear();
-      this.roomName = null;
-      this.isPublic = false;
-      this.adminClientId = null;
       this.clientIdByPeer.clear();
-      this.bannedClientIds.clear();
       this.authFailures.clear();
       this.stopHeartbeat();
       if (this.singerTimer) clearTimeout(this.singerTimer);
       this.singerTimer = null;
+      if (this.videoStallTimer) clearTimeout(this.videoStallTimer);
+      this.videoStallTimer = null;
       if (this.adminGraceTimer) clearTimeout(this.adminGraceTimer);
       this.adminGraceTimer = null;
       if (this.registryTimer) clearTimeout(this.registryTimer);
@@ -396,8 +509,9 @@ export default class KaraokeRoom implements Party.Server {
     if (existing) {
       existing.name = trimmedName;
     } else {
-      // If room has a password, require auth before adding (first joiner exempt - they're creating the room)
-      if (this.passwordHash !== null && this.participants.size > 0) {
+      // A password now outlives an empty room, so there is no first-joiner exemption:
+      // that exemption would hand a locked room to whoever arrived after it emptied.
+      if (this.passwordHash !== null) {
         this.pendingAuth.set(sender.id, { name: trimmedName, ws: sender });
         this.send(sender, { type: "auth-required" });
         return;
@@ -650,10 +764,11 @@ export default class KaraokeRoom implements Party.Server {
     };
     // Loaded but not playing yet: the idle timer keeps running until playback starts
     this.resetSingerTimer();
+    this.resetVideoStallTimer();
     this.broadcastVideoState();
   }
 
-  private handleVideoSync(sender: Party.Connection, playing: boolean, videoTime: number, videoId?: string) {
+  private handleVideoSync(sender: Party.Connection, playing: boolean, videoTime: number, videoId?: string, stalled?: boolean) {
     if (this.currentSingerId !== sender.id) {
       this.send(sender, { type: "error", message: "Only the singer can control playback" });
       return;
@@ -663,6 +778,13 @@ export default class KaraokeRoom implements Party.Server {
     if (!Number.isFinite(videoTime) || videoTime < 0) return;
     // An in-flight sync for the previous video must not stamp the newly loaded one
     if (videoId !== undefined && videoId !== current.videoId) return;
+
+    // A rebuffering singer is alive but its clock is frozen: re-arm the stall timer
+    // without re-stamping a position that would drag every listener backwards.
+    if (stalled === true) {
+      this.resetVideoStallTimer();
+      return;
+    }
 
     this.videoState = {
       ...current,
@@ -678,6 +800,7 @@ export default class KaraokeRoom implements Party.Server {
     } else {
       this.resetSingerTimer();
     }
+    this.resetVideoStallTimer();
 
     this.broadcastVideoState();
   }
@@ -695,13 +818,16 @@ export default class KaraokeRoom implements Party.Server {
 
   // ── Admin Handlers ──────────────────────────────────────────
 
-  // Runs for every new participant. A vacant seat with a known adminClientId belongs
-  // to the grace timer, so only the matching clientId may take it early.
+  // Only the departed admin's clientId may take a vacant seat early. Anyone else arms
+  // the grace window, which an empty room and a DO restart both leave unarmed.
   private claimAdminOnJoin(peerId: string, name: string) {
     if (this.adminPeerId !== null) return;
     const clientId = this.clientIdByPeer.get(peerId) ?? null;
     const isReclaim = clientId !== null && clientId === this.adminClientId;
-    if (!isReclaim && (this.adminClientId !== null || this.adminGraceTimer !== null)) return;
+    if (!isReclaim && this.adminClientId !== null) {
+      this.armAdminGrace();
+      return;
+    }
 
     if (this.adminGraceTimer) {
       clearTimeout(this.adminGraceTimer);
@@ -709,6 +835,11 @@ export default class KaraokeRoom implements Party.Server {
     }
     this.adminPeerId = peerId;
     this.adminClientId = clientId;
+    this.adminVacatedAt = null;
+    this.persist({
+      [STORAGE_KEYS.adminClientId]: clientId,
+      [STORAGE_KEYS.adminVacatedAt]: null,
+    });
     this.broadcast({ type: "admin-changed", peerId, name });
     if (isReclaim) this.broadcastSystemChat(`${name} is back as room admin`);
   }
@@ -716,15 +847,33 @@ export default class KaraokeRoom implements Party.Server {
   private startAdminGrace(departedName: string) {
     if (this.adminGraceTimer) clearTimeout(this.adminGraceTimer);
     this.adminGraceTimer = null;
+    this.adminVacatedAt = Date.now();
+    this.persist({ [STORAGE_KEYS.adminVacatedAt]: this.adminVacatedAt });
     if (this.participants.size === 0) return;
 
     this.broadcastSystemChat(
       `${departedName} left. The admin seat is open for ${Math.round(ADMIN_GRACE_MS / 1000)}s in case they come back.`
     );
+    this.armAdminGrace();
+  }
+
+  // adminVacatedAt is persisted because the timer is not: only what remains of the
+  // window is granted, and a restart that lost it starts the window over.
+  private armAdminGrace() {
+    if (this.adminPeerId !== null || this.adminGraceTimer !== null) return;
+    if (this.adminVacatedAt === null) {
+      this.adminVacatedAt = Date.now();
+      this.persist({ [STORAGE_KEYS.adminVacatedAt]: this.adminVacatedAt });
+    }
+    const remaining = ADMIN_GRACE_MS - (Date.now() - this.adminVacatedAt);
+    if (remaining <= 0) {
+      this.promoteAdminAfterGrace();
+      return;
+    }
     this.adminGraceTimer = setTimeout(() => {
       this.adminGraceTimer = null;
       this.promoteAdminAfterGrace();
-    }, ADMIN_GRACE_MS);
+    }, remaining);
   }
 
   private promoteAdminAfterGrace() {
@@ -732,6 +881,11 @@ export default class KaraokeRoom implements Party.Server {
     for (const [id, entry] of this.participants) {
       this.adminPeerId = id;
       this.adminClientId = this.clientIdByPeer.get(id) ?? null;
+      this.adminVacatedAt = null;
+      this.persist({
+        [STORAGE_KEYS.adminClientId]: this.adminClientId,
+        [STORAGE_KEYS.adminVacatedAt]: null,
+      });
       this.broadcast({ type: "admin-changed", peerId: id, name: entry.name });
       this.broadcastSystemChat(`${entry.name} is now the room admin`);
       this.broadcastState();
@@ -739,6 +893,11 @@ export default class KaraokeRoom implements Party.Server {
     }
     // Nobody left to promote: release the seat so the next joiner owns the room
     this.adminClientId = null;
+    this.adminVacatedAt = null;
+    this.persist({
+      [STORAGE_KEYS.adminClientId]: null,
+      [STORAGE_KEYS.adminVacatedAt]: null,
+    });
   }
 
   private handleKick(sender: Party.Connection, targetPeerId: string) {
@@ -759,6 +918,7 @@ export default class KaraokeRoom implements Party.Server {
         if (oldest !== undefined) this.bannedClientIds.delete(oldest);
       }
       this.bannedClientIds.set(targetClientId, admin.name);
+      this.persistBans();
     }
     this.send(target.ws, { type: "kicked", by: admin.name });
     try { target.ws.close(); } catch { /* already closed */ }
@@ -780,6 +940,11 @@ export default class KaraokeRoom implements Party.Server {
     }
     this.adminPeerId = targetPeerId;
     this.adminClientId = this.clientIdByPeer.get(targetPeerId) ?? null;
+    this.adminVacatedAt = null;
+    this.persist({
+      [STORAGE_KEYS.adminClientId]: this.adminClientId,
+      [STORAGE_KEYS.adminVacatedAt]: null,
+    });
     this.broadcast({ type: "admin-changed", peerId: targetPeerId, name: target.name });
     this.broadcastSystemChat(`${target.name} is now the room admin`);
     this.broadcastState();
@@ -805,6 +970,7 @@ export default class KaraokeRoom implements Party.Server {
     if (cleaned === this.roomName) return;
 
     this.roomName = cleaned;
+    this.persist({ [STORAGE_KEYS.roomName]: cleaned });
     this.broadcastSystemChat(cleaned ? `Room renamed to "${cleaned}"` : "Room name removed");
     this.broadcastState();
     if (this.isPublic) this.doRegistryReport();
@@ -819,6 +985,7 @@ export default class KaraokeRoom implements Party.Server {
     if (next === this.isPublic) return;
 
     this.isPublic = next;
+    this.persist({ [STORAGE_KEYS.isPublic]: next });
     if (this.registryTimer) {
       clearTimeout(this.registryTimer);
       this.registryTimer = null;
@@ -880,6 +1047,7 @@ export default class KaraokeRoom implements Party.Server {
     } else {
       this.passwordHash = await this.hashPassword(password);
     }
+    this.persist({ [STORAGE_KEYS.passwordHash]: this.passwordHash });
     this.broadcastSystemChat(this.passwordHash ? "Room is now locked" : "Room is now unlocked");
     this.broadcastState();
   }
@@ -982,6 +1150,7 @@ export default class KaraokeRoom implements Party.Server {
     // Clear mute-all and any leftover video when no singer is active
     this.mutedBySinger = null;
     this.videoState = null;
+    this.resetVideoStallTimer();
     if (this.queue.length === 0) {
       this.resetSingerTimer();
       return;
@@ -1022,6 +1191,7 @@ export default class KaraokeRoom implements Party.Server {
       video: this.videoState,
       roomName: this.roomName,
       isPublic: this.isPublic,
+      flags: this.getFlags(),
     };
   }
 
@@ -1128,6 +1298,9 @@ export default class KaraokeRoom implements Party.Server {
   }
 
   private deleteFromRegistry() {
+    // The entry is gone, so the debounce has nothing left to protect: a room that
+    // refills right after emptying should reappear in /browse on the next state.
+    this.lastRegistryReport = 0;
     const registry = this.room.context.parties.registry;
     if (!registry) return;
     const stub = registry.get("global");

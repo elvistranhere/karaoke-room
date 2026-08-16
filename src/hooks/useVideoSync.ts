@@ -19,6 +19,7 @@ const PERSIST_TICKS = 8;
 const UNSTARTED = -1;
 const PLAYING = 1;
 const PAUSED = 2;
+const BUFFERING = 3;
 const CUED = 5;
 const PERSIST_DRIFT_NO_RATE_S = 0.15;
 
@@ -31,7 +32,7 @@ interface UseVideoSyncParams {
   serverOffsetRef: React.RefObject<number>;
   clockSyncedRef: React.RefObject<boolean>;
   syncOffsetMsRef: React.RefObject<number>;
-  onBroadcast: (playing: boolean, videoTime: number) => void;
+  onBroadcast: (playing: boolean, videoTime: number, stalled?: boolean) => void;
 }
 
 interface UseVideoSyncReturn {
@@ -121,11 +122,17 @@ export function useVideoSync({
 
       if (isSingerRef.current) {
         if (!current.playing) return;
-        // A buffering or stalled player would re-stamp a frozen time and drag
-        // every listener backwards, so only a genuinely playing player is the clock
-        if (player.getState() !== PLAYING) return;
+        const singerState = player.getState();
+        if (singerState !== PLAYING && singerState !== BUFFERING) return;
         const now = Date.now();
         if (now - lastBroadcastRef.current < SINGER_BROADCAST_MS) return;
+        // A buffering player re-stamping its frozen time would drag every listener
+        // backwards, so it beats "alive" instead: not the clock, but not dead either.
+        if (singerState === BUFFERING) {
+          lastBroadcastRef.current = now;
+          onBroadcastRef.current(true, player.getTime(), true);
+          return;
+        }
         broadcastNow(true, player.getTime());
         return;
       }

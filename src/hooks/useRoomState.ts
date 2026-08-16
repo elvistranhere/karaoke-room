@@ -42,7 +42,7 @@ interface UseRoomStateReturn {
   sendMixAdjust: (voice: number) => void;
   clearPendingMixAdjust: () => void;
   sendVideoLoad: (videoId: string) => void;
-  sendVideoSync: (playing: boolean, videoTime: number) => void;
+  sendVideoSync: (playing: boolean, videoTime: number, stalled?: boolean) => void;
   videoRef: React.RefObject<VideoState | null>;
   serverOffsetRef: React.RefObject<number>;
   clockSyncedRef: React.RefObject<boolean>;
@@ -79,6 +79,7 @@ const INITIAL_ROOM_STATE: RoomState = {
   video: null,
   roomName: null,
   isPublic: false,
+  flags: {},
 };
 
 export function useRoomState({
@@ -147,6 +148,7 @@ export function useRoomState({
           video: msg.state.video ?? null,
           roomName: msg.state.roomName ?? null,
           isPublic: msg.state.isPublic ?? false,
+          flags: msg.state.flags ?? {},
         };
         setRoomState(state);
         videoRef.current = state.video;
@@ -344,8 +346,8 @@ export function useRoomState({
     send({ type: "video-load", videoId });
   }, [send]);
 
-  const sendVideoSync = useCallback((playing: boolean, videoTime: number) => {
-    send({ type: "video-sync", playing, videoTime, videoId: videoRef.current?.videoId });
+  const sendVideoSync = useCallback((playing: boolean, videoTime: number, stalled?: boolean) => {
+    send({ type: "video-sync", playing, videoTime, videoId: videoRef.current?.videoId, stalled });
   }, [send]);
 
   const clearNameTaken = useCallback(() => {

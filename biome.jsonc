@@ -1,0 +1,65 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!.next",
+      "!.partykit",
+      "!.vercel",
+      "!next-env.d.ts",
+      "!tsconfig.tsbuildinfo"
+    ]
+  },
+  // Linter only. The formatter and the import assist stay off so adopting Biome
+  // does not rewrite every file in the repo.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        // The room is a custom surface: rows, overlays and toolbars are divs with
+        // their own controls inside. An accessibility pass is its own piece of work,
+        // not a side effect of adding a linter.
+        "noAutofocus": "off",
+        "noLabelWithoutControl": "off",
+        "noStaticElementInteractions": "off",
+        "noSvgWithoutTitle": "off",
+        "useAriaPropsSupportedByRole": "off",
+        // Every button here is a standalone control; the one form submits through its
+        // own handler. Stamping type="button" on 31 buttons changes no behaviour.
+        "useButtonType": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
+      },
+      "correctness": {
+        // The hooks deliberately run one-shot effects and read refs instead of deps
+        // (see the "Refs over state" pattern in CLAUDE.md), which this rule cannot see.
+        "useExhaustiveDependencies": "off"
+      },
+      "performance": {
+        // Two <img> tags for a fixed 64px app icon inside an overlay. next/image
+        // would add a layout pass and a loader for no gain.
+        "noImgElement": "off"
+      },
+      "style": {
+        // Used where a preceding check or a loop guard already proves presence.
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        // Only fires on fixed-length visual lists (skeletons, meter segments) where
+        // the index is the identity.
+        "noArrayIndexKey": "off",
+        // CONTROL_CHARS_RE strips control characters from room names on purpose.
+        "noControlCharactersInRegex": "off",
+        // Every hit is the `forEach((t) => t.stop())` idiom, where the returned value
+        // is void and discarding it is the point.
+        "useIterableCallbackReturn": "off"
+      }
+    }
+  }
+}

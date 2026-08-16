@@ -8,12 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev:all          # Next.js (3000) + PartyKit (1999) — use this for local dev
 npm run dev              # Next.js only
 npm run dev:party        # PartyKit only
+npm run lint             # biome lint . (linter only, formatter disabled)
 npm run typecheck        # tsc --noEmit
 npm run build            # Production build
 npm run deploy:party     # Deploy PartyKit server to Cloudflare
 ```
 
-No test framework is configured. Verify changes with `npm run typecheck`.
+No test framework is configured. Verify changes with `npm run lint` and `npm run typecheck`, plus `npm run build` when routing, config, or the service worker changed.
 
 ## Git
 
@@ -76,6 +77,8 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast.
 - **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples).
 - **`useAudioDevices`** — Device enumeration, mic mode (`"voice"` = NC on, `"raw"` = NC off).
+- **`useWakeLock`** - Screen wake lock while in a room, feature-detected, re-requested on `visibilitychange`, released on unmount.
+- **`useFlag`** - Reads a room-scoped feature flag out of `RoomState.flags`.
 - **`usePartySocket`** — Low-level PartyKit WebSocket wrapper with auto-reconnect.
 
 ## Voice Effects
@@ -89,6 +92,10 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the singing mix path.
 - **`mutedBySinger` is server-persisted**: Included in `RoomState` so reconnecting clients get the correct mute state. Cleared automatically in `promoteNextSinger()`.
 - **`videoState` is server-owned**: Included in `RoomState` so late joiners catch up mid-song, and cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
+- **Room identity is persisted, the session is not**: `roomName`, `isPublic`, `passwordHash`, `adminClientId`, `adminVacatedAt` and `bannedClientIds` are write-through to `this.room.storage` and rehydrated in `onStart()`, so a DO restart or an empty-room moment keeps the room's identity. Chat, queue, participants and `videoState` stay in memory by design and are still cleared when the room empties. Because a password now outlives an empty room, there is no first-joiner exemption on `auth`. A kick ban outlives it too: there is no unban message, so a kick is permanent for that room code until the 200-entry LRU evicts it.
+- **Admin succession never deadlocks**: a vacant seat with a known `adminClientId` belongs to the departed admin for `ADMIN_GRACE_MS`, but only the timer hands it on. `armAdminGrace()` is therefore called from `claimAdminOnJoin` as well as `startAdminGrace`, arming whatever is left of the window (`adminVacatedAt` is persisted for exactly this), because a room that emptied never armed a timer and a DO restart loses both the timer and `adminVacatedAt`.
+- **Clock-authority stall detection**: the singer's `video-sync` stream is the room's playback heartbeat. `resetVideoStallTimer()` re-arms a 10s timer on every sync while `videoState.playing`; if it fires, the server pauses the room, broadcasts `video-state` and posts a system chat line. A rebuffering singer sends `video-sync` with `stalled: true`, which re-arms the timer without re-stamping a frozen position, so an ordinary rebuffer is not read as a dead device. The singer's page also broadcasts a pause on `visibilitychange` so a backgrounded phone hands the clock back immediately, and resumes when the page is visible again.
+- **Feature flags are room-scoped**: `RoomState.flags` is seeded from the PartyKit `FEATURE_FLAGS` env var (comma-separated names, each set to `true`) and read on the client with `useFlag(roomState, name)`. Room-scoped rather than user-scoped, because one participant on a different sync path is a correctness bug, not an experiment.
 - **Per-person volume**: `useVolumeMix` is the single source of truth (master, music, per-person `{talk, stage, muted}` keyed by `personMixKey`: the name, or `peer:<peerId>` for the duplicate-friendly "Anonymous"). It pushes gains into `src/lib/voiceMixer.ts`, which runs every remote voice through `source -> personGain -> masterBus -> duck -> limiter -> output`. Names resolve to `lkIdentity` from PartyKit status updates only at apply time, so volumes survive reconnects, and identities stay in the gain map after a participant drops off the roster because their LiveKit track can outlive the WebSocket. The mixer also owns each `<audio>` element's volume: 0 while the graph is audible, the full local mix when the AudioContext is suspended or Web Audio failed. All of it is local: no volume value is ever broadcast.
 
 ## Adding a New PartyKit Message
@@ -112,7 +119,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Props interface above component**: `interface ComponentNameProps { ... }`
 - **File naming**: PascalCase for components (`StageBanner.tsx`), camelCase for hooks/utils (`useLiveKit.ts`, `voiceEffects.ts`)
 - **`"use client"` directive** at top of every component and hook file
-- **No ESLint or Prettier** - TypeScript strict mode (`noUncheckedIndexedAccess`) is the only gate
+- **Biome is linter-only** (`biome.jsonc`) - the formatter and the import assist are off on purpose, so no rule ever reformats a file. Rules that fight the existing style are disabled with a written reason in the config. TypeScript strict mode (`noUncheckedIndexedAccess`) is still the primary gate.
 
 ## UI Patterns
 
@@ -122,7 +129,17 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Volume sliders**: Shared `VolumeSlider` component (`.volume-slider` CSS class). Voice ranges are `0-200` with a detent at 100; music stays `0-100` because YouTube caps it.
 - **Toggle buttons**: Show current state via icon/highlight, label describes the action.
 
+## PWA and Service Worker
+
+`public/sw.js` is an app-shell cache, registered from `ServiceWorkerRegistrar` (production builds only, so it never fights the dev server; in dev it unregisters any worker left over from a local production build and drops the `karaoke-shell-*` caches). It **must never cache API routes, PartyKit, LiveKit or YouTube**: it bails on every cross-origin request, on `/api/` and `/parties/`, and on a host denylist. Navigations are network-first with `/offline` as the fallback; hashed `_next/static` assets are cache-first.
+
+Cache busting is automatic: `next.config.js` puts the commit SHA (or a build timestamp locally) in `NEXT_PUBLIC_SW_VERSION`, the client registers `/sw.js?v=<version>`, and the worker names its cache after that value, then `skipWaiting` + `clientsClaim` and deletes every older `karaoke-shell-*` cache on activate.
+
+The room shows a reconnect banner whenever `useRoomState`'s `isConnected` is false. The join overlay covers the first connect, so that banner only ever means a socket that dropped mid-session.
+
 ## Environment
+
+PartyKit-side: `REGISTRY_TOKEN` (required in production) and `FEATURE_FLAGS` (optional, comma-separated flag names that arrive in every `RoomState`).
 
 Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation and search caching, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`), `YOUTUBE_API_KEY` for in-app YouTube search (Data API v3; without it the video input is paste-only; results are filtered to embeddable videos and cached 24h in Redis because search.list costs 100 of the 10k daily quota units). See `docs/IDEOLOGY.md` for key rotation architecture.
 
@@ -134,7 +151,7 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 - **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
 - **PartyKit secret**: `partykit env add REGISTRY_TOKEN` must be set on the deployed project. The registry party rejects every POST/DELETE from a non-local host when it is missing, so `/browse` goes empty instead of accepting forged listings.
 - **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
-- Deploy PartyKit before Vercel: the video protocol is additive, so old clients keep working during the gap.
+- Deploy PartyKit before Vercel: the protocol is additive, so old clients keep working during the gap. `.github/workflows/deploy-partykit.yml` carries `concurrency: partykit-deploy` with `cancel-in-progress: false`, so two merges in quick succession cannot deploy out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR.
 
 ## Skills and Workflows
 

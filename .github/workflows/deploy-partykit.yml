@@ -7,6 +7,12 @@ on:
       - 'party/**'
       - 'partykit.json'
 
+# Two merges in quick succession must not deploy out of order, and an in-flight
+# worker deploy must never be cancelled halfway.
+concurrency:
+  group: partykit-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

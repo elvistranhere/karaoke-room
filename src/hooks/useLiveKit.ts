@@ -326,7 +326,7 @@ export function useLiveKit({
         if (cancelled) return;
 
         // Server may return a different URL per key set (different LiveKit projects)
-        const url = (data.url && data.url.startsWith("wss://")) ? data.url : process.env.NEXT_PUBLIC_LIVEKIT_URL;
+        const url = (data.url?.startsWith("wss://")) ? data.url : process.env.NEXT_PUBLIC_LIVEKIT_URL;
         if (!url) throw new Error("NEXT_PUBLIC_LIVEKIT_URL not set");
 
         console.log("[LiveKit] Connecting to", url, data.keySet ? `(key set #${data.keySet})` : "");
@@ -1129,7 +1129,7 @@ export function useLiveKit({
   // may rewrite the join preference
   const applyMicState = useCallback(async (newState: boolean, persist: boolean) => {
     const room = roomRef.current;
-    if (!room || !room.localParticipant || isTogglingMicRef.current) return;
+    if (!room?.localParticipant || isTogglingMicRef.current) return;
 
     isTogglingMicRef.current = true;
     try {
@@ -1295,7 +1295,7 @@ export function useLiveKit({
 
   const startSinging = useCallback(async () => {
     const room = roomRef.current;
-    if (!room || !room.localParticipant || isSingingInFlightRef.current) {
+    if (!room?.localParticipant || isSingingInFlightRef.current) {
       if (!room) setSingingError("Not connected");
       return;
     }
