@@ -8,6 +8,7 @@ import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
 import { DIVIDER } from "~/lib/surfaces";
 import type { NoiseCancellationMode } from "./Toolbar";
 import { Button } from "~/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
 import {
   Dialog,
@@ -258,30 +259,28 @@ export function SoundProfileModal({
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
               <div>
                 <label htmlFor="mic-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Microphone</label>
-                <select
-                  id="mic-device"
-                  value={selectedInputId}
-                  onChange={(e) => onInputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
-                >
-                  {inputDevices.length === 0 && <option value="">No devices found</option>}
-                  {inputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
-                </select>
+                <Select value={selectedInputId} onValueChange={onInputChange}>
+                  <SelectTrigger id="mic-device" aria-label="Microphone" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inputDevices.length === 0 ? <SelectItem value="">No devices found</SelectItem> : null}
+                    {inputDevices.map((d) => <SelectItem key={d.deviceId} value={d.deviceId}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label htmlFor="speaker-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
-                <select
-                  id="speaker-device"
-                  value={selectedOutputId}
-                  onChange={(e) => onOutputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
-                >
-                  {outputDevices.length === 0 && <option value="">Default</option>}
-                  {outputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
-                </select>
+                <Select value={selectedOutputId} onValueChange={onOutputChange}>
+                  <SelectTrigger id="speaker-device" aria-label="Speaker" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {outputDevices.length === 0 ? <SelectItem value="">Default</SelectItem> : null}
+                    {outputDevices.map((d) => <SelectItem key={d.deviceId} value={d.deviceId}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </section>

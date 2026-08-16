@@ -139,7 +139,7 @@ export function AudioVisualizer({ getSingerTrack, isActive, children, framed = t
       style={framed ? { boxShadow: "var(--shadow-elevation-1)" } : undefined}
     >
       {children}
-      {framed && <div className="atmo-frame pointer-events-none absolute inset-0" aria-hidden="true" />}
+      {framed && <div className="atmo-frame pointer-events-none absolute inset-0 rounded-2xl" aria-hidden="true" />}
     </div>
   );
 }

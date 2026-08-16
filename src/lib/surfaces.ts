@@ -1,5 +1,5 @@
 export const SURFACE_PANEL =
-  "atmo-glass overflow-clip shadow-[var(--shadow-elevation-1)]";
+  "atmo-glass shadow-[var(--shadow-elevation-1)]";
 
 export const SURFACE_LIFT =
   "transition-[box-shadow,filter,transform] duration-150 ease-out hover:shadow-[var(--shadow-elevation-2)] hover:brightness-110";
