@@ -116,9 +116,10 @@ export function Toolbar({
           aria-checked={deafened}
           className={`${CIRCLE_CLASS} cursor-pointer hover:scale-105 active:scale-[0.97]`}
           style={{
-            background: deafened ? "var(--color-danger-dim)" : "var(--color-dark-card)",
-            color: deafened ? "var(--color-danger)" : "var(--color-text-muted)",
-            border: deafened ? "1px solid var(--color-danger)" : "1px solid var(--color-dark-border)",
+            background: deafened ? "var(--color-danger-dim)" : "var(--color-primary-soft, #c9a7ff)",
+            color: deafened ? "var(--color-danger)" : "#4c00af",
+            border: deafened ? "1px solid var(--color-danger)" : "none",
+            boxShadow: deafened ? "none" : "0 6px 20px rgba(166, 110, 255, 0.22)",
           }}
           aria-label={deafenLabel}
         >
