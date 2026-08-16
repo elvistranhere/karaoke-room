@@ -49,7 +49,7 @@ export function VideoProgress({ player, active }: VideoProgressProps) {
           className="h-full rounded-full"
           style={{
             width: `${fraction * 100}%`,
-            background: "linear-gradient(90deg, var(--color-primary), var(--color-primary-soft, #c9a7ff))",
+            background: "linear-gradient(90deg, var(--atmo-a, var(--color-primary)), var(--atmo-b, var(--color-primary-soft, #c9a7ff)))",
             transition: "width 480ms linear",
           }}
         />

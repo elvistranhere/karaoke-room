@@ -93,7 +93,13 @@
 
 .atmo-glass {
   background-color: var(--color-dark-surface);
-  background-image: linear-gradient(180deg, color-mix(in oklab, var(--atmo-tint) 70%, transparent), transparent 58%);
+  background-image:
+    linear-gradient(180deg, color-mix(in oklab, var(--atmo-a) 12%, transparent), transparent 48%),
+    linear-gradient(180deg, color-mix(in oklab, var(--atmo-tint) 85%, transparent), color-mix(in oklab, var(--atmo-tint) 40%, transparent));
+}
+
+.atmo-card {
+  background-color: color-mix(in oklab, var(--atmo-tint) 45%, var(--color-dark-card));
 }
 
 @keyframes atmo-breathe {

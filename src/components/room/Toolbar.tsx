@@ -70,9 +70,8 @@ export function Toolbar({
 
   return (
     <div
-      className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2.5"
+      className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2.5 atmo-glass"
       style={{
-        background: "var(--color-dark-surface)",
         boxShadow: "var(--shadow-elevation-2)",
       }}
     >
