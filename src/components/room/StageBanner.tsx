@@ -141,25 +141,13 @@ export function StageBanner({
       <div className="atmo-glass relative flex min-h-0 flex-col overflow-hidden rounded-2xl">
         <div className="absolute left-0 top-0 z-10 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
         <div className="my-auto min-h-0 w-full overflow-y-auto p-5 sm:p-8">
-        <div className="flex items-center gap-4">
-          <div className="flex size-14 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary-soft)" }}>
-            <Mic size={23} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex items-center">
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: "color-mix(in srgb, var(--color-success) 12%, transparent)", color: "var(--color-success)" }}>Live performance</span>
-            </div>
-            <h2 className="truncate text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
-              {currentSinger?.name ?? "Someone"} is singing
-            </h2>
-            {singerSongName ? (
-              <p data-testid="stage-song-title" className="mt-0.5 truncate text-sm" style={{ color: "var(--color-primary-soft, #c9a7ff)" }}>
-                {singerSongName}
-              </p>
-            ) : null}
-          </div>
+        <div className="flex items-center gap-3">
+          <Mic size={20} style={{ color: "var(--color-primary)" }} />
+          <h2 className="min-w-0 flex-1 truncate text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+            {currentSinger?.name ?? "Someone"} is singing
+          </h2>
           <div
-            className="hidden h-10 shrink-0 items-center gap-1 sm:flex"
+            className="hidden h-8 shrink-0 items-center gap-1 sm:flex"
             role="meter"
             aria-label="Live room audio level"
             aria-valuemin={0}
@@ -172,7 +160,7 @@ export function StageBanner({
                 key={`${shape}-${index}`}
                 className="w-0.5 rounded-full"
                 style={{
-                  height: `${Math.max(5, Math.min(38, 5 + singerLevel * 40 * shape))}px`,
+                  height: `${Math.max(4, Math.min(26, 4 + singerLevel * 28 * shape))}px`,
                   background: voicePercent === 0 ? "var(--color-text-muted)" : "var(--color-primary-level)",
                   opacity: voicePercent === 0 ? 0.25 : 0.55 + singerLevel * 0.45,
                   transition: "height 90ms ease-out, opacity 120ms ease-out",
@@ -180,11 +168,21 @@ export function StageBanner({
               />
             ))}
           </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
+            <span className="text-xs" style={{ color: "var(--color-success)" }}>Live</span>
+          </div>
         </div>
+
+        {singerSongName ? (
+          <p data-testid="stage-song-title" className="mt-3 truncate text-sm font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--color-primary-soft, #c9a7ff)" }}>
+            {singerSongName}
+          </p>
+        ) : null}
 
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
-          <div className="mt-6 space-y-2.5">
+          <div className="mt-5 space-y-2.5">
             <VolumeSlider
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
