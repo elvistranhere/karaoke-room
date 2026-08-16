@@ -74,7 +74,7 @@ export function PeoplePanel({
         {roomState.participants.map((p) => {
           const isMe = p.id === myPeerId;
           const isSpeaking = Array.from(activeSpeakers).some((id) =>
-            id.startsWith(p.name + "-") || id === p.name
+            id.startsWith(`${p.name}-`) || id === p.name
           );
           const queuePos = queuePositions.get(p.id);
           const isSinger = p.id === roomState.currentSingerId;
@@ -157,41 +157,26 @@ export function PeoplePanel({
                   </p>
                 </div>
 
-                {/* One status glyph per row (deafened wins over muted), a queue chip
-                    column only while anyone queues, and a ghost local-mute button */}
-                <div className="flex shrink-0 items-center gap-0.5">
-                  {hasQueue ? (
-                    <span className="flex w-8 justify-center">
-                      {queuePos && !isSinger ? (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
-                          style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
-                        >
-                          #{queuePos}
-                        </span>
-                      ) : null}
+                {/* Discord-style rightmost status glyphs: mic slash and deafen slash,
+                    both when both apply. Local muting lives in the expanded volume panel. */}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {hasQueue && queuePos && !isSinger ? (
+                    <span
+                      className="rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+                      style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
+                    >
+                      #{queuePos}
                     </span>
                   ) : null}
-                  <span className="flex w-5 justify-center">
-                    {status?.isDeafened ? (
-                      <HeadphoneOff size={13} style={{ color: "color-mix(in srgb, var(--color-danger) 60%, var(--color-text-muted))" }} aria-label={`${p.name} has sound off`} />
-                    ) : status?.isMuted ? (
-                      <MicOff size={13} style={{ color: "color-mix(in srgb, var(--color-danger) 60%, var(--color-text-muted))" }} aria-label={`${p.name} is muted`} />
-                    ) : null}
-                  </span>
-                  <span className="flex w-9 justify-center">
-                    {!isMe ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onTogglePersonMute(mixKeyId); }}
-                        className={`inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[background-color,opacity] hover:bg-white/5 ${mix.muted ? "" : "opacity-100 [@media(hover:hover)]:opacity-0 group-hover/person:opacity-100 focus-visible:opacity-100"}`}
-                        style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)" }}
-                        title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                        aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                      >
-                        {mix.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                      </button>
-                    ) : null}
-                  </span>
+                  {mix.muted && !isMe ? (
+                    <VolumeX size={13} style={{ color: "var(--color-danger)" }} aria-label={`${p.name} is muted for you`} />
+                  ) : null}
+                  {status?.isMuted ? (
+                    <MicOff size={13} style={{ color: "color-mix(in srgb, var(--color-danger) 60%, var(--color-text-muted))" }} aria-label={`${p.name} is muted`} />
+                  ) : null}
+                  {status?.isDeafened ? (
+                    <HeadphoneOff size={13} style={{ color: "color-mix(in srgb, var(--color-danger) 60%, var(--color-text-muted))" }} aria-label={`${p.name} has sound off`} />
+                  ) : null}
                 </div>
               </div>
 
