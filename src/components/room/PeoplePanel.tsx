@@ -7,6 +7,7 @@ import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } f
 import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover";
 import {
   Dialog,
   DialogClose,
@@ -74,9 +75,13 @@ export function PeoplePanel({
 
           return (
             <li key={p.id}>
+              <Popover open={isExpanded} onOpenChange={(open) => setExpandedId(open && !isMe ? p.id : null)}>
+              <PopoverTrigger
+                nativeButton={false}
+                disabled={isMe}
+                render={
               <div
-                onClick={() => !isMe && setExpandedId(isExpanded ? null : p.id)}
-                className={`group/person flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${!isMe ? "row-clickable cursor-pointer" : ""}`}
+                className={`group/person flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-all duration-150 ${!isMe ? "row-clickable cursor-pointer" : ""}`}
                 onContextMenu={(e) => { if (!isMe) { e.preventDefault(); setExpandedId(isExpanded ? null : p.id); } }}
                 style={{
                   background: isSpeaking
@@ -162,15 +167,18 @@ export function PeoplePanel({
                   ) : null}
                 </div>
               </div>
+                }
+              />
 
-
-              {/* Per-person volume slider */}
-              {isExpanded && (
-                <div
-                  className="mt-1 space-y-1.5 rounded-lg px-3 py-2 shadow-[var(--shadow-elevation-0)]"
-                  style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+              {/* Discord-style floating menu instead of an inline expansion */}
+              <PopoverContent
+                side="right"
+                align="start"
+                sideOffset={10}
+                className="w-60 gap-0 rounded-xl border-none p-1.5"
+                style={{ background: "var(--color-dark-card)", boxShadow: "var(--shadow-elevation-3)" }}
+              >
+                <div className="space-y-1.5 px-2 pb-2 pt-1.5">
                   <VolumeSlider
                     label={isSinger ? "Stage" : "Volume"}
                     compact
@@ -200,11 +208,14 @@ export function PeoplePanel({
                         : "Their level while chatting. Kept apart from their stage level."}
                     {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
                   </p>
-                  {isAdmin && (
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-2" style={{ borderColor: DIVIDER }}>
+                </div>
+                {isAdmin && (
+                  <>
+                    <div className="mx-1 border-t" style={{ borderColor: DIVIDER }} />
+                    <div className="pt-1">
                       <button
-                        onClick={() => onTransferAdmin?.(p.id)}
-                        className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-primary-dim)]"
+                        onClick={() => { onTransferAdmin?.(p.id); setExpandedId(null); }}
+                        className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-primary-dim)]"
                         style={{ color: "var(--color-primary)" }}
                       >
                         <Crown size={12} />
@@ -212,24 +223,25 @@ export function PeoplePanel({
                       </button>
                       {onRemoveFromQueue && queuePos ? (
                         <button
-                          onClick={() => onRemoveFromQueue(p.id)}
-                          className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-white/5"
+                          onClick={() => { onRemoveFromQueue(p.id); setExpandedId(null); }}
+                          className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-white/5"
                           style={{ color: "var(--color-text-secondary)" }}
                         >
                           Remove from queue
                         </button>
                       ) : null}
                       <button
-                        onClick={() => setKickTarget({ id: p.id, name: p.name })}
-                        className="ml-auto flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-danger-dim)]"
+                        onClick={() => { setKickTarget({ id: p.id, name: p.name }); setExpandedId(null); }}
+                        className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-danger-dim)]"
                         style={{ color: "var(--color-danger)" }}
                       >
                         Kick
                       </button>
                     </div>
-                  )}
-                </div>
-              )}
+                  </>
+                )}
+              </PopoverContent>
+              </Popover>
             </li>
           );
         })}

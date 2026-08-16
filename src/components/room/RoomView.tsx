@@ -8,7 +8,7 @@ import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { useWakeLock } from "~/hooks/useWakeLock";
-import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, SkipForward, WifiOff } from "lucide-react";
+import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, WifiOff } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -756,22 +756,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               onTapToPlay={() => { resumeMixer(); player.play(); }}
             />
             <VideoProgress player={player} active={roomState.video !== null && playerReady} />
-            {isAdmin && roomState.currentSingerId !== null && !isMyTurn && (
-              <div className="flex shrink-0 justify-end">
-                <button
-                  onClick={() => setSkipTargetId(roomState.currentSingerId)}
-                  className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-elevation-0)] transition-[filter,transform] duration-150 hover:brightness-125 active:scale-[0.98]"
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    background: "var(--color-dark-card)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  <SkipForward size={13} />
-                  Skip singer
-                </button>
-              </div>
-            )}
             <div
               className={`relative flex min-h-0 flex-1 flex-col rounded-2xl ${roomState.currentSingerId ? "p-2 sm:p-3" : "overflow-y-auto p-3 sm:p-5"}`}
               style={{
@@ -792,6 +776,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 isMyTurn={isMyTurn}
                 onFinishSinging={finishSinging}
                 audioError={singingError}
+                onSkipSinger={
+                  isAdmin && !isMyTurn && roomState.currentSingerId !== null
+                    ? () => setSkipTargetId(roomState.currentSingerId)
+                    : undefined
+                }
                 singerSongName={
                   roomState.currentSingerId
                     ? participantStatus[roomState.currentSingerId]?.currentSong ?? null

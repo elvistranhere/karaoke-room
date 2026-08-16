@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAudioLevel } from "~/hooks/useAudioLevel";
 import type { RoomState } from "~/types/room";
-import { Mic, MicOff, Music, Pencil, VolumeX, Volume2, Plus } from "lucide-react";
+import { Crown, Mic, MicOff, Music, Pencil, SkipForward, VolumeX, Volume2, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
@@ -19,6 +19,7 @@ interface StageBannerProps {
   isMyTurn: boolean;
   onFinishSinging: () => void;
   audioError: string | null;
+  onSkipSinger?: () => void;
   singerSongName: string | null;
   onAddToQueue?: () => void;
   onSetSongName?: (name: string) => void;
@@ -56,6 +57,7 @@ export function StageBanner({
   isMyTurn,
   onFinishSinging,
   audioError,
+  onSkipSinger,
   singerSongName,
   onAddToQueue,
   onSetSongName,
@@ -140,7 +142,7 @@ export function StageBanner({
       <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} className="flex min-h-0 w-full flex-col">
       <div className="atmo-glass relative flex min-h-0 flex-col overflow-hidden rounded-2xl">
         <div className="absolute left-0 top-0 z-10 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
-        <div className="my-auto min-h-0 w-full overflow-y-auto p-5 sm:p-8">
+        <div className="my-auto min-h-0 w-full overflow-y-auto p-4 sm:p-6">
         <div className="flex items-center gap-3">
           <Mic size={20} style={{ color: "var(--color-primary)" }} />
           <h2 className="min-w-0 flex-1 truncate text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
@@ -182,7 +184,7 @@ export function StageBanner({
 
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
-          <div className="mt-5 space-y-2.5">
+          <div className="mt-4 space-y-2.5">
             <VolumeSlider
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
@@ -219,7 +221,7 @@ export function StageBanner({
           </div>
         )}
         {onSyncAutoChange && onSyncOffsetChange && (
-          <div className="atmo-card mt-4 rounded-xl p-3 shadow-[var(--shadow-elevation-0)]">
+          <div className="atmo-card mt-3 rounded-xl p-3 shadow-[var(--shadow-elevation-0)]">
             <SyncOffsetControl
               auto={syncAuto}
               onAutoChange={onSyncAutoChange}
@@ -229,6 +231,20 @@ export function StageBanner({
               singerName={syncSingerName}
             />
           </div>
+        )}
+
+        {/* Host-only room action; the crown marks why this button is visible */}
+        {onSkipSinger && (
+          <button
+            onClick={onSkipSinger}
+            className="mt-3 flex min-h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium shadow-[var(--shadow-control)] transition-[filter] duration-150 hover:brightness-110"
+            style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}
+            title="You see this because you are the host"
+          >
+            <Crown size={12} style={{ color: "var(--color-accent)" }} />
+            <SkipForward size={12} />
+            Skip singer
+          </button>
         )}
 
         </div>
