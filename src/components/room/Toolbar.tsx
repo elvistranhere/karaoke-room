@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Mic, MicOff, Settings, Waves, AudioLines, Headphones, HeadphoneOff } from "lucide-react";
 import type { Room } from "livekit-client";
 import type { VoiceEffect } from "~/lib/voiceEffects";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { Switch } from "~/components/ui/switch";
 
 export type NoiseCancellationMode = "auto" | "on" | "off";
 
@@ -129,22 +131,19 @@ export function Toolbar({
 
       <div className="h-8 w-px shrink-0" style={{ background: "var(--color-dark-border)" }} />
 
-      <div className="relative shrink-0" title="Noise cancellation">
-        <Waves className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" size={13} style={{ color: "#c9a7ff" }} />
-        <select
-          id="noise-cancellation"
-          aria-label="Noise cancellation"
-          value={noiseCancellationMode}
-          onChange={(event) => onNoiseCancellationModeChange(event.target.value as NoiseCancellationMode)}
-          className="h-10 w-[104px] cursor-pointer appearance-none rounded-xl border pl-8 pr-6 text-xs capitalize outline-none transition-colors hover:border-[var(--color-primary)]"
-          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
-        >
-          <option value="auto">NC Auto</option>
-          <option value="on">NC On</option>
-          <option value="off">NC Off</option>
-        </select>
-        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>⌄</span>
-      </div>
+      <Select value={noiseCancellationMode} onValueChange={(v) => onNoiseCancellationModeChange(v as NoiseCancellationMode)}>
+        <SelectTrigger aria-label="Noise cancellation" title="Noise cancellation" className="h-10 w-[112px] shrink-0 cursor-pointer rounded-xl bg-[var(--color-dark-card)] text-xs">
+          <span className="flex items-center gap-2">
+            <Waves size={13} style={{ color: "#c9a7ff" }} />
+            <SelectValue />
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto">NC Auto</SelectItem>
+          <SelectItem value="on">NC On</SelectItem>
+          <SelectItem value="off">NC Off</SelectItem>
+        </SelectContent>
+      </Select>
 
       <button
         type="button"
@@ -161,15 +160,7 @@ export function Toolbar({
       >
         <AudioLines size={13} style={{ color: echoEnabled ? "#c9a7ff" : "var(--color-text-muted)" }} />
         <span>Echo</span>
-        <span
-          className="relative h-4 w-7 rounded-full transition-colors"
-          style={{ background: echoEnabled ? "var(--color-primary)" : "var(--color-dark-border)" }}
-        >
-          <span
-            className="absolute top-0.5 size-3 rounded-full bg-white transition-transform"
-            style={{ left: 2, transform: echoEnabled ? "translateX(12px)" : "translateX(0)" }}
-          />
-        </span>
+        <Switch checked={echoEnabled} aria-hidden className="pointer-events-none" render={<span />} nativeButton={false} />
       </button>
 
       <button
