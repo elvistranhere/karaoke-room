@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #050506; font-family: "DM Sans", sans-serif; color: #e8e6f0; padding: 48px 40px 80px; }
+  h1 { font-family: Outfit; font-weight: 700; font-size: 24px; margin: 0 0 4px; }
+  p.sub { color: #77778a; margin: 0 0 40px; font-size: 13px; }
+  .label { font-family: Outfit; font-weight: 700; font-size: 15px; margin: 48px 0 4px; }
+  .desc { color: #77778a; font-size: 12px; margin: 0 0 14px; max-width: 720px; }
+  .mock { width: 100%; max-width: 1060px; height: 430px; border-radius: 18px; overflow: hidden; position: relative; display: grid; grid-template-columns: 200px 1fr 220px; grid-template-rows: 1fr 64px; gap: 12px; padding: 14px; }
+  .stage { grid-row: 1; display: flex; flex-direction: column; gap: 10px; }
+  .video { flex: 1; border-radius: 12px; position: relative; overflow: hidden; display:flex; align-items:flex-end; padding: 12px; }
+  .bar { grid-column: 1 / 4; grid-row: 2; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .pillbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+  .circle { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .ctrl { height: 34px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 9px; font-size: 12px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .side-h { font-family: Outfit; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .msg { font-size: 11px; line-height: 1.45; margin-bottom: 8px; }
+  .msg b { font-weight: 600; }
+  .songtitle { font-family: Outfit; font-weight: 600; font-size: 13px; }
+  .slider { height: 4px; border-radius: 4px; flex: 1; position: relative; }
+  .slider i { position: absolute; top: -4px; width: 12px; height: 12px; border-radius: 50%; }
+  .playbtn { height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: Outfit; font-weight: 600; font-size: 12px; }
+  .mrow { display:flex; align-items:center; gap:10px; }
+  .mlabel { font-size: 9px; letter-spacing: 0.08em; font-weight: 700; }
+
+  /* ============ A. LINEAR MINIMAL ============ */
+  .A { background: #08090b; }
+  .A .panel { background: #0f1013; border-radius: 12px; padding: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 10px 30px rgba(0,0,0,0.45); }
+  .A .video { background: linear-gradient(140deg, #14121e 0%, #0c0b12 60%), radial-gradient(circle at 70% 20%, rgba(139,92,246,0.16), transparent 55%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+  .A .songtitle { color: #d6d3e6; }
+  .A .playbtn { background: #7c5ce6; color: #fff; box-shadow: 0 4px 16px rgba(124,92,230,0.25); }
+  .A .row.active { background: #16151d; box-shadow: inset 0 0 0 1px rgba(139,92,246,0.22); }
+  .A .avatar { background: #1a1b20; color: #8a8a99; }
+  .A .avatar.on { background: rgba(139,92,246,0.16); color: #a98eff; }
+  .A .side-h { color: #9a99ab; }
+  .A .msg { color: #b9b7c9; } .A .msg b { color: #a98eff; } .A .msg .sys { color: #68extra; }
+  .A .pillbar { background: #0f1013; border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 10px 30px rgba(0,0,0,0.45); }
+  .A .circle.mic { background: #c9a7ff; color: #4c00af; }
+  .A .circle.dim { background: #17181c; color: #6b6b7a; }
+  .A .ctrl { background: #17181c; color: #b9b7c9; }
+  .A .slider { background: #212228; } .A .slider s { display:block; height:100%; width:62%; background:#7c5ce6; border-radius:4px; }
+  .A .slider i { background: #a98eff; left: 60%; }
+  .A .mlabel { color: #6b6b7a; }
+
+  /* ============ B. GLASS OVER STAGE ============ */
+  .B { background: radial-gradient(circle at 20% 15%, #3b1d63 0%, transparent 50%), radial-gradient(circle at 85% 30%, #103a6b 0%, transparent 55%), radial-gradient(circle at 60% 90%, #6b1d3f 0%, transparent 50%), #0a0714; }
+  .B::before { content:""; position:absolute; inset:0; background: radial-gradient(circle at 50% 40%, rgba(157,92,255,0.16), transparent 60%); }
+  .B .panel, .B .pillbar { background: rgba(20,16,32,0.5); backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); border-radius: 16px; padding: 12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 40px rgba(0,0,0,0.45); }
+  .B .pillbar { border-radius: 18px; }
+  .B .video { background: linear-gradient(160deg, rgba(90,40,160,0.5), rgba(20,10,40,0.7)), radial-gradient(circle at 30% 30%, #7c3aed 0%, #1a0f33 70%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1); }
+  .B .songtitle { color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+  .B .playbtn { background: rgba(255,255,255,0.14); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18); backdrop-filter: blur(8px); }
+  .B .row.active { background: rgba(157,92,255,0.16); box-shadow: inset 0 0 0 1px rgba(190,140,255,0.35); }
+  .B .avatar { background: rgba(255,255,255,0.1); color: #cfc6ea; }
+  .B .avatar.on { background: rgba(190,140,255,0.3); color: #fff; }
+  .B .side-h { color: #d9d2f0; }
+  .B .msg { color: #d5cde8; } .B .msg b { color: #d0b3ff; }
+  .B .circle.mic { background: rgba(201,167,255,0.9); color: #3c0088; box-shadow: 0 0 20px rgba(157,92,255,0.5); }
+  .B .circle.dim { background: rgba(255,255,255,0.08); color: #b9b0d4; }
+  .B .ctrl { background: rgba(255,255,255,0.08); color: #e2dcf4; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); }
+  .B .slider { background: rgba(255,255,255,0.14); } .B .slider s { display:block; height:100%; width:62%; background:linear-gradient(90deg,#b78cff,#8b5cf6); border-radius:4px; box-shadow: 0 0 12px rgba(157,92,255,0.6); }
+  .B .slider i { background: #fff; left: 60%; }
+  .B .mlabel { color: #b9b0d4; }
+
+  /* ============ C. MEDIA DARK ============ */
+  .C { background: radial-gradient(ellipse 90% 60% at 50% 0%, rgba(245,158,11,0.14) 0%, transparent 55%), radial-gradient(ellipse 70% 50% at 30% 10%, rgba(220,60,60,0.1) 0%, transparent 50%), #070606; }
+  .C .panel { background: transparent; padding: 12px; }
+  .C .stage .video { background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.75)), linear-gradient(135deg, #f59e0b 0%, #b3323f 45%, #1c1023 100%); border-radius: 14px; box-shadow: 0 20px 60px rgba(245,158,11,0.12), 0 2px 0 rgba(255,255,255,0.04) inset; }
+  .C .songtitle { color: #fff; font-size: 15px; }
+  .C .playbtn { background: #f2f0ec; color: #141210; border-radius: 999px; }
+  .C .row { border-radius: 999px; }
+  .C .row.active { background: rgba(245,158,11,0.1); }
+  .C .avatar { background: #1c1a18; color: #96908a; }
+  .C .avatar.on { background: rgba(245,158,11,0.25); color: #ffd489; }
+  .C .side-h { color: #96908a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.12em; }
+  .C .msg { color: #cfc9c2; } .C .msg b { color: #ffd489; }
+  .C .pillbar { background: rgba(24,22,20,0.85); border-radius: 999px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+  .C .circle.mic { background: #f2f0ec; color: #141210; }
+  .C .circle.dim { background: #211f1c; color: #7a756e; }
+  .C .ctrl { background: transparent; color: #b8b2aa; box-shadow: inset 0 0 0 1px #2a2724; border-radius: 999px; }
+  .C .slider { background: #2a2724; } .C .slider s { display:block; height:100%; width:62%; background:#f2f0ec; border-radius:4px; }
+  .C .slider i { background: #fff; left: 60%; }
+  .C .mlabel { color: #7a756e; }
+</style>
+</head>
+<body>
+<h1>Karaoke Now, three reskin directions</h1>
+<p class="sub">Same room, same features, same layout. Only the skin changes: tokens, elevation, and surface treatment.</p>
+
+<div class="label">A. Linear Minimal</div>
+<p class="desc">Elevation instead of borders, near-black steps, violet reserved for what is live. Calm, professional, timeless.</p>
+<div class="mock A">
+  <div class="panel"><div class="side-h">Participants (2)</div>
+    <div class="row active"><span class="avatar on">E</span><span>elvistran</span></div>
+    <div class="row"><span class="avatar">M</span><span>moni</span></div>
+  </div>
+  <div class="stage"><div class="video"><span class="songtitle">Thu Đợi · Wren Evans</span></div>
+    <div class="playbtn">Pause</div>
+    <div class="mrow"><span class="mlabel">MUSIC</span><span class="slider"><s></s><i></i></span></div>
+  </div>
+  <div class="panel"><div class="side-h">Room chat</div>
+    <div class="msg"><b>moni</b> lets goooo</div>
+    <div class="msg"><b>elvistran</b> this one is for you</div>
+  </div>
+  <div class="bar"><div class="pillbar">
+    <span class="circle mic">M</span><span class="circle dim">H</span>
+    <span class="ctrl">NC · Auto</span><span class="ctrl">Voice FX</span><span class="ctrl">Effects</span>
+  </div></div>
+</div>
+
+<div class="label">B. Glass Over Stage</div>
+<p class="desc">The room glows behind translucent panels. Feels like being inside the venue; the video's light bleeds through everything.</p>
+<div class="mock B">
+  <div class="panel"><div class="side-h">Participants (2)</div>
+    <div class="row active"><span class="avatar on">E</span><span>elvistran</span></div>
+    <div class="row"><span class="avatar">M</span><span>moni</span></div>
+  </div>
+  <div class="stage"><div class="video"><span class="songtitle">Thu Đợi · Wren Evans</span></div>
+    <div class="playbtn">Pause</div>
+    <div class="mrow"><span class="mlabel">MUSIC</span><span class="slider"><s></s><i></i></span></div>
+  </div>
+  <div class="panel"><div class="side-h">Room chat</div>
+    <div class="msg"><b>moni</b> lets goooo</div>
+    <div class="msg"><b>elvistran</b> this one is for you</div>
+  </div>
+  <div class="bar"><div class="pillbar">
+    <span class="circle mic">M</span><span class="circle dim">H</span>
+    <span class="ctrl">NC · Auto</span><span class="ctrl">Voice FX</span><span class="ctrl">Effects</span>
+  </div></div>
+</div>
+
+<div class="label">C. Media Dark</div>
+<p class="desc">Spotify-school: the artwork is the interface. Chrome nearly disappears, ambient color comes from the song, pill shapes, warm accent.</p>
+<div class="mock C">
+  <div class="panel"><div class="side-h">Participants</div>
+    <div class="row active"><span class="avatar on">E</span><span>elvistran</span></div>
+    <div class="row"><span class="avatar">M</span><span>moni</span></div>
+  </div>
+  <div class="stage"><div class="video"><span class="songtitle">Thu Đợi · Wren Evans</span></div>
+    <div class="playbtn">Pause</div>
+    <div class="mrow"><span class="mlabel">MUSIC</span><span class="slider"><s></s><i></i></span></div>
+  </div>
+  <div class="panel"><div class="side-h">Room chat</div>
+    <div class="msg"><b>moni</b> lets goooo</div>
+    <div class="msg"><b>elvistran</b> this one is for you</div>
+  </div>
+  <div class="bar"><div class="pillbar">
+    <span class="circle mic">M</span><span class="circle dim">H</span>
+    <span class="ctrl">NC · Auto</span><span class="ctrl">Voice FX</span><span class="ctrl">Effects</span>
+  </div></div>
+</div>
+</body>
+</html>
