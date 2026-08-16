@@ -157,7 +157,11 @@ export function Toolbar({
         <Tooltip>
           <TooltipTrigger
             render={
-              <SelectTrigger aria-label="Noise cancellation" className="h-10! w-[136px] shrink-0 cursor-pointer rounded-xl bg-[var(--color-dark-card)] text-xs">
+              <SelectTrigger
+                aria-label="Noise cancellation"
+                className="shrink-0 cursor-pointer bg-[var(--color-dark-card)] text-xs"
+                style={{ height: 40, borderRadius: 12, paddingLeft: 12, paddingRight: 8 }}
+              >
                 <span className="flex items-center gap-2">
                   <Waves size={14} style={{ color: "var(--color-primary-soft)" }} />
                   <span
@@ -168,8 +172,8 @@ export function Toolbar({
                   <SelectValue>
                     {(value: NoiseCancellationMode) =>
                       value === "auto"
-                        ? `NC Auto · ${ncActive ? "on" : "off"}`
-                        : `NC ${NC_LABELS[value] ?? NC_LABELS.auto}`}
+                        ? `Auto · ${ncActive ? "on" : "off"}`
+                        : NC_LABELS[value] ?? NC_LABELS.auto}
                   </SelectValue>
                 </span>
               </SelectTrigger>
