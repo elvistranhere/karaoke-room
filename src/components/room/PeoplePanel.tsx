@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Mic, MicOff, Music, Crown, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
 import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/hooks/useVolumeMix";
 import { VolumeSlider } from "./VolumeSlider";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 
 interface PeoplePanelProps {
   roomState: RoomState;
@@ -129,7 +139,7 @@ export function PeoplePanel({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {p.id === roomState.adminPeerId && (
-                      <Crown size={12} style={{ color: "var(--color-accent)", flexShrink: 0 }} />
+                      <Crown size={12} className="shrink-0" style={{ color: "var(--color-accent)" }} aria-label="Host" />
                     )}
                     <span
                       className="truncate text-sm"
@@ -146,33 +156,42 @@ export function PeoplePanel({
                   </p>
                 </div>
 
-                {/* Badges */}
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {queuePos && !isSinger && (
-                    <span
-                      className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                      style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
-                    >
-                      #{queuePos}
-                    </span>
-                  )}
-                  {status?.isMuted && (
-                    <MicOff size={12} style={{ color: "var(--color-text-muted)", opacity: 0.6 }} aria-label={`${p.name} is muted`} />
-                  )}
-                  {status?.isDeafened && (
-                    <HeadphoneOff size={12} style={{ color: "var(--color-text-muted)" }} aria-label={`${p.name} has sound off`} />
-                  )}
-                  {!isMe && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onTogglePersonMute(mixKeyId); }}
-                      className={`inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded transition-all hover:bg-[var(--color-dark-card)] ${mix.muted ? "" : "opacity-100 [@media(hover:hover)]:opacity-0 group-hover/person:opacity-100 focus-visible:opacity-100"}`}
-                      style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)" }}
-                      title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                      aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                    >
-                      {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                    </button>
-                  )}
+                {/* Badges: fixed-width slots so the glyphs line up down the column, and
+                    self rows leave the mute slot empty rather than closing the gap */}
+                <div className="flex shrink-0 items-center gap-1">
+                  <span className="flex w-8 justify-center">
+                    {queuePos && !isSinger ? (
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+                        style={{ background: "var(--color-primary-dim)", color: "var(--color-primary)" }}
+                      >
+                        #{queuePos}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="flex w-4 justify-center">
+                    {status?.isMuted ? (
+                      <MicOff size={12} style={{ color: "var(--color-danger)", opacity: 0.75 }} aria-label={`${p.name} is muted`} />
+                    ) : null}
+                  </span>
+                  <span className="flex w-4 justify-center">
+                    {status?.isDeafened ? (
+                      <HeadphoneOff size={12} style={{ color: "var(--color-danger)", opacity: 0.75 }} aria-label={`${p.name} has sound off`} />
+                    ) : null}
+                  </span>
+                  <span className="flex w-9 justify-center">
+                    {!isMe ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onTogglePersonMute(mixKeyId); }}
+                        className={`inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded transition-all hover:bg-[var(--color-dark-card)] ${mix.muted ? "" : "opacity-100 [@media(hover:hover)]:opacity-0 group-hover/person:opacity-100 focus-visible:opacity-100"}`}
+                        style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)" }}
+                        title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                        aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                      >
+                        {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                      </button>
+                    ) : null}
+                  </span>
                 </div>
               </div>
 
@@ -264,7 +283,7 @@ export function PeoplePanel({
             <ul className="space-y-1">
               {roomState.queue.map((id, i) => {
                 const participant = roomState.participants.find((p) => p.id === id);
-                const song = participantStatus[id]?.currentSong?.trim() || "Unknown";
+                const song = participantStatus[id]?.currentSong?.trim();
                 const isMe = id === myPeerId;
                 return (
                   <li
@@ -272,14 +291,19 @@ export function PeoplePanel({
                     className="flex items-center gap-3 rounded-lg px-2 py-2"
                     style={{ background: isMe ? "var(--color-primary-dim)" : "transparent", animation: `slide-in 0.2s ease-out ${i * 0.04}s both` }}
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md" style={{ background: "var(--color-dark-card)", color: "var(--color-primary)" }}>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md" style={{ background: "var(--color-dark-card)", color: "var(--color-accent)" }}>
                       <Music size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>{song}</p>
-                      <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                        Requested by <span style={{ color: isMe ? "var(--color-primary)" : "var(--color-text-secondary)" }}>{participant?.name ?? "Unknown"}</span>
+                      <p
+                        className="truncate text-xs font-medium"
+                        style={{ color: isMe ? "var(--color-primary)" : "var(--color-text-primary)" }}
+                      >
+                        {participant?.name ?? "Someone"}
                       </p>
+                      {song ? (
+                        <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--color-text-secondary)" }}>{song}</p>
+                      ) : null}
                     </div>
                     <span className="text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>#{i + 1}</span>
                   </li>
@@ -342,45 +366,22 @@ function KickConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onCancel]);
-
   return (
-    <>
-      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel} />
-      <div
-        className="fixed left-1/2 top-1/2 z-50 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Remove someone from the room"
-        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-      >
-        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-          Kick {name}?
-        </p>
-        <p className="mt-1.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
-          They leave the room right away, drop out of the queue, and cannot rejoin this room from that device.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-xs font-semibold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="min-h-10 cursor-pointer rounded-lg px-3 py-2 text-xs font-bold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", background: "var(--color-danger)", color: "#fff" }}
-          >
+    <Dialog open onOpenChange={(next) => { if (!next) onCancel(); }}>
+      <DialogContent className="sm:max-w-sm" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>Kick {name}?</DialogTitle>
+          <DialogDescription>
+            They leave the room right away, drop out of the queue, and cannot rejoin this room from that device.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" className="h-10" />}>Cancel</DialogClose>
+          <Button variant="destructive" className="h-10 bg-[var(--color-danger)] text-white hover:brightness-110" onClick={onConfirm}>
             Kick
-          </button>
-        </div>
-      </div>
-    </>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

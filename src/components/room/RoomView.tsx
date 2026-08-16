@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRoomState } from "~/hooks/useRoomState";
-import { useLiveKit } from "~/hooks/useLiveKit";
+import { useLiveKit, MIC_ON_PREF_KEY } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, SkipForward } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
+import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
 import { Toolbar, type NoiseCancellationMode } from "./Toolbar";
 import { PeoplePanel } from "./PeoplePanel";
@@ -24,8 +25,20 @@ import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { readPref, writePref } from "~/lib/prefs";
 import { AuthModal } from "./AuthModal";
+import { Button } from "~/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 
 const API_WAIT_MS = 5000;
+const DEFAULT_TITLE = "Karaoke Now - Sing Together Online";
 
 interface RoomViewProps {
   roomCode: string;
@@ -60,6 +73,9 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const singingNC = noiseCancellationMode === "on";
   const [singerMutedAll, setSingerMutedAll] = useState(false);
   const authAutoSubmittedRef = useRef(false);
+  // Set by the join click: the chime and the mic both wait on that gesture
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [micOnJoinPending, setMicOnJoinPending] = useState(false);
 
   const {
     roomState,
@@ -407,6 +423,20 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     }
   }, [sendSetPublic, roomCode]);
 
+  // The join gesture asks for the mic, but LiveKit may still be connecting, so the
+  // request waits for the room rather than failing silently
+  useEffect(() => {
+    if (!micOnJoinPending || !isLiveKitConnected) return;
+    setMicOnJoinPending(false);
+    if (deafened || mutedBySinger) return;
+    void setMicMuted(false);
+  }, [micOnJoinPending, isLiveKitConnected, deafened, mutedBySinger, setMicMuted]);
+
+  useEffect(() => {
+    document.title = `${roomState.roomName || `Room ${roomCode}`} · Karaoke Now`;
+    return () => { document.title = DEFAULT_TITLE; };
+  }, [roomState.roomName, roomCode]);
+
   // These screens unmount the modal that owns the mic check while useLiveKit stays
   // mounted, so the loopback would keep running with no button left to stop it.
   useEffect(() => {
@@ -427,13 +457,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           <p className="mb-4 text-xs" style={{ color: "var(--color-text-muted)" }}>
             You can no longer participate in this room.
           </p>
-          <button
+          <Button
             onClick={() => router.push("/")}
-            className="cursor-pointer rounded-lg px-6 py-2.5 text-xs font-bold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
+            className="h-10 px-6 font-bold"
+            style={{ fontFamily: "var(--font-display)" }}
           >
             Back to Home
-          </button>
+          </Button>
         </div>
       </main>
     );
@@ -452,7 +482,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     <main className="relative flex h-dvh flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
       <AudioUnlockOverlay
-        onUnlock={() => { createPlayer(); resumeMixer(); }}
+        onUnlock={() => {
+          createPlayer();
+          resumeMixer();
+          setAudioUnlocked(true);
+          setMicOnJoinPending(readPref(MIC_ON_PREF_KEY) !== "off");
+        }}
         apiReady={apiReady}
         partyConnected={isPartyConnected}
         livekitConnected={isLiveKitConnected}
@@ -499,15 +534,23 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                   {roomState.roomName}
                 </p>
                 {isAdmin && (
-                  <button
-                    onClick={() => { setSettingsFocusRoomName(true); setSettingsOpen(true); }}
-                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-60 transition-all hover:bg-[var(--color-dark-card)] hover:opacity-100"
-                    style={{ color: "var(--color-text-muted)" }}
-                    title="Rename room"
-                    aria-label="Rename room"
-                  >
-                    <Pencil size={12} />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => { setSettingsFocusRoomName(true); setSettingsOpen(true); }}
+                          className="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
+                          style={{ color: "var(--color-text-muted)" }}
+                          aria-label="Rename room"
+                        >
+                          <Pencil size={12} />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Rename room</TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             ) : null}
@@ -517,24 +560,32 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           {/* Settings */}
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-all hover:brightness-125 active:scale-95 sm:h-10 sm:w-10"
-            style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
-            title="Settings"
-          >
-            <SettingsIcon size={18} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="secondary"
+                  size="icon-lg"
+                  onClick={() => setSettingsOpen(true)}
+                  className="size-9 cursor-pointer rounded-full sm:size-10"
+                  aria-label="Settings"
+                >
+                  <SettingsIcon size={18} />
+                </Button>
+              }
+            />
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
 
           {/* Leave */}
-          <button
+          <Button
             onClick={() => router.push("/")}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all hover:brightness-110 active:scale-95 sm:px-4 sm:text-sm"
-            style={{ fontFamily: "var(--font-display)", background: "#b40712", color: "#fff" }}
+            className="h-10 cursor-pointer gap-2 bg-[#b40712] px-3 text-xs font-semibold text-white hover:bg-[#cf1220] sm:px-4 sm:text-sm"
+            style={{ fontFamily: "var(--font-display)" }}
           >
             <LogOut size={16} />
             <span className="hidden sm:inline">Exit Room</span>
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -546,20 +597,21 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         >
           <p>{liveKitError}</p>
           <div className="mt-2 flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => router.push("/")}
-              className="cursor-pointer rounded-md px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-              style={{ background: "var(--color-danger)", color: "var(--color-text-primary)" }}
+              className="cursor-pointer bg-[var(--color-danger)] text-[11px] text-[var(--color-text-primary)] hover:bg-[color-mix(in_srgb,var(--color-danger)_82%,white)]"
             >
               Create New Room
-            </button>
-            <button
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => window.location.reload()}
-              className="cursor-pointer rounded-md border px-3 py-1.5 text-[11px] font-medium transition-all hover:brightness-110"
-              style={{ borderColor: "var(--color-danger)", color: "var(--color-danger)" }}
+              className="cursor-pointer border-[var(--color-danger)] bg-transparent text-[11px] text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] hover:text-[var(--color-danger)]"
             >
               Try Again
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -713,6 +765,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               isMutedAll={singerMutedAll}
             />
             </div>
+          <StageAnnouncement
+            singerId={roomState.currentSingerId}
+            singerName={singerName}
+            isMyTurn={isMyTurn}
+            armed={audioUnlocked}
+            deafened={deafened}
+          />
+
           {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
           {(reactions.length > 0 || floatingChatMessages.length > 0) && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">
@@ -780,6 +840,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             toggleMic={toggleMic}
             voiceEffect={voiceEffect}
             onVoiceEffectChange={setVoiceEffect}
+            effectWetDry={effectWetDry}
             onEffectWetDry={setEffectWetDry}
             noiseCancellationMode={noiseCancellationMode}
             onNoiseCancellationModeChange={setNoiseCancellationMode}
@@ -795,6 +856,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             messages={chatMessages}
             onSend={sendChat}
             myPeerId={myPeerId}
+            adminPeerId={roomState.adminPeerId}
+            currentSingerId={roomState.currentSingerId}
             onReact={sendReaction}
           />
         </aside>
@@ -865,46 +928,25 @@ function SkipSingerConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onCancel]);
-
   return (
-    <>
-      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel} />
-      <div
-        className="fixed left-1/2 top-1/2 z-50 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Skip the current singer"
-        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-      >
-        <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-          Skip {singerName ?? "the current singer"}?
-        </p>
-        <p className="mt-1.5 text-xs leading-5" style={{ color: "var(--color-text-muted)" }}>
-          Their turn ends right away, the video stops for everyone, and the next person in the queue goes on stage. The room is told in chat.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="cursor-pointer rounded-lg border px-3 py-2 text-xs font-semibold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", background: "var(--color-danger)", color: "#fff" }}
-          >
+    <Dialog open onOpenChange={(next) => { if (!next) onCancel(); }}>
+      <DialogContent className="sm:max-w-sm" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
+            Skip {singerName ?? "the current singer"}?
+          </DialogTitle>
+          <DialogDescription>
+            Their turn ends right away, the video stops for everyone, and the next person in the queue goes on stage. The room is told in chat.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" className="h-10" />}>Cancel</DialogClose>
+          <Button variant="destructive" className="h-10 bg-[var(--color-danger)] text-white hover:brightness-110" onClick={onConfirm}>
             Skip singer
-          </button>
-        </div>
-      </div>
-    </>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

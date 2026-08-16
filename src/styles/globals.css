@@ -10,6 +10,9 @@
 
   --color-primary: #8B5CF6;
   --color-primary-dim: rgba(139, 92, 246, 0.15);
+  --color-primary-soft: #C9A7FF;
+  --color-primary-bright: #D7BBFF;
+  --color-primary-level: #B78CFF;
   --color-accent: #F59E0B;
   --color-accent-dim: rgba(245, 158, 11, 0.15);
   --color-success: #22C55E;
@@ -81,6 +84,32 @@
   to { transform: translateX(0); }
 }
 
+@keyframes stage-sweep {
+  0% { opacity: 0; transform: translateX(-60%); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(60%); }
+}
+
+@keyframes stage-announce-card {
+  0% { opacity: 0; transform: scale(0.94); }
+  10% { opacity: 1; transform: scale(1); }
+  82% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes stage-announce-glyph {
+  0% { opacity: 0; transform: scale(0.6); }
+  12% { opacity: 1; transform: scale(1.08); }
+  20% { transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes stage-announce-line {
+  0% { opacity: 0; transform: translateY(10px); }
+  16% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes pulse-ring {
   0% { transform: scale(1); opacity: 0.6; }
   100% { transform: scale(1.8); opacity: 0; }
@@ -122,73 +151,6 @@ body {
 .row-clickable:hover {
   background: rgba(139, 92, 246, 0.08);
   box-shadow: 0 0 6px rgba(139, 92, 246, 0.15);
-}
-
-/* Volume slider styling — rounded ends to match circular thumb */
-.volume-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-dark-border);
-  outline: none;
-  cursor: pointer;
-}
-.volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  cursor: pointer;
-  transition: transform 0.15s ease;
-}
-.volume-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-}
-.volume-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  border: none;
-  cursor: pointer;
-}
-.volume-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-dark-border);
-}
-/* Touch hit-slop: the padding grows the draggable box while background-clip keeps the
-   visible bar 6px. The !important is load-bearing: VolumeSlider sets the fill gradient
-   with the inline `background` shorthand, which resets background-clip to border-box. */
-@media (pointer: coarse) {
-  .volume-slider {
-    box-sizing: content-box;
-    padding-block: 12px;
-    background-clip: content-box !important;
-  }
-  .volume-slider::-webkit-slider-thumb {
-    width: 22px;
-    height: 22px;
-  }
-  .volume-slider::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
-  }
-}
-
-.volume-slider--music::-webkit-slider-thumb {
-  background: var(--color-accent);
-}
-.volume-slider--music::-moz-range-thumb {
-  background: var(--color-accent);
-}
-.volume-slider--voice::-webkit-slider-thumb {
-  background: var(--color-primary);
-}
-.volume-slider--voice::-moz-range-thumb {
-  background: var(--color-primary);
 }
 
 /* Slim theme-matched scrollbars instead of the chunky default */
@@ -279,6 +241,9 @@ body {
   --chart-4: #60A5FA;
   --chart-5: #F472B6;
   --radius: 0.75rem;
+  /* The shadcn theme maps --color-accent onto the neutral --accent surface, which would
+     turn every brand-amber inline style grey. Utilities inline --accent, so this is safe. */
+  --color-accent: #F59E0B;
   --sidebar: #18181B;
   --sidebar-foreground: #FAFAFA;
   --sidebar-primary: #8B5CF6;

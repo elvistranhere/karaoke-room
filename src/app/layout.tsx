@@ -3,6 +3,7 @@ import "~/styles/globals.css";
 import { type Metadata, type Viewport } from "next";
 import { Outfit, DM_Sans } from "next/font/google";
 import { TRPCReactProvider } from "~/trpc/react";
+import { TooltipProvider } from "~/components/ui/tooltip";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -45,7 +46,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${outfit.variable} ${dmSans.variable}`}>
       <body className="antialiased">
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <TRPCReactProvider>
+          <TooltipProvider delay={250}>{children}</TooltipProvider>
+        </TRPCReactProvider>
       </body>
     </html>
   );

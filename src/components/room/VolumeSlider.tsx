@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { Slider } from "~/components/ui/slider";
 
 export const VOLUME_MAX = 200;
 export const MUSIC_MAX = 100;
@@ -16,6 +17,7 @@ interface VolumeSliderProps {
   ariaLabel?: string;
   compact?: boolean;
   trailing?: ReactNode;
+  accent?: string;
 }
 
 export function VolumeSlider({
@@ -26,11 +28,11 @@ export function VolumeSlider({
   onChange,
   ariaLabel,
   compact = false,
-  trailing,
+  trailing, accent,
 }: VolumeSliderProps) {
-  const fill = Math.min(100, (value / max) * 100);
   const boosting = value > 100;
   const hasDetent = max > 100;
+  const sliderValue = useMemo(() => [value], [value]);
 
   const handleChange = (next: number) => {
     onChange(hasDetent && Math.abs(next - 100) <= DETENT_SNAP ? 100 : next);
@@ -55,20 +57,21 @@ export function VolumeSlider({
         )}
       </span>
       <div className="relative min-w-0 flex-1">
-        <input
-          type="range"
-          min="0"
+        <Slider
+          value={sliderValue}
           max={max}
-          value={value}
           aria-label={ariaLabel ?? label}
-          onChange={(e) => handleChange(Number(e.target.value))}
+          onValueChange={(next) => handleChange(typeof next === "number" ? next : next[0] ?? value)}
           onDoubleClick={() => { if (hasDetent) onChange(100); }}
-          className="volume-slider w-full"
+          // The indicator keeps its bg-primary fill; the boost gradient rides on top as an
+          // image so nothing has to out-specify the primitive's own colour.
+          className="[&_[data-slot=slider-control]]:h-10 [&_[data-slot=slider-range]]:[background-image:var(--volume-fill)]"
           style={{
-            background: boosting
-              ? `linear-gradient(to right, var(--color-primary) 0%, var(--color-accent) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`
-              : `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${fill}%, var(--color-dark-border) ${fill}%, var(--color-dark-border) 100%)`,
-          }}
+            "--volume-fill": boosting
+              ? "linear-gradient(to right, var(--color-primary), var(--color-accent))"
+              : "none",
+            ...(accent ? { "--slider-accent": accent } : {}),
+          } as CSSProperties}
         />
         {hasDetent && (
           <span

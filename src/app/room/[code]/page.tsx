@@ -1,9 +1,17 @@
 "use client";
 
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { getSavedName, saveName, sanitizeName, MAX_NAME_LENGTH } from "~/lib/playerName";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 
 const RoomView = dynamic(
   () => import("~/components/room/RoomView").then((m) => m.RoomView),
@@ -121,82 +129,59 @@ function RoomContent() {
 
 function NameModal({ onSubmit, conflict }: { onSubmit: (name: string) => void; conflict?: { name: string; suggestions: string[] } | null }) {
   const [draft, setDraft] = useState(conflict?.name ?? "");
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Sync draft if conflict changes (e.g. multiple name-taken events)
   useEffect(() => { if (conflict?.name) setDraft(conflict.name); }, [conflict?.name]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onSubmit(""); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onSubmit]);
-
   return (
-    <>
-      <div className="fixed inset-0 z-[60]" style={{ background: "rgba(0,0,0,0.7)" }} onClick={() => onSubmit("")} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Enter your name"
-        className="fixed left-1/2 top-1/2 z-[61] w-80 -translate-x-1/2 -translate-y-1/2 rounded-xl border p-6"
-        style={{ background: "var(--color-dark-bg)", borderColor: "var(--color-dark-border)", animation: "fade-in 0.2s ease-out" }}
-      >
-        <h2
-          className="mb-1 text-sm font-bold"
-          style={{ fontFamily: "var(--font-display)", color: conflict ? "var(--color-accent)" : "var(--color-text-primary)" }}
-        >
-          {conflict ? "Name already taken" : "What should we call you?"}
-        </h2>
-        <p className="mb-4 text-xs" style={{ color: "var(--color-text-muted)" }}>
-          {conflict
-            ? `Someone in the room is already named "${conflict.name}". Pick a different name.`
-            : "Or skip to join as Anonymous."
-          }
-        </p>
+    <Dialog open onOpenChange={(next) => { if (!next) onSubmit(""); }}>
+      <DialogContent className="bg-background sm:max-w-80" showCloseButton={false} initialFocus={inputRef}>
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "var(--font-display)", color: conflict ? "var(--color-accent)" : undefined }}>
+            {conflict ? "Name already taken" : "What should we call you?"}
+          </DialogTitle>
+          <DialogDescription>
+            {conflict
+              ? `Someone in the room is already named "${conflict.name}". Pick a different name.`
+              : "Or skip to join as Anonymous."
+            }
+          </DialogDescription>
+        </DialogHeader>
+
         {conflict && conflict.suggestions.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {conflict.suggestions.map((s) => (
-              <button
-                key={s}
-                onClick={() => onSubmit(s)}
-                className="cursor-pointer rounded-md px-2 py-1 text-xs transition-all hover:brightness-110"
-                style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)", border: "1px solid var(--color-dark-border)" }}
-              >
+              <Button key={s} size="sm" variant="outline" onClick={() => onSubmit(s)}>
                 {s}
-              </button>
+              </Button>
             ))}
           </div>
         )}
+
         <label htmlFor="name-input" className="sr-only">Your name</label>
         <input
           id="name-input"
-          autoFocus
+          ref={inputRef}
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, MAX_NAME_LENGTH))}
           placeholder="Your name"
-          className="mb-3 w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+          className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(draft); }}
         />
+
         <div className="flex gap-2">
-          <button
-            onClick={() => onSubmit(draft)}
-            className="flex-1 cursor-pointer rounded-lg py-2.5 text-xs font-bold transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", background: "var(--color-primary)", color: "#fff" }}
-          >
+          <Button onClick={() => onSubmit(draft)} className="h-10 flex-1" style={{ fontFamily: "var(--font-display)" }}>
             {draft.trim() ? "Join" : "Join as Anonymous"}
-          </button>
-          <button
-            onClick={() => onSubmit("")}
-            className="cursor-pointer rounded-lg border px-4 py-2.5 text-xs font-medium transition-all hover:brightness-110"
-            style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
-          >
+          </Button>
+          <Button variant="outline" onClick={() => onSubmit("")} className="h-10 px-4">
             Skip
-          </button>
+          </Button>
         </div>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }
 

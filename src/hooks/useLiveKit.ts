@@ -65,6 +65,8 @@ function getMicStreamWithTimeout(constraints: MediaStreamConstraints): Promise<M
   });
 }
 
+export const MIC_ON_PREF_KEY = "karaoke-mic-on";
+
 interface UseLiveKitReturn {
   room: Room | null;
   isConnected: boolean;
@@ -156,13 +158,15 @@ export function useLiveKit({
     const saved = readPref("karaoke-voice-effect");
     return saved === "hall" || saved === "echo" || saved === "warm" || saved === "bright" || saved === "chorus" ? saved : "none";
   });
-  const voiceEffectRef = useRef<VoiceEffect>("none");
+  // Seeded from the stored effect: the audio chain reads the ref, so leaving it at the
+  // default would silently drop the restored effect until the next manual change
+  const voiceEffectRef = useRef<VoiceEffect>(voiceEffect);
   const [effectWetDry, setEffectWetDryState] = useState(() => {
     const raw = readPref("karaoke-effect-wetdry");
     const saved = raw === null ? NaN : Number(raw);
     return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 0.5;
   });
-  const effectWetDryRef = useRef(0.5); // synchronous value for active audio chains
+  const effectWetDryRef = useRef(effectWetDry); // synchronous value for active audio chains
 
   const tokenRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // The hook owns the elements it appended: LiveKit empties attachedElements before
@@ -1121,12 +1125,13 @@ export function useLiveKit({
     mixMicStreamRef.current = null; setMixMicStreamState(null);
   }, []);
 
-  const toggleMic = useCallback(async () => {
+  // persist is false for forced changes (mute-all, deafen): only a deliberate toggle
+  // may rewrite the join preference
+  const applyMicState = useCallback(async (newState: boolean, persist: boolean) => {
     const room = roomRef.current;
     if (!room || !room.localParticipant || isTogglingMicRef.current) return;
 
     isTogglingMicRef.current = true;
-    const newState = !isMicEnabledRef.current;
     try {
       console.log("[LiveKit] Setting mic enabled:", newState);
 
@@ -1180,9 +1185,14 @@ export function useLiveKit({
         setIsMicEnabled(newState);
       }
 
+      if (persist) writePref(MIC_ON_PREF_KEY, newState ? "on" : "off");
       console.log("[LiveKit] Mic is now", newState ? "ON" : "OFF");
     } catch (err) {
       console.error("[LiveKit] Mic error:", err);
+      // A denied permission must not leave the button showing a live mic
+      setIsMicEnabled(mixOwnsMicRef.current
+        ? mixMicStreamRef.current !== null
+        : room.localParticipant.isMicrophoneEnabled === true);
       const errName = err instanceof Error ? err.name : "";
       const isTransient = errName === "NotAllowedError" || errName === "NotFoundError";
       const msg = errName === "NotAllowedError"
@@ -1204,13 +1214,17 @@ export function useLiveKit({
     }
   }, [selectedInputDeviceId, detachMicFromMix]);
 
+  const toggleMic = useCallback(async () => {
+    await applyMicState(!isMicEnabledRef.current, true);
+  }, [applyMicState]);
+
   // Force mute/unmute - used by mute-all to handle both the singing and idle paths.
   // Unlike toggleMic, this sets a specific state rather than toggling.
   const setMicMuted = useCallback(async (muted: boolean) => {
     const currentlyEnabled = isMicEnabledRef.current;
     if ((muted && !currentlyEnabled) || (!muted && currentlyEnabled)) return; // already in desired state
-    await toggleMic();
-  }, [toggleMic]);
+    await applyMicState(!muted, false);
+  }, [applyMicState]);
 
   // --- Singing voice pipeline ---
   // Mic runs through the voice effect chain into a MediaStreamDestination and is

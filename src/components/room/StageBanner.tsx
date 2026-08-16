@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { Room } from "livekit-client";
 import type { RoomState } from "~/types/room";
-import { Mic, MicOff, Music, VolumeX, Volume2, Plus } from "lucide-react";
+import { Mic, MicOff, Music, Pencil, VolumeX, Volume2, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
@@ -118,7 +118,7 @@ export function StageBanner({
           style={{
             background: "var(--color-primary-dim)",
             borderColor: "color-mix(in srgb, var(--color-primary) 30%, var(--color-dark-border))",
-            color: "#c9a7ff",
+            color: "var(--color-primary-soft)",
           }}
         >
           <Music size={24} />
@@ -157,7 +157,7 @@ export function StageBanner({
       >
         <div className="absolute left-0 top-0 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
         <div className="flex items-center gap-4">
-          <div className="flex size-14 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--color-primary-dim)", color: "#c9a7ff" }}>
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary-soft)" }}>
             <Mic size={23} />
           </div>
           <div className="min-w-0 flex-1">
@@ -165,11 +165,13 @@ export function StageBanner({
               <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: "color-mix(in srgb, var(--color-success) 12%, transparent)", color: "var(--color-success)" }}>Live performance</span>
             </div>
             <h2 className="truncate text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
-              {currentSinger?.name ?? "Unknown"} is singing
+              {currentSinger?.name ?? "Someone"} is singing
             </h2>
-            <p className="mt-0.5 truncate text-sm" style={{ color: singerSongName ? "#c9a7ff" : "var(--color-text-muted)" }}>
-              {singerSongName || "Song unknown"}
-            </p>
+            {singerSongName ? (
+              <p className="mt-0.5 truncate text-sm" style={{ color: "var(--color-accent)" }}>
+                {singerSongName}
+              </p>
+            ) : null}
           </div>
           <div
             className="hidden h-10 shrink-0 items-center gap-1 sm:flex"
@@ -186,7 +188,7 @@ export function StageBanner({
                 className="w-0.5 rounded-full"
                 style={{
                   height: `${Math.max(5, Math.min(38, 5 + liveRoomLevel * 40 * shape))}px`,
-                  background: voicePercent === 0 ? "var(--color-text-muted)" : "#b78cff",
+                  background: voicePercent === 0 ? "var(--color-text-muted)" : "var(--color-primary-level)",
                   opacity: voicePercent === 0 ? 0.25 : 0.55 + liveRoomLevel * 0.45,
                   transition: "height 90ms ease-out, opacity 120ms ease-out",
                 }}
@@ -224,6 +226,7 @@ export function StageBanner({
               icon={<Music size={14} style={{ color: "var(--color-accent)" }} />}
               value={mixMusicValue}
               max={MUSIC_MAX}
+              accent="var(--color-accent)"
               onChange={(v) => onMixMusicGain(v / 100)}
             />
             <p className="pt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
@@ -273,17 +276,17 @@ export function StageBanner({
         <div className="mx-auto w-full max-w-lg text-center">
           <div
             className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full border"
-            style={{ background: "var(--color-primary-dim)", borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-dark-border))", color: "#c9a7ff" }}
+            style={{ background: "var(--color-primary-dim)", borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-dark-border))", color: "var(--color-primary-soft)" }}
           >
             <Mic size={26} />
           </div>
-          <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: "var(--color-primary-dim)", color: "#d7bbff" }}>
+          <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary-bright)" }}>
             You&apos;re up
           </span>
           <h2 className="mt-3 text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
             Your turn to sing
           </h2>
-          {singerSongName && <p className="mt-1 text-sm" style={{ color: "#c9a7ff" }}>{singerSongName}</p>}
+          {singerSongName && <p className="mt-1 text-sm" style={{ color: "var(--color-accent)" }}>{singerSongName}</p>}
           <p className="mx-auto mt-2 max-w-sm text-sm leading-6" style={{ color: "var(--color-text-muted)" }}>
             Paste a YouTube link and everyone in the room watches it with you, in sync.
           </p>
@@ -327,7 +330,7 @@ export function StageBanner({
 
           {/* Music volume only: the singer never gets a gain stage on their own voice */}
           {onMixMusicGain && (
-            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={MUSIC_MAX} onChange={(v) => onMixMusicGain(v / 100)} />
+            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={MUSIC_MAX} accent="var(--color-accent)" onChange={(v) => onMixMusicGain(v / 100)} />
           )}
 
           {/* Stage controls: everything below the separator acts on the room, not on
@@ -381,13 +384,12 @@ function SongNameInput({ initial, onSet }: { initial: string; onSet: (name: stri
     return (
       <button
         onClick={() => setEditing(true)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs transition-all hover:bg-[var(--color-dark-card)]"
-        style={{ color: value ? "var(--color-accent)" : "var(--color-text-muted)" }}
+        className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-semibold transition-all hover:bg-[var(--color-dark-card)]"
+        style={{ fontFamily: "var(--font-display)", color: value ? "var(--color-accent)" : "var(--color-text-secondary)" }}
+        aria-label={value ? `Song: ${value}. Edit song name` : "Set song name"}
       >
-        <span className="truncate flex-1">{value || "What are you singing? (click to set)"}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
-          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-        </svg>
+        <span className="flex-1 truncate">{value || "What are you singing?"}</span>
+        <Pencil size={13} className="shrink-0" style={{ color: "var(--color-accent)" }} />
       </button>
     );
   }

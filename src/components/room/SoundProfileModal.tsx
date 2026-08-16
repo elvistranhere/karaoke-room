@@ -4,8 +4,17 @@ import { useState, useEffect } from "react";
 import { Mic, Volume2 } from "lucide-react";
 import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 import type { MicCheckState } from "~/hooks/useLiveKit";
-import { VOICE_EFFECTS, type VoiceEffect, createEffectChain, type EffectChain } from "~/lib/voiceEffects";
+import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
 import type { NoiseCancellationMode } from "./Toolbar";
+import { Button } from "~/components/ui/button";
+import { Slider } from "~/components/ui/slider";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 
 interface SoundProfileModalProps {
   open: boolean;
@@ -33,6 +42,8 @@ interface SoundProfileModalProps {
   micCheckState: MicCheckState;
 }
 
+const SEGMENT_BASE = "h-10 w-full rounded-md text-xs font-medium";
+
 export function SoundProfileModal({
   open,
   onClose,
@@ -56,6 +67,7 @@ export function SoundProfileModal({
 }: SoundProfileModalProps) {
   const [micCheckProfile, setMicCheckProfile] = useState<MicMode>(micMode);
   const wetDry = Math.round(effectWetDry * 100);
+  const monitoring = micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing";
 
   // Seed only when the modal opens; re-seeding on state changes would clobber an
   // explicit profile choice the moment a check stops.
@@ -63,19 +75,6 @@ export function SoundProfileModal({
     if (open) setMicCheckProfile(micMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  // Close modal - auto-stop effect below handles mic check cleanup
-  const handleClose = () => {
-    onClose();
-  };
-
-  // Escape to close
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose, micCheckState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-stop mic check when modal closes
   useEffect(() => {
@@ -88,29 +87,17 @@ export function SoundProfileModal({
     onEffectWetDry(val / 100);
   };
 
-  if (!open) return null;
-
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.6)" }} onClick={handleClose} />
-
-      {/* Modal */}
-      <div
-        className="fixed left-1/2 top-1/2 z-50 w-[420px] max-w-[95vw] -translate-x-1/2 -translate-y-1/2 rounded-xl border"
-        style={{ background: "var(--color-dark-bg)", borderColor: "var(--color-dark-border)", animation: "fade-in 0.15s ease-out" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--color-dark-border)" }}>
-          <h2 className="text-sm font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="gap-0 bg-background p-0 sm:max-w-[420px]">
+        <DialogHeader className="border-b px-5 py-4 pr-14">
+          <DialogTitle className="text-sm font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)" }}>
             Sound Profile
-          </h2>
-          <button onClick={handleClose} className="cursor-pointer rounded-lg p-1.5 transition-all hover:bg-[var(--color-dark-card)]" style={{ color: "var(--color-text-muted)" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/>
-            </svg>
-          </button>
-        </div>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Noise cancellation, voice effects, mic check, and audio devices.
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="max-h-[70vh] space-y-5 overflow-auto p-5">
           <section>
@@ -120,24 +107,26 @@ export function SoundProfileModal({
               </h3>
             </div>
             <div className="rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              <div className="grid grid-cols-3 gap-1 rounded-lg border p-1" style={{ borderColor: "var(--color-dark-border)" }}>
+              <div className="grid grid-cols-3 gap-1 rounded-lg border p-1">
                 {(["auto", "on", "off"] as const).map((mode) => (
-                  <button
+                  <Button
                     key={mode}
+                    variant="ghost"
+                    aria-pressed={noiseCancellationMode === mode}
                     onClick={() => onNoiseCancellationModeChange(mode)}
-                    className="cursor-pointer rounded-md px-3 py-2 text-xs font-medium capitalize transition-colors"
+                    className={`${SEGMENT_BASE} capitalize`}
                     style={{
                       background: noiseCancellationMode === mode ? "var(--color-primary-dim)" : "transparent",
-                      color: noiseCancellationMode === mode ? "#d7bbff" : "var(--color-text-muted)",
+                      color: noiseCancellationMode === mode ? "var(--color-primary-bright)" : "var(--color-text-muted)",
                     }}
                   >
                     {mode}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <p className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
                 {noiseCancellationMode === "auto"
-                  ? "Recommended — on while talking and off while singing."
+                  ? "Recommended - on while talking and off while singing."
                   : noiseCancellationMode === "on"
                     ? "Enabled for both talking and singing."
                     : "Disabled for both talking and singing."}
@@ -148,7 +137,7 @@ export function SoundProfileModal({
           {/* === SINGING MODE === */}
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <Mic size={16} style={{ color: "var(--color-text-secondary)" }} />
+              <Mic size={16} style={{ color: "var(--color-primary)" }} />
               <h3 className="text-xs font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-secondary)" }}>
                 Singing Mode
               </h3>
@@ -163,9 +152,10 @@ export function SoundProfileModal({
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {VOICE_EFFECTS.filter((fx) => fx.id !== "none").map((fx) => (
-                    <button
+                    <Button
                       key={fx.id}
-                      type="button"
+                      size="sm"
+                      variant={voiceEffect === fx.id ? "default" : "outline"}
                       aria-pressed={voiceEffect === fx.id}
                       onClick={() => {
                         if (voiceEffect === fx.id) {
@@ -175,16 +165,11 @@ export function SoundProfileModal({
                         onEffectWetDry(wetDry / 100);
                         onVoiceEffectChange(fx.id);
                       }}
-                      className="cursor-pointer rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-all hover:scale-105 active:scale-95"
-                      style={{
-                        background: voiceEffect === fx.id ? "var(--color-primary)" : "var(--color-dark-card)",
-                        color: voiceEffect === fx.id ? "#fff" : "var(--color-text-muted)",
-                        borderColor: voiceEffect === fx.id ? "var(--color-primary)" : "var(--color-dark-border)",
-                      }}
+                      className="h-10 text-[11px]"
                       title={voiceEffect === fx.id ? `Disable ${fx.label}` : fx.description}
                     >
                       {fx.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -193,10 +178,11 @@ export function SoundProfileModal({
               {voiceEffect !== "none" && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Dry</span>
-                  <input
-                    type="range" min="0" max="100" value={wetDry}
-                    onChange={(e) => handleWetDry(Number(e.target.value))}
-                    className="volume-slider flex-1"
+                  <Slider
+                    value={[wetDry]}
+                    onValueChange={(next) => handleWetDry(typeof next === "number" ? next : next[0] ?? wetDry)}
+                    aria-label="Effect intensity"
+                    className="flex-1 [&_[data-slot=slider-control]]:h-10"
                   />
                   <span className="text-[10px] uppercase" style={{ color: "var(--color-text-muted)" }}>Wet</span>
                   <span className="w-6 text-right text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{wetDry}</span>
@@ -215,39 +201,42 @@ export function SoundProfileModal({
               </h3>
             </div>
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              <div className="grid grid-cols-2 gap-1 rounded-lg border p-1" style={{ borderColor: "var(--color-dark-border)" }}>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border p-1">
                 {(["voice", "raw"] as const).map((profile) => (
-                  <button
+                  <Button
                     key={profile}
+                    variant="ghost"
+                    aria-pressed={micCheckProfile === profile}
                     onClick={() => setMicCheckProfile(profile)}
-                    disabled={micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing"}
-                    className="cursor-pointer rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed"
+                    disabled={monitoring}
+                    className={SEGMENT_BASE}
                     style={{
                       background: micCheckProfile === profile ? "var(--color-primary-dim)" : "transparent",
-                      color: micCheckProfile === profile ? "#d7bbff" : "var(--color-text-muted)",
+                      color: micCheckProfile === profile ? "var(--color-primary-bright)" : "var(--color-text-muted)",
                     }}
                   >
                     {profile === "voice" ? "Talk profile" : "Sing profile"}
-                  </button>
+                  </Button>
                 ))}
               </div>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => {
-                  if (micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing") onStopMicCheck();
+                  if (monitoring) onStopMicCheck();
                   else if (micCheckProfile === "voice") onTalkingMicCheck();
                   else onSingingMicCheck();
                 }}
-                className="w-full cursor-pointer rounded-lg border py-2.5 text-xs font-medium transition-all hover:brightness-110"
+                className="h-10 w-full text-xs"
                 style={{
-                  borderColor: micCheckState.startsWith("monitoring") ? "var(--color-primary)" : "var(--color-dark-border)",
-                  background: micCheckState.startsWith("monitoring") ? "var(--color-primary-dim)" : "transparent",
-                  color: micCheckState.startsWith("monitoring") ? "#d7bbff" : "var(--color-text-primary)",
+                  borderColor: monitoring ? "var(--color-primary)" : undefined,
+                  background: monitoring ? "var(--color-primary-dim)" : undefined,
+                  color: monitoring ? "var(--color-primary-bright)" : undefined,
                 }}
               >
-                {micCheckState.startsWith("monitoring") ? "Stop mic check" : micCheckState === "error" ? "Try mic check again" : "Start mic check"}
-              </button>
+                {monitoring ? "Stop mic check" : micCheckState === "error" ? "Try mic check again" : "Start mic check"}
+              </Button>
               <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                {micCheckState.startsWith("monitoring")
+                {monitoring
                   ? `Listening to your ${micCheckState === "monitoring-talk" ? "Talk" : "Sing"} profile.`
                   : micCheckProfile === "raw"
                     ? "Includes your selected singing voice effect."
@@ -259,7 +248,7 @@ export function SoundProfileModal({
           {/* === DEVICES === */}
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <Volume2 size={16} style={{ color: "var(--color-text-muted)" }} />
+              <Volume2 size={16} style={{ color: "var(--color-primary)" }} />
               <h3 className="text-xs font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
                 Devices
               </h3>
@@ -267,12 +256,13 @@ export function SoundProfileModal({
 
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
               <div>
-                <label className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Microphone</label>
+                <label htmlFor="mic-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Microphone</label>
                 <select
+                  id="mic-device"
                   value={selectedInputId}
                   onChange={(e) => onInputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-                  style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
                 >
                   {inputDevices.length === 0 && <option value="">No devices found</option>}
                   {inputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
@@ -280,12 +270,13 @@ export function SoundProfileModal({
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
+                <label htmlFor="speaker-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
                 <select
+                  id="speaker-device"
                   value={selectedOutputId}
                   onChange={(e) => onOutputChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus:border-[var(--color-primary)]"
-                  style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+                  className="w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
                 >
                   {outputDevices.length === 0 && <option value="">Default</option>}
                   {outputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
@@ -294,7 +285,7 @@ export function SoundProfileModal({
             </div>
           </section>
         </div>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

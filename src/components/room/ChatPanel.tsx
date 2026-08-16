@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Mic, Wrench } from "lucide-react";
 import type { ChatMessage } from "~/types/room";
 import { REACTION_EMOJIS } from "~/lib/reactions";
 import { chatNameColor } from "~/lib/chatColors";
@@ -10,6 +10,8 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string) => void;
   myPeerId: string | null;
+  adminPeerId?: string | null;
+  currentSingerId?: string | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onReact?: (emoji: string) => void;
@@ -20,7 +22,7 @@ function formatTime(timestamp: number): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleCollapse, onReact }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, currentSingerId = null, collapsed, onToggleCollapse, onReact }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -123,6 +125,17 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
           <div className="space-y-2.5">
             {messages.map((msg, i) => {
               const isMe = msg.from === myPeerId;
+              if (msg.from === "system") {
+                return (
+                  <div key={`${msg.timestamp}-${i}`} className="flex items-start gap-2 rounded-lg px-2 py-1.5" style={{ background: "color-mix(in srgb, var(--color-dark-card) 55%, transparent)" }}>
+                    <Wrench size={11} className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-label="System message" />
+                    <p className="min-w-0 flex-1 text-[11px] leading-4 break-words" style={{ color: "var(--color-text-secondary)" }}>{msg.text}</p>
+                    <span className="shrink-0 text-[9px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>{formatTime(msg.timestamp)}</span>
+                  </div>
+                );
+              }
+              const isAdminMsg = adminPeerId !== null && msg.from === adminPeerId;
+              const isSingerMsg = currentSingerId !== null && msg.from === currentSingerId;
               return (
                 <div key={`${msg.timestamp}-${i}`} className="min-w-0">
                   <div className="flex items-baseline gap-2">
@@ -133,15 +146,14 @@ export function ChatPanel({ messages, onSend, myPeerId, collapsed, onToggleColla
                       {formatTime(msg.timestamp)}
                     </span>
                     <span
-                      className="text-xs font-semibold"
+                      className="flex min-w-0 items-center gap-1 text-xs font-semibold"
                       style={{ color: isMe ? "var(--color-primary)" : chatNameColor(msg.from) }}
                     >
-                      {msg.fromName}
+                      {isAdminMsg && <Crown size={10} className="shrink-0" style={{ color: "var(--color-accent)" }} aria-label="Host" />}
+                      {isSingerMsg && <Mic size={10} className="shrink-0" style={{ color: "var(--color-primary)" }} aria-label="On stage" />}
+                      <span className="truncate">{msg.fromName}</span>
                       {isMe && (
-                        <span
-                          className="ml-1"
-                          style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}
-                        >
+                        <span style={{ color: "var(--color-text-secondary)", fontWeight: 400 }}>
                           (you)
                         </span>
                       )}

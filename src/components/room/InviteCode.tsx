@@ -44,7 +44,7 @@ export function InviteCode({ code }: { code: string }) {
       onClick={handleCopy}
       className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-all duration-200 hover:bg-[var(--color-dark-card)] active:scale-[0.98]"
       style={{
-        color: copied ? "var(--color-neon-cyan)" : "var(--color-text-primary)",
+        color: copied ? "var(--color-primary)" : "var(--color-text-primary)",
       }}
       title="Click to copy invite link"
     >
@@ -52,7 +52,7 @@ export function InviteCode({ code }: { code: string }) {
       <span className="hidden sm:inline" style={{ color: "var(--color-text-secondary)" }}>Room:</span>
       <span className="font-mono tracking-[0.08em]">{code}</span>
       {copied
-        ? <Check size={13} style={{ color: "var(--color-neon-cyan)" }} />
+        ? <Check size={13} style={{ color: "var(--color-primary)" }} />
         : <Copy size={12} style={{ color: "var(--color-text-muted)" }} />}
     </button>
   );

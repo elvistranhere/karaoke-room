@@ -1,6 +1,7 @@
 "use client";
 
 import { Timer } from "lucide-react";
+import { Slider } from "~/components/ui/slider";
 
 export const SYNC_OFFSET_STORAGE_KEY = "karaoke-sync-offset-ms";
 export const SYNC_AUTO_STORAGE_KEY = "karaoke-sync-offset-auto";
@@ -116,15 +117,13 @@ export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, 
         ))}
       </div>
       {!auto && (
-        <input
-          type="range"
-          min="0"
+        <Slider
           max={SYNC_OFFSET_MAX_MS}
-          step="25"
-          value={offsetMs}
-          onChange={(event) => onOffsetChange(Number(event.target.value))}
-          className="volume-slider mt-3 w-full"
+          step={25}
+          value={[offsetMs]}
+          onValueChange={(next) => onOffsetChange(typeof next === "number" ? next : next[0] ?? offsetMs)}
           aria-label="Sync offset in milliseconds"
+          className="mt-3 [&_[data-slot=slider-control]]:h-10"
         />
       )}
       <p className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
