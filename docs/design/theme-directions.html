@@ -1,14 +1,14 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: #050506; font-family: "DM Sans", sans-serif; color: #e8e6f0; padding: 48px 40px 80px; }
-  h1 { font-family: Outfit; font-weight: 700; font-size: 24px; margin: 0 0 4px; }
+  h1 { font-family: Outfit, sans-serif; font-weight: 700; font-size: 24px; margin: 0 0 4px; }
   p.sub { color: #77778a; margin: 0 0 40px; font-size: 13px; }
-  .label { font-family: Outfit; font-weight: 700; font-size: 15px; margin: 48px 0 4px; }
+  .label { font-family: Outfit, sans-serif; font-weight: 700; font-size: 15px; margin: 48px 0 4px; }
   .desc { color: #77778a; font-size: 12px; margin: 0 0 14px; max-width: 720px; }
   .mock { width: 100%; max-width: 1060px; height: 430px; border-radius: 18px; overflow: hidden; position: relative; display: grid; grid-template-columns: 200px 1fr 220px; grid-template-rows: 1fr 64px; gap: 12px; padding: 14px; }
   .stage { grid-row: 1; display: flex; flex-direction: column; gap: 10px; }
@@ -19,13 +19,13 @@
   .ctrl { height: 34px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; }
   .row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 9px; font-size: 12px; }
   .avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
-  .side-h { font-family: Outfit; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .side-h { font-family: Outfit, sans-serif; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
   .msg { font-size: 11px; line-height: 1.45; margin-bottom: 8px; }
   .msg b { font-weight: 600; }
-  .songtitle { font-family: Outfit; font-weight: 600; font-size: 13px; }
+  .songtitle { font-family: Outfit, sans-serif; font-weight: 600; font-size: 13px; }
   .slider { height: 4px; border-radius: 4px; flex: 1; position: relative; }
   .slider i { position: absolute; top: -4px; width: 12px; height: 12px; border-radius: 50%; }
-  .playbtn { height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: Outfit; font-weight: 600; font-size: 12px; }
+  .playbtn { height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: Outfit, sans-serif; font-weight: 600; font-size: 12px; }
   .mrow { display:flex; align-items:center; gap:10px; }
   .mlabel { font-size: 9px; letter-spacing: 0.08em; font-weight: 700; }
 

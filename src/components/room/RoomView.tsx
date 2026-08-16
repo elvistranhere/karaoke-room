@@ -14,7 +14,10 @@ import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
 import { Toolbar, type NoiseCancellationMode } from "./Toolbar";
 import { PeoplePanel } from "./PeoplePanel";
+import { QueuePanel } from "./QueuePanel";
 import { ChatPanel } from "./ChatPanel";
+import { RoomShell } from "./RoomShell";
+import type { RoomPanel } from "./panels";
 import { InviteCode } from "./InviteCode";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
@@ -28,6 +31,8 @@ import { DEFAULT_PERSON_MIX, personMixKey } from "~/lib/volumeModel";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { readPref, writePref } from "~/lib/prefs";
+import { useAtmosphere } from "~/hooks/useAtmosphere";
+import { DIVIDER } from "~/lib/surfaces";
 import { AuthModal } from "./AuthModal";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -131,8 +136,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     micMode,
     setMicMode,
   } = useAudioDevices();
-
-  const [mobileSection, setMobileSection] = useState<"stage" | "chat" | "people">("stage");
 
   const {
     room,
@@ -453,6 +456,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   // Held from the join gesture onward and released when the room view unmounts
   useWakeLock(audioUnlocked);
 
+  useAtmosphere({
+    videoId: roomState.video?.videoId ?? null,
+    songName: roomState.currentSingerId
+      ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
+      : null,
+  });
+
   // The singer is the room's clock, so a hidden page hands it back immediately rather
   // than waiting for the server stall timeout, and takes it back when the page returns.
   const pausedWhileHiddenRef = useRef(false);
@@ -491,8 +501,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center px-4">
         <div
-          className="w-full max-w-sm rounded-xl border p-6 text-center"
-          style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
+          className="w-full max-w-sm rounded-xl p-6 text-center"
+          style={{ background: "var(--color-dark-surface)", boxShadow: "var(--shadow-elevation-1)" }}
         >
           <p className="mb-2 text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-danger)" }}>
             You were kicked by {kicked}
@@ -521,6 +531,60 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     );
   }
 
+  const roomPanels: RoomPanel[] = [
+    {
+      id: "people",
+      label: "People",
+      region: "left",
+      count: roomState.participants.length,
+      content: (
+        <PeoplePanel
+          roomState={roomState}
+          myPeerId={myPeerId}
+          participantStatus={participantStatus}
+          activeSpeakers={activeSpeakers}
+          people={people}
+          master={master}
+          onPersonVolumeChange={setPersonVolume}
+          onTogglePersonMute={togglePersonMute}
+          onKick={isAdmin ? sendKick : undefined}
+          onTransferAdmin={isAdmin ? sendTransferAdmin : undefined}
+          onRemoveFromQueue={isAdmin ? sendRemoveFromQueue : undefined}
+        />
+      ),
+    },
+    {
+      id: "queue",
+      label: "Queue",
+      region: "left",
+      count: roomState.queue.length,
+      content: (
+        <QueuePanel
+          roomState={roomState}
+          myPeerId={myPeerId}
+          participantStatus={participantStatus}
+          onRequestJoinQueue={joinQueue}
+          onLeaveQueue={leaveQueue}
+        />
+      ),
+    },
+    {
+      id: "chat",
+      label: "Chat",
+      region: "right",
+      content: (
+        <ChatPanel
+          messages={chatMessages}
+          onSend={sendChat}
+          myPeerId={myPeerId}
+          adminPeerId={roomState.adminPeerId}
+          currentSingerId={roomState.currentSingerId}
+          onReact={sendReaction}
+        />
+      ),
+    },
+  ];
+
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
@@ -539,19 +603,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         participantCount={roomState.participants.length}
       />
 
-      {/* Ambient background — driven by audio visualizer when someone sings */}
-      <div
-        id="ambient-bg"
-        className="pointer-events-none fixed inset-0 transition-[background] duration-150"
-        style={{
-          background: "radial-gradient(ellipse 40% 40% at 20% 80%, var(--color-primary-dim), transparent), radial-gradient(ellipse 35% 35% at 80% 20%, var(--color-primary-dim), transparent)",
-        }}
-      />
+      {/* Atmosphere mesh: colors come from the atmosphere contract, intensity from the singer */}
+      <div className="atmo-mesh pointer-events-none fixed inset-0" aria-hidden="true" />
 
       {/* Header */}
       <header
         className="relative z-10 flex shrink-0 items-center justify-between gap-2 border-b px-3 pb-3 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-5 lg:px-7"
-        style={{ borderColor: "var(--color-dark-border)", background: "color-mix(in srgb, var(--color-dark-surface) 82%, transparent)" }}
+        style={{ borderColor: DIVIDER, background: "color-mix(in srgb, var(--color-dark-surface) 82%, transparent)" }}
       >
         <div className="flex min-w-0 items-center gap-2 sm:gap-4">
           <h1
@@ -565,7 +623,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           >
             Karaoke Now
           </h1>
-          <div className="hidden h-7 w-px sm:block" style={{ background: "var(--color-dark-border)" }} />
+          <div className="hidden h-7 w-px sm:block" style={{ background: DIVIDER }} />
           <div className="min-w-0">
             {roomState.roomName ? (
               <div className="flex min-w-0 items-center gap-1">
@@ -682,244 +740,185 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
-      {/* Main content */}
-      <div
-        className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 lg:flex-row lg:gap-3 lg:px-4 lg:pb-[max(env(safe-area-inset-bottom),1rem)] lg:pt-4 xl:gap-4"
-      >
-        {/* Mobile section switcher */}
-        <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border p-1 lg:hidden" style={{ borderColor: "var(--color-dark-border)", background: "var(--color-dark-surface)" }}>
-          {[
-            { key: "stage", label: "Stage" },
-            { key: "chat", label: "Chat" },
-            { key: "people", label: "People" },
-          ].map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setMobileSection(item.key as "stage" | "chat" | "people")}
-              className="min-h-10 rounded-md px-2 py-3 text-xs font-semibold transition-all"
+      <RoomShell
+        panels={roomPanels}
+        stage={
+          <>
+            <VideoStage
+              mountRef={mountRef}
+              hasVideo={roomState.video !== null}
+              ready={playerReady}
+              embedBlocked={embedBlocked}
+              errorCode={playerErrorCode}
+              isSinger={isMyTurn}
+              showTapToPlay={playbackBlocked && !isMyTurn}
+              onTapToPlay={() => { resumeMixer(); player.play(); }}
+            />
+            <VideoProgress player={player} active={roomState.video !== null && playerReady} />
+            {isAdmin && roomState.currentSingerId !== null && !isMyTurn && (
+              <div className="flex shrink-0 justify-end">
+                <button
+                  onClick={() => setSkipTargetId(roomState.currentSingerId)}
+                  className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-elevation-0)] transition-[filter,transform] duration-150 hover:brightness-125 active:scale-[0.98]"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    background: "var(--color-dark-card)",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  <SkipForward size={13} />
+                  Skip singer
+                </button>
+              </div>
+            )}
+            <div
+              className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl ${roomState.currentSingerId ? "p-2 sm:p-3" : "p-3 sm:p-5"}`}
               style={{
-                fontFamily: "var(--font-display)",
-                background: mobileSection === item.key ? "var(--color-primary-dim)" : "transparent",
-                color: mobileSection === item.key ? "var(--color-primary)" : "var(--color-text-muted)",
+                background: roomState.currentSingerId
+                  ? "transparent"
+                  : "radial-gradient(circle at 50% 10%, var(--color-primary-dim), transparent 55%), var(--color-dark-surface)",
+                boxShadow: roomState.currentSingerId ? undefined : "var(--shadow-elevation-1)",
               }}
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Left rail: participants and singer queue */}
-        <aside className={`min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72 ${mobileSection === "people" ? "flex" : "hidden"}`}>
-          <PeoplePanel
-            roomState={roomState}
-            myPeerId={myPeerId}
-            onRequestJoinQueue={joinQueue}
-            onLeaveQueue={leaveQueue}
-            participantStatus={participantStatus}
-            activeSpeakers={activeSpeakers}
-            people={people}
-            master={master}
-            onPersonVolumeChange={setPersonVolume}
-            onTogglePersonMute={togglePersonMute}
-            onKick={isAdmin ? sendKick : undefined}
-            onTransferAdmin={isAdmin ? sendTransferAdmin : undefined}
-            onRemoveFromQueue={isAdmin ? sendRemoveFromQueue : undefined}
-          />
-        </aside>
-
-        {/* Center stage */}
-        <section className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${mobileSection === "stage" ? "flex" : "hidden"} lg:flex`}>
-          <VideoStage
-            mountRef={mountRef}
-            hasVideo={roomState.video !== null}
-            ready={playerReady}
-            embedBlocked={embedBlocked}
-            errorCode={playerErrorCode}
-            isSinger={isMyTurn}
-            showTapToPlay={playbackBlocked && !isMyTurn}
-            onTapToPlay={() => { resumeMixer(); player.play(); }}
-          />
-          <VideoProgress player={player} active={roomState.video !== null && playerReady} />
-          {isAdmin && roomState.currentSingerId !== null && !isMyTurn && (
-            <div className="flex shrink-0 justify-end">
-              <button
-                onClick={() => setSkipTargetId(roomState.currentSingerId)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all hover:brightness-110 active:scale-[0.98]"
-                style={{
-                  fontFamily: "var(--font-display)",
-                  background: "var(--color-dark-card)",
-                  borderColor: "var(--color-dark-border)",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                <SkipForward size={13} />
-                Skip singer
-              </button>
-            </div>
-          )}
-          <div
-            className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border ${roomState.currentSingerId ? "p-0" : "p-3 sm:p-5"}`}
-            style={{
-              background: roomState.currentSingerId
-                ? "transparent"
-                : "radial-gradient(circle at 50% 10%, var(--color-primary-dim), transparent 55%), var(--color-dark-surface)",
-              borderColor: roomState.currentSingerId ? "transparent" : "var(--color-dark-border)",
-            }}
-          >
-            {/* Auto margins center only when content fits; justify-center would clip
-                overflow above the scrollable area. */}
-            <div className="my-auto w-full">
-            <StageBanner
-              getSingerLevel={room ? getStageLevel : null}
-              getSingerTrack={getSingerTrack}
-              roomState={roomState}
+              {/* Auto margins center only when content fits; justify-center would clip
+                  overflow above the scrollable area. */}
+              <div className="my-auto w-full">
+              <StageBanner
+                getSingerLevel={room ? getStageLevel : null}
+                getSingerTrack={getSingerTrack}
+                roomState={roomState}
+                isMyTurn={isMyTurn}
+                onFinishSinging={finishSinging}
+                audioError={singingError}
+                singerSongName={
+                  roomState.currentSingerId
+                    ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
+                    : null
+                }
+                onAddToQueue={
+                  roomState.queue.length === 0 && !isMyTurn
+                    ? joinQueue
+                    : undefined
+                }
+                onSetSongName={isMyTurn ? setSongName : undefined}
+                onLoadVideo={isMyTurn ? handleLoadVideo : undefined}
+                onPlay={isMyTurn ? () => {
+                  // Play after the video ended restarts it, so broadcast 0 rather than the
+                  // duration the player still reports
+                  const ended = player.getState() === 0;
+                  if (ended) player.seek(0);
+                  player.play();
+                  broadcastNow(true, ended ? 0 : player.getTime());
+                } : undefined}
+                onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
+                onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
+                playbackReady={playerReady}
+                onMixMusicGain={setMusic}
+                mixMusicValue={Math.round(music * 100)}
+                listenerVoiceValue={Math.round(singerMix.stage * 100)}
+                listenerVoiceMuted={singerMix.muted}
+                onListenerVoiceChange={!isMyTurn && singerMixKey
+                  ? (v) => setPersonVolume(singerMixKey, "stage", v / 100)
+                  : undefined}
+                onToggleListenerVoiceMute={!isMyTurn && singerMixKey
+                  ? () => togglePersonMute(singerMixKey)
+                  : undefined}
+                syncAuto={syncOffsetAuto}
+                onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
+                autoOffsetMs={autoOffsetMs}
+                syncOffsetMs={syncOffsetMs}
+                onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
+                syncSingerName={singerName}
+                onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
+                onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
+                isMutedAll={singerMutedAll}
+              />
+              </div>
+            <StageAnnouncement
+              singerId={roomState.currentSingerId}
+              singerName={singerName}
               isMyTurn={isMyTurn}
-              onFinishSinging={finishSinging}
-              audioError={singingError}
-              singerSongName={
-                roomState.currentSingerId
-                  ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
-                  : null
-              }
-              onAddToQueue={
-                roomState.queue.length === 0 && !isMyTurn
-                  ? joinQueue
-                  : undefined
-              }
-              onSetSongName={isMyTurn ? setSongName : undefined}
-              onLoadVideo={isMyTurn ? handleLoadVideo : undefined}
-              onPlay={isMyTurn ? () => {
-                // Play after the video ended restarts it, so broadcast 0 rather than the
-                // duration the player still reports
-                const ended = player.getState() === 0;
-                if (ended) player.seek(0);
-                player.play();
-                broadcastNow(true, ended ? 0 : player.getTime());
-              } : undefined}
-              onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
-              onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
-              playbackReady={playerReady}
-              onMixMusicGain={setMusic}
-              mixMusicValue={Math.round(music * 100)}
-              listenerVoiceValue={Math.round(singerMix.stage * 100)}
-              listenerVoiceMuted={singerMix.muted}
-              onListenerVoiceChange={!isMyTurn && singerMixKey
-                ? (v) => setPersonVolume(singerMixKey, "stage", v / 100)
-                : undefined}
-              onToggleListenerVoiceMute={!isMyTurn && singerMixKey
-                ? () => togglePersonMute(singerMixKey)
-                : undefined}
-              syncAuto={syncOffsetAuto}
-              onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
-              autoOffsetMs={autoOffsetMs}
-              syncOffsetMs={syncOffsetMs}
-              onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
-              syncSingerName={singerName}
-              ambientId="ambient-bg"
-              ambientColor="violet"
-              onMuteAll={() => { sendMuteAll(); setSingerMutedAll(true); }}
-              onUnmuteAll={() => { sendUnmuteAll(); setSingerMutedAll(false); }}
-              isMutedAll={singerMutedAll}
+              armed={audioUnlocked}
+              deafened={deafened}
             />
-            </div>
-          <StageAnnouncement
-            singerId={roomState.currentSingerId}
-            singerName={singerName}
-            isMyTurn={isMyTurn}
-            armed={audioUnlocked}
-            deafened={deafened}
-          />
 
-          {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
-          {(reactions.length > 0 || floatingChatMessages.length > 0) && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">
-              <div className="absolute inset-0 overflow-hidden">
-                {reactions.map((reaction) => (
-                  <div
-                    key={reaction.id}
-                    className="absolute bottom-2"
-                    style={{
-                      left: `clamp(4.5rem, ${reaction.left}%, calc(100% - 4.5rem))`,
-                      transform: "translateX(-50%)",
-                    }}
-                  >
+            {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
+            {(reactions.length > 0 || floatingChatMessages.length > 0) && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-48" aria-live="polite" aria-label="Room activity">
+                <div className="absolute inset-0 overflow-hidden">
+                  {reactions.map((reaction) => (
                     <div
-                      className="flex max-w-[min(14rem,calc(100vw-2rem))] items-center gap-2 rounded-full border px-3.5 py-2 backdrop-blur-md will-change-transform"
+                      key={reaction.id}
+                      className="absolute bottom-2"
                       style={{
-                        animation: "reaction-bubble-float 3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
-                        background: "color-mix(in srgb, var(--color-dark-surface) 88%, transparent)",
-                        borderColor: "color-mix(in srgb, var(--color-text-primary) 12%, transparent)",
-                        boxShadow: "0 12px 32px rgba(0, 0, 0, 0.38)",
+                        left: `clamp(4.5rem, ${reaction.left}%, calc(100% - 4.5rem))`,
+                        transform: "translateX(-50%)",
                       }}
                     >
-                      <span
-                        className="max-w-28 truncate text-xs font-semibold"
-                        style={{ color: reaction.from === myPeerId ? "var(--color-primary)" : chatNameColor(reaction.from) }}
+                      <div
+                        className="flex max-w-[min(14rem,calc(100vw-2rem))] items-center gap-2 rounded-full px-3.5 py-2 backdrop-blur-md will-change-transform"
+                        style={{
+                          animation: "reaction-bubble-float 3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                          background: "color-mix(in srgb, var(--color-dark-card) 88%, transparent)",
+                          boxShadow: "var(--shadow-elevation-2)",
+                        }}
                       >
-                        {reaction.fromName}
-                      </span>
-                      <span className="text-2xl leading-none" aria-hidden="true">{reaction.emoji}</span>
-                      <span className="sr-only">{reaction.fromName} reacted with {reaction.emoji}</span>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="absolute bottom-2 left-1/2 flex w-[min(22rem,calc(100%_-_1.5rem))] -translate-x-1/2 flex-col-reverse items-center gap-2">
-                  {floatingChatMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className="flex w-fit max-w-full items-baseline gap-2 rounded-2xl border px-4 py-2.5 backdrop-blur-md will-change-transform"
-                      style={{
-                        animation: "chat-bubble-float 4s cubic-bezier(0.22, 1, 0.36, 1) forwards",
-                        background: "color-mix(in srgb, var(--color-dark-surface) 92%, transparent)",
-                        borderColor: "color-mix(in srgb, var(--color-primary) 30%, var(--color-dark-border))",
-                        boxShadow: "0 14px 36px rgba(0, 0, 0, 0.42)",
-                      }}
-                    >
-                      <span
-                        className="max-w-28 shrink-0 truncate text-xs font-semibold"
-                        style={{ color: message.from === myPeerId ? "var(--color-primary)" : chatNameColor(message.from) }}
-                      >
-                        {message.fromName}
-                      </span>
-                      <p className="min-w-0 break-words text-sm leading-5" style={{ color: "var(--color-text-primary)" }}>{message.text}</p>
+                        <span
+                          className="max-w-28 truncate text-xs font-semibold"
+                          style={{ color: reaction.from === myPeerId ? "var(--color-primary)" : chatNameColor(reaction.from) }}
+                        >
+                          {reaction.fromName}
+                        </span>
+                        <span className="text-2xl leading-none" aria-hidden="true">{reaction.emoji}</span>
+                        <span className="sr-only">{reaction.fromName} reacted with {reaction.emoji}</span>
+                      </div>
                     </div>
                   ))}
+
+                  <div className="absolute bottom-2 left-1/2 flex w-[min(22rem,calc(100%_-_1.5rem))] -translate-x-1/2 flex-col-reverse items-center gap-2">
+                    {floatingChatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className="flex w-fit max-w-full items-baseline gap-2 rounded-2xl px-4 py-2.5 backdrop-blur-md will-change-transform"
+                        style={{
+                          animation: "chat-bubble-float 4s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                          background: "color-mix(in srgb, var(--color-dark-card) 92%, transparent)",
+                          boxShadow: "var(--shadow-elevation-2)",
+                        }}
+                      >
+                        <span
+                          className="max-w-28 shrink-0 truncate text-xs font-semibold"
+                          style={{ color: message.from === myPeerId ? "var(--color-primary)" : chatNameColor(message.from) }}
+                        >
+                          {message.fromName}
+                        </span>
+                        <p className="min-w-0 break-words text-sm leading-5" style={{ color: "var(--color-text-primary)" }}>{message.text}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
+            )}
             </div>
-          )}
-          </div>
 
-          <Toolbar
-            getMicLevel={room ? getMicLevel : null}
-            isMicEnabled={isMicEnabled}
-            toggleMic={toggleMic}
-            voiceEffect={voiceEffect}
-            onVoiceEffectChange={setVoiceEffect}
-            effectWetDry={effectWetDry}
-            onEffectWetDry={setEffectWetDry}
-            noiseCancellationMode={noiseCancellationMode}
-            ncActive={micMode === "raw" ? singingNC : talkingNC}
-            onNoiseCancellationModeChange={setNoiseCancellationMode}
-            onSoundProfileOpen={() => setSoundProfileOpen(true)}
-            deafened={deafened}
-            onToggleDeafen={handleToggleDeafen}
-          />
-        </section>
-
-        {/* Right rail: room chat */}
-        <aside className={`min-h-0 w-full flex-1 overflow-hidden lg:block lg:w-72 lg:flex-none lg:shrink-0 xl:w-80 ${mobileSection === "chat" ? "block" : "hidden"}`}>
-          <ChatPanel
-            messages={chatMessages}
-            onSend={sendChat}
-            myPeerId={myPeerId}
-            adminPeerId={roomState.adminPeerId}
-            currentSingerId={roomState.currentSingerId}
-            onReact={sendReaction}
-          />
-        </aside>
-      </div>
+            <Toolbar
+              getMicLevel={room ? getMicLevel : null}
+              isMicEnabled={isMicEnabled}
+              toggleMic={toggleMic}
+              voiceEffect={voiceEffect}
+              onVoiceEffectChange={setVoiceEffect}
+              effectWetDry={effectWetDry}
+              onEffectWetDry={setEffectWetDry}
+              noiseCancellationMode={noiseCancellationMode}
+              ncActive={micMode === "raw" ? singingNC : talkingNC}
+              onNoiseCancellationModeChange={setNoiseCancellationMode}
+              onSoundProfileOpen={() => setSoundProfileOpen(true)}
+              deafened={deafened}
+              onToggleDeafen={handleToggleDeafen}
+            />
+          </>
+        }
+      />
 
       {/* Settings drawer */}
       <SettingsDrawer

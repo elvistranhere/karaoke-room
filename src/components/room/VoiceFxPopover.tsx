@@ -39,7 +39,7 @@ export function VoiceFxPopover({
               aria-label={active ? `Voice effect: ${activeLabel}` : "Voice effects"}
               style={{
                 background: active ? "var(--color-primary-dim)" : "var(--color-dark-card)",
-                borderColor: "var(--color-dark-border)",
+                borderColor: active ? "color-mix(in srgb, var(--color-primary) 45%, transparent)" : "transparent",
                 color: active ? "var(--color-primary-bright)" : "var(--color-text-primary)",
               }}
             >
@@ -53,8 +53,8 @@ export function VoiceFxPopover({
 
       <PopoverContent
         side="top"
-        className="w-[min(20rem,calc(100vw-1.5rem))] gap-3 p-3"
-        style={{ background: "var(--color-dark-surface)", color: "var(--color-text-primary)" }}
+        className="w-[min(20rem,calc(100vw-1.5rem))] gap-3 rounded-2xl p-3"
+        style={{ color: "var(--color-text-primary)" }}
       >
         <div className="grid grid-cols-3 gap-1.5">
           {VOICE_EFFECTS.map((fx) => {
@@ -65,10 +65,10 @@ export function VoiceFxPopover({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => onVoiceEffectChange(fx.id)}
-                className="min-h-10 cursor-pointer rounded-lg border px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]"
+                className="min-h-10 cursor-pointer rounded-md border px-2 text-xs font-medium shadow-[var(--shadow-elevation-0)] outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]"
                 style={{
                   fontFamily: "var(--font-display)",
-                  background: selected ? "var(--color-primary-dim)" : "var(--color-dark-card)",
+                  background: selected ? "var(--color-primary-dim)" : "var(--color-dark-raised)",
                   borderColor: selected ? "color-mix(in srgb, var(--color-primary) 45%, transparent)" : "transparent",
                   color: selected ? "var(--color-primary-bright)" : "var(--color-text-secondary)",
                 }}
@@ -99,7 +99,7 @@ export function VoiceFxPopover({
         <button
           type="button"
           onClick={() => { setOpen(false); onAdvanced(); }}
-          className="flex min-h-10 w-full cursor-pointer items-center justify-between rounded-lg px-2.5 text-xs font-medium outline-none transition-colors hover:bg-white/5 focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="flex min-h-10 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-xs font-medium outline-none transition-colors hover:bg-white/5 focus-visible:ring-3 focus-visible:ring-ring/50"
           style={{ color: "var(--color-primary)" }}
         >
           Advanced

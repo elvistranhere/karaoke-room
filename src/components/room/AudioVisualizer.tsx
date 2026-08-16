@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { prefersReducedMotion, setAtmosphereStrength } from "~/lib/atmosphere";
 
 interface AudioVisualizerProps {
-  // Narrow source: the singer's live audio track, or null while there is nothing to draw
+  // Narrow source: the singer's live audio track, or null while there is nothing to drive
   getSingerTrack: (() => MediaStreamTrack | null) | null;
   isActive: boolean;
   children: React.ReactNode;
-  ambientId?: string;
-  ambientColor?: "violet" | "amber";
   framed?: boolean;
   className?: string;
 }
 
-// Per-instance state is now inside the component via refs (not module-level)
-// to avoid cross-instance cache contamination.
+// Voice is the only measurable energy in the room: YouTube audio never reaches this page,
+// so the genre preset's pulse stands in for tempo and this level drives --atmo-strength.
+const REDUCED_MOTION_STRENGTH = 0.4;
 
-function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | null): { bass: number; mid: number; high: number; overall: number } {
-  if (!analyser || !dataBuffer) return { bass: 0, mid: 0, high: 0, overall: 0 };
+// --atmo-strength is an inherited registered property on the root, so every write costs a
+// document-wide style recalc. Sampling below the 140ms opacity transition stays smooth.
+const STRENGTH_INTERVAL_MS = 100;
+
+function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | null): number {
+  if (!analyser || !dataBuffer) return 0;
 
   analyser.getByteFrequencyData(dataBuffer as Uint8Array<ArrayBuffer>);
 
@@ -32,21 +36,18 @@ function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | 
   bass = bass / (third * 255);
   mid = mid / (third * 255);
   high = high / ((len - third * 2) * 255);
-  const overall = (bass * 0.5 + mid * 0.35 + high * 0.15);
 
-  return { bass, mid, high, overall };
+  return bass * 0.5 + mid * 0.35 + high * 0.15;
 }
 
-export function AudioVisualizer({ getSingerTrack, isActive, children, ambientId, ambientColor = "violet", framed = true, className = "" }: AudioVisualizerProps) {
+export function AudioVisualizer({ getSingerTrack, isActive, children, framed = true, className = "" }: AudioVisualizerProps) {
   const rafRef = useRef<number>(0);
   // Held in a ref so a singer change swaps the source without restarting the loop
   const getSingerTrackRef = useRef(getSingerTrack);
   getSingerTrackRef.current = getSingerTrack;
   const hasSource = getSingerTrack !== null;
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const trackCheckCounter = useRef(0);
 
-  // Per-instance audio state (not shared module-level)
   const vizCtxRef = useRef<AudioContext | null>(null);
   const vizSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const vizAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -54,7 +55,6 @@ export function AudioVisualizer({ getSingerTrack, isActive, children, ambientId,
   const dataBufferRef = useRef<Uint8Array | null>(null);
 
   const setupAnalyser = (track: MediaStreamTrack) => {
-    // Same track — reuse
     if (track.id === lastTrackIdRef.current && vizAnalyserRef.current) return;
 
     lastTrackIdRef.current = track.id;
@@ -85,77 +85,41 @@ export function AudioVisualizer({ getSingerTrack, isActive, children, ambientId,
   };
 
   useEffect(() => {
+    const root = document.documentElement;
+
     if (!isActive || !hasSource) {
       cancelAnimationFrame(rafRef.current);
       cleanupViz();
-      // Reset glow + ambient background
-      if (wrapperRef.current) {
-        wrapperRef.current.style.boxShadow = "";
-        wrapperRef.current.style.borderColor = "var(--color-dark-border)";
-      }
-      if (ambientId) {
-        const ambientEl = document.getElementById(ambientId);
-        if (ambientEl) ambientEl.style.background = "";
-      }
+      setAtmosphereStrength(root, 0);
       return;
     }
 
-    let running = true;
+    if (prefersReducedMotion()) {
+      setAtmosphereStrength(root, REDUCED_MOTION_STRENGTH);
+      return () => setAtmosphereStrength(root, 0);
+    }
 
-    const update = () => {
+    let running = true;
+    let lastWriteAt = 0;
+
+    const update = (now: number) => {
       if (!running) return;
 
       trackCheckCounter.current++;
-      // Check for track every 10 frames (~170ms) instead of 30 (~500ms)
       if (trackCheckCounter.current >= 10 || !vizAnalyserRef.current) {
         trackCheckCounter.current = 0;
         const track = getSingerTrackRef.current?.() ?? null;
         if (track && track.readyState === "live") {
           setupAnalyser(track);
         } else if (vizAnalyserRef.current) {
-          // Track went dead (singer changed) - clear analyser so next poll finds new track
           cleanupViz();
         }
       }
 
-      const energy = getAudioEnergy(vizAnalyserRef.current, dataBufferRef.current);
-
-      const el = wrapperRef.current;
-      if (el) {
-        const intensity = energy.overall;
-        const spread = Math.round(18 + intensity * 50);
-        const opacity = Math.min(intensity * 2.0, 0.95);
-
-        const violetGlow = `0 0 ${spread}px rgba(139, 92, 246, ${opacity * Math.max(energy.bass, 0.4)})`;
-        const amberGlow = `0 0 ${Math.round(spread * 0.8)}px rgba(245, 158, 11, ${opacity * energy.high * 3})`;
-        const innerGlow = `inset 0 0 ${Math.round(spread * 0.6)}px rgba(139, 92, 246, ${opacity * 0.5})`;
-
-        el.style.boxShadow = `${violetGlow}, ${amberGlow}, ${innerGlow}`;
-        el.style.borderColor = intensity > 0.08
-          ? `rgba(139, 92, 246, ${0.5 + intensity * 0.5})`
-          : "var(--color-dark-border)";
+      if (now - lastWriteAt >= STRENGTH_INTERVAL_MS) {
+        lastWriteAt = now;
+        setAtmosphereStrength(root, getAudioEnergy(vizAnalyserRef.current, dataBufferRef.current));
       }
-
-      if (ambientId) {
-        const ambientEl = document.getElementById(ambientId);
-        if (ambientEl) {
-          const bassOpacity = 0.05 + energy.bass * 0.18;
-          const highOpacity = 0.03 + energy.high * 0.14;
-          const bassSize = 45 + energy.bass * 30;
-          const highSize = 38 + energy.high * 22;
-
-          const bassColor = ambientColor === "violet"
-            ? `rgba(139, 92, 246, ${bassOpacity})`
-            : `rgba(245, 158, 11, ${bassOpacity})`;
-          const highColor = ambientColor === "violet"
-            ? `rgba(245, 158, 11, ${highOpacity})`
-            : `rgba(139, 92, 246, ${highOpacity})`;
-          ambientEl.style.background =
-            `radial-gradient(ellipse ${bassSize}% ${bassSize}% at 20% 80%, ${bassColor}, transparent), ` +
-            `radial-gradient(ellipse ${highSize}% ${highSize}% at 80% 20%, ${highColor}, transparent)`;
-        }
-      }
-
       rafRef.current = requestAnimationFrame(update);
     };
 
@@ -165,26 +129,17 @@ export function AudioVisualizer({ getSingerTrack, isActive, children, ambientId,
       running = false;
       cancelAnimationFrame(rafRef.current);
       cleanupViz();
-      if (wrapperRef.current) {
-        wrapperRef.current.style.boxShadow = "";
-        wrapperRef.current.style.borderColor = "var(--color-dark-border)";
-      }
-      if (ambientId) {
-        const ambientEl = document.getElementById(ambientId);
-        if (ambientEl) ambientEl.style.background = "";
-      }
+      setAtmosphereStrength(root, 0);
     };
-  }, [isActive, hasSource, ambientId, ambientColor]);
+  }, [isActive, hasSource]);
 
   return (
     <div
-      ref={wrapperRef}
-      className={`${framed ? "rounded-2xl border transition-[border-color] duration-150" : ""} ${className}`}
-      style={{
-        borderColor: framed ? (isActive ? "rgba(139, 92, 246, 0.4)" : "var(--color-dark-border)") : undefined,
-      }}
+      className={`relative ${framed ? "rounded-2xl" : ""} ${className}`}
+      style={framed ? { boxShadow: "var(--shadow-elevation-1)" } : undefined}
     >
       {children}
+      {framed && <div className="atmo-frame pointer-events-none absolute inset-0" aria-hidden="true" />}
     </div>
   );
 }

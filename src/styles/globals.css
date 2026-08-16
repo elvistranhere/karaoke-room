@@ -52,6 +52,54 @@
   --chat-name-8: #c084fc;
 }
 
+/* Atmosphere contract. src/lib/atmosphere.ts re-registers these as typed @property
+   custom properties so the between-song cross-fade interpolates natively. */
+:root {
+  --atmo-a: oklch(0.460 0.150 292.0);
+  --atmo-b: oklch(0.396 0.123 322.0);
+  --atmo-c: oklch(0.506 0.105 262.0);
+  --atmo-glow: oklch(0.680 0.188 292.0);
+  --atmo-tint: oklch(0.156 0.075 292.0);
+  --atmo-strength: 0;
+  --atmo-pulse: 3600ms;
+  --atmo-saturation: 0.9;
+  --atmo-warmth: 0;
+  --atmo-contrast: 0.5;
+}
+
+.atmo-mesh {
+  background:
+    radial-gradient(ellipse 52% 46% at 18% 82%, color-mix(in oklab, var(--atmo-a) 46%, transparent), transparent 70%),
+    radial-gradient(ellipse 46% 40% at 82% 18%, color-mix(in oklab, var(--atmo-b) 36%, transparent), transparent 70%),
+    radial-gradient(ellipse 74% 58% at 50% 106%, color-mix(in oklab, var(--atmo-c) 28%, transparent), transparent 74%);
+  opacity: calc(0.4 + var(--atmo-strength) * 0.55);
+  filter: saturate(calc(0.6 + var(--atmo-saturation) * 0.5)) brightness(calc(1 + var(--atmo-warmth) * 0.08));
+  animation: atmo-breathe var(--atmo-pulse) ease-in-out infinite;
+  transition: opacity 140ms linear;
+  will-change: transform, opacity;
+}
+
+.atmo-frame {
+  border-radius: inherit;
+  box-shadow:
+    0 0 40px color-mix(in oklab, var(--atmo-glow) 60%, transparent),
+    0 0 92px color-mix(in oklab, var(--atmo-glow) 28%, transparent),
+    inset 0 0 26px color-mix(in oklab, var(--atmo-glow) 24%, transparent),
+    inset 0 0 0 1px color-mix(in oklab, var(--atmo-glow) 42%, transparent);
+  opacity: calc(var(--atmo-strength) * (0.7 + var(--atmo-contrast) * 0.6));
+  transition: opacity 140ms linear;
+}
+
+.atmo-glass {
+  background-color: var(--color-dark-surface);
+  background-image: linear-gradient(180deg, color-mix(in oklab, var(--atmo-tint) 70%, transparent), transparent 58%);
+}
+
+@keyframes atmo-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -121,6 +169,86 @@
 @keyframes pulse-ring {
   0% { transform: scale(1); opacity: 0.6; }
   100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Reduced motion keeps every cue, minus the travel: the keyframes below re-declare the
+   same names with the transforms stripped, so the later definition wins. */
+@media (prefers-reduced-motion: reduce) {
+  .atmo-mesh {
+    animation: none;
+  }
+  .atmo-mesh,
+  .atmo-frame {
+    transition: none;
+    will-change: auto;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes float-up {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slide-in-right {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes reaction-float {
+    0% { opacity: 1; }
+    50% { opacity: 0.8; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes reaction-bubble-float {
+    0% { opacity: 0; }
+    14% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes chat-bubble-float {
+    0% { opacity: 0; }
+    12% { opacity: 1; }
+    78% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes stage-sweep {
+    0% { opacity: 0; }
+    35% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes stage-announce-card {
+    0% { opacity: 0; }
+    10% { opacity: 1; }
+    82% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes stage-announce-glyph {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes stage-announce-line {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.6; }
+  }
 }
 
 body {

@@ -8,6 +8,7 @@ import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
 import { VideoUrlInput } from "./VideoUrlInput";
+import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider, MUSIC_MAX } from "./VolumeSlider";
 
 interface StageBannerProps {
@@ -30,8 +31,6 @@ interface StageBannerProps {
   playbackReady?: boolean;
   // Singer-local: own player volume; never broadcast
   onMixMusicGain?: (val: number) => void;
-  ambientId?: string;
-  ambientColor?: "violet" | "amber";
   onMuteAll?: () => void;
   onUnmuteAll?: () => void;
   isMutedAll?: boolean;
@@ -67,8 +66,6 @@ export function StageBanner({
   onRestart,
   playbackReady = false,
   onMixMusicGain,
-  ambientId,
-  ambientColor,
   onMuteAll,
   onUnmuteAll,
   isMutedAll = false,
@@ -101,10 +98,10 @@ export function StageBanner({
     return (
       <div className="flex flex-col items-center justify-center px-6 py-8 text-center">
         <div
-          className="mb-4 flex size-16 items-center justify-center rounded-full border"
+          className="mb-4 flex size-16 items-center justify-center rounded-full"
           style={{
             background: "var(--color-primary-dim)",
-            borderColor: "color-mix(in srgb, var(--color-primary) 30%, var(--color-dark-border))",
+            boxShadow: "var(--shadow-elevation-0)",
             color: "var(--color-primary-soft)",
           }}
         >
@@ -126,7 +123,7 @@ export function StageBanner({
             Add to queue
           </button>
         )}
-        <div className="mt-5 flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-secondary)" }}>
+        <div className="mt-5 flex items-center gap-2 rounded-full px-3 py-1.5 text-xs" style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}>
           <Mic size={13} />
           Nobody is singing right now
         </div>
@@ -137,7 +134,7 @@ export function StageBanner({
   // Someone else singing - informational banner with volume
   if (!isMyTurn) {
     return (
-      <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} ambientId={ambientId} ambientColor={ambientColor} className="h-full w-full">
+      <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} className="h-full w-full">
       <div
         className="relative flex h-full flex-col justify-center overflow-hidden rounded-2xl p-5 sm:p-8"
         style={{ background: "var(--color-dark-surface)" }}
@@ -186,7 +183,7 @@ export function StageBanner({
 
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
-          <div className="mt-5 space-y-2 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
+          <div className="mt-5 space-y-2 rounded-xl p-3.5 shadow-[var(--shadow-elevation-0)]" style={{ background: "var(--color-dark-card)" }}>
             <VolumeSlider
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
@@ -224,7 +221,7 @@ export function StageBanner({
           </div>
         )}
         {onSyncAutoChange && onSyncOffsetChange && (
-          <div className="mt-2 rounded-xl p-3.5" style={{ background: "var(--color-dark-card)" }}>
+          <div className="mt-2 rounded-xl p-3.5 shadow-[var(--shadow-elevation-0)]" style={{ background: "var(--color-dark-card)" }}>
             <SyncOffsetControl
               auto={syncAuto}
               onAutoChange={onSyncAutoChange}
@@ -243,10 +240,10 @@ export function StageBanner({
 
   // My turn - expanded with controls
   return (
-    <AudioVisualizer getSingerTrack={getSingerTrack} isActive={hasVideo} ambientId={ambientId} ambientColor={ambientColor} framed={hasVideo} className="h-full w-full">
+    <AudioVisualizer getSingerTrack={getSingerTrack} isActive={hasVideo} framed={hasVideo} className="h-full w-full">
     <div
-      className={`relative flex h-full flex-col overflow-hidden rounded-2xl border ${hasVideo ? "p-4" : "justify-center p-6 sm:p-8"}`}
-      style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
+      className={`relative flex h-full flex-col overflow-hidden rounded-2xl ${hasVideo ? "p-4" : "justify-center p-6 sm:p-8"}`}
+      style={{ background: "var(--color-dark-surface)", boxShadow: "var(--shadow-elevation-1)" }}
     >
       <div
         className="absolute left-0 top-0 h-0.5 w-full"
@@ -262,8 +259,8 @@ export function StageBanner({
       {!hasVideo ? (
         <div className="mx-auto w-full max-w-lg text-center">
           <div
-            className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full border"
-            style={{ background: "var(--color-primary-dim)", borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-dark-border))", color: "var(--color-primary-soft)" }}
+            className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full"
+            style={{ background: "var(--color-primary-dim)", boxShadow: "var(--shadow-elevation-0)", color: "var(--color-primary-soft)" }}
           >
             <Mic size={26} />
           </div>
@@ -323,14 +320,14 @@ export function StageBanner({
           {/* Stage controls: everything below the separator acts on the room, not on
               this device's volume */}
           {onMuteAll && onUnmuteAll && (
-            <div className="border-t pt-3" style={{ borderColor: "var(--color-dark-border)" }}>
+            <div className="border-t pt-3" style={{ borderColor: DIVIDER }}>
               <button
                 onClick={isMutedAll ? onUnmuteAll : onMuteAll}
-                className="flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:brightness-110"
+                className="flex min-h-10 w-full cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium shadow-[var(--shadow-elevation-0)] transition-[background-color,border-color,filter] duration-150 hover:brightness-110"
                 style={{
-                  borderColor: isMutedAll ? "var(--color-accent)" : "var(--color-dark-border)",
-                  background: isMutedAll ? "var(--color-accent-dim)" : "transparent",
-                  color: isMutedAll ? "var(--color-accent)" : "var(--color-text-muted)",
+                  borderColor: isMutedAll ? "var(--color-accent)" : "transparent",
+                  background: isMutedAll ? "var(--color-accent-dim)" : "var(--color-dark-card)",
+                  color: isMutedAll ? "var(--color-accent)" : "var(--color-text-secondary)",
                 }}
                 title={isMutedAll ? "Let everyone use their mic again" : "Stop everyone else from publishing their mic"}
               >

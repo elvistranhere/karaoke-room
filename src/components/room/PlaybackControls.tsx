@@ -16,7 +16,7 @@ export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled
       <button
         onClick={playing ? onPause : onPlay}
         disabled={disabled}
-        className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-[filter] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         style={{ fontFamily: "var(--font-display)", background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)", color: "#fff" }}
         title={playing ? "Pause for everyone" : "Play for everyone"}
       >
@@ -26,8 +26,8 @@ export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled
       <button
         onClick={onRestart}
         disabled={disabled}
-        className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
+        className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium shadow-[var(--shadow-elevation-0)] transition-[filter] duration-150 hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-40"
+        style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}
         title="Restart from the beginning for everyone"
       >
         <RotateCcw size={12} />

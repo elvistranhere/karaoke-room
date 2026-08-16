@@ -22,25 +22,27 @@ export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode,
     <div
       className={
         hasVideo
-          ? "relative w-full shrink-0 overflow-hidden rounded-2xl border"
+          ? "relative w-full shrink-0 rounded-2xl"
           : "pointer-events-none absolute -left-[9999px] top-0 h-px w-px overflow-hidden opacity-0"
       }
       style={
         hasVideo
-          ? { aspectRatio: "16 / 9", maxHeight: "46dvh", background: "#000", borderColor: "var(--color-dark-border)" }
+          ? { aspectRatio: "16 / 9", maxHeight: "46dvh", background: "#000", boxShadow: "var(--shadow-elevation-1)" }
           : undefined
       }
       aria-hidden={!hasVideo}
     >
       {/* inert keeps the iframe out of the tab order; the blocker below stops clicks */}
-      <div ref={mountRef} className="absolute inset-0" inert />
+      <div ref={mountRef} className="absolute inset-0 overflow-hidden rounded-2xl" inert />
 
-      <div className="absolute inset-0 z-10" aria-hidden="true" />
+      <div className="atmo-frame pointer-events-none absolute inset-0 z-10 rounded-2xl" aria-hidden="true" />
+
+      <div className="absolute inset-0 z-10 rounded-2xl" aria-hidden="true" />
 
       {hasVideo && !failed && ready && showTapToPlay && onTapToPlay && (
         <button
           onClick={onTapToPlay}
-          className="absolute inset-0 z-30 flex cursor-pointer flex-col items-center justify-center gap-2"
+          className="absolute inset-0 z-30 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl"
           style={{ background: "color-mix(in srgb, #000 55%, transparent)" }}
         >
           <span
@@ -60,7 +62,7 @@ export function VideoStage({ mountRef, hasVideo, ready, embedBlocked, errorCode,
 
       {hasVideo && (failed || !ready) && (
         <div
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 px-6 text-center"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl px-6 text-center"
           style={{ background: "color-mix(in srgb, var(--color-dark-surface) 90%, transparent)" }}
         >
           {failed ? (

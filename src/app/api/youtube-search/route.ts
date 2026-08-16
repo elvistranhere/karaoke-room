@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
+import { classifyGenre, type Genre } from "~/lib/atmosphereGenre";
+import { YOUTUBE_ID_RE } from "~/lib/youtube";
 
 const MAX_RESULTS = 8;
 const CACHE_TTL_S = 86_400;
@@ -20,6 +22,7 @@ export interface YouTubeSearchResult {
   channel: string;
   thumbnail: string;
   duration: string;
+  genre: Genre;
 }
 
 function decodeEntities(text: string): string {
@@ -42,25 +45,94 @@ function formatIsoDuration(iso: string): string {
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+interface Snippet {
+  title?: string;
+  channelTitle?: string;
+  thumbnails?: { medium?: { url?: string }; default?: { url?: string } };
+}
+
 interface SearchItem {
   id?: { videoId?: string };
-  snippet?: {
-    title?: string;
-    channelTitle?: string;
-    thumbnails?: { medium?: { url?: string }; default?: { url?: string } };
-  };
+  snippet?: Snippet;
 }
 
 interface VideoItem {
   id?: string;
+  snippet?: Snippet;
   contentDetails?: { duration?: string };
+  topicDetails?: { topicIds?: string[]; relevantTopicIds?: string[]; topicCategories?: string[] };
+}
+
+function thumbnailOf(snippet: Snippet | undefined): string {
+  return snippet?.thumbnails?.medium?.url ?? snippet?.thumbnails?.default?.url ?? "";
+}
+
+function genreOf(video: VideoItem | undefined, title: string, channel: string): Genre {
+  return classifyGenre({
+    topicIds: [...(video?.topicDetails?.topicIds ?? []), ...(video?.topicDetails?.relevantTopicIds ?? [])],
+    topicCategories: video?.topicDetails?.topicCategories ?? [],
+    title,
+    channel,
+  });
+}
+
+async function fetchVideos(ids: string[], apiKey: string): Promise<Map<string, VideoItem>> {
+  const byId = new Map<string, VideoItem>();
+  if (ids.length === 0) return byId;
+
+  const videosUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+  videosUrl.searchParams.set("part", "snippet,contentDetails,topicDetails");
+  videosUrl.searchParams.set("id", ids.join(","));
+  videosUrl.searchParams.set("key", apiKey);
+
+  const response = await fetch(videosUrl);
+  if (!response.ok) return byId;
+  const data = (await response.json()) as { items?: VideoItem[] };
+  for (const video of data.items ?? []) {
+    if (video.id) byId.set(video.id, video);
+  }
+  return byId;
+}
+
+async function lookupById(videoId: string, apiKey: string): Promise<NextResponse> {
+  const cacheKey = `yt-video:${videoId}`;
+  const store = getRedis();
+  if (store) {
+    const cached = await store.get<YouTubeSearchResult>(cacheKey).catch(() => null);
+    if (cached) return NextResponse.json({ results: [cached] });
+  }
+
+  const video = (await fetchVideos([videoId], apiKey)).get(videoId);
+  if (!video) return NextResponse.json({ results: [] });
+
+  const title = decodeEntities(video.snippet?.title ?? "Untitled");
+  const channel = decodeEntities(video.snippet?.channelTitle ?? "");
+  const result: YouTubeSearchResult = {
+    videoId,
+    title,
+    channel,
+    thumbnail: thumbnailOf(video.snippet),
+    duration: formatIsoDuration(video.contentDetails?.duration ?? ""),
+    genre: genreOf(video, title, channel),
+  };
+
+  if (store) await store.set(cacheKey, result, { ex: CACHE_TTL_S }).catch(() => {});
+  return NextResponse.json({ results: [result] });
 }
 
 export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) return NextResponse.json({ disabled: true, results: [] });
 
-  const q = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const params = new URL(request.url).searchParams;
+
+  const id = params.get("id")?.trim() ?? "";
+  if (id) {
+    if (!YOUTUBE_ID_RE.test(id)) return NextResponse.json({ results: [] });
+    return lookupById(id, apiKey);
+  }
+
+  const q = params.get("q")?.trim() ?? "";
   if (q.length < 2 || q.length > 100) return NextResponse.json({ results: [] });
 
   const cacheKey = `yt-search:${q.toLowerCase()}`;
@@ -86,28 +158,25 @@ export async function GET(request: Request) {
   const searchData = (await searchResponse.json()) as { items?: SearchItem[] };
   const items = (searchData.items ?? []).filter((item) => item.id?.videoId);
 
-  const durations = new Map<string, string>();
-  if (items.length > 0) {
-    const videosUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
-    videosUrl.searchParams.set("part", "contentDetails");
-    videosUrl.searchParams.set("id", items.map((item) => item.id?.videoId).join(","));
-    videosUrl.searchParams.set("key", apiKey);
-    const videosResponse = await fetch(videosUrl);
-    if (videosResponse.ok) {
-      const videosData = (await videosResponse.json()) as { items?: VideoItem[] };
-      for (const video of videosData.items ?? []) {
-        if (video.id) durations.set(video.id, formatIsoDuration(video.contentDetails?.duration ?? ""));
-      }
-    }
-  }
+  const videos = await fetchVideos(
+    items.map((item) => item.id?.videoId ?? "").filter(Boolean),
+    apiKey,
+  );
 
-  const results: YouTubeSearchResult[] = items.map((item) => ({
-    videoId: item.id?.videoId ?? "",
-    title: decodeEntities(item.snippet?.title ?? "Untitled"),
-    channel: decodeEntities(item.snippet?.channelTitle ?? ""),
-    thumbnail: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? "",
-    duration: durations.get(item.id?.videoId ?? "") ?? "",
-  }));
+  const results: YouTubeSearchResult[] = items.map((item) => {
+    const videoId = item.id?.videoId ?? "";
+    const video = videos.get(videoId);
+    const title = decodeEntities(item.snippet?.title ?? "Untitled");
+    const channel = decodeEntities(item.snippet?.channelTitle ?? "");
+    return {
+      videoId,
+      title,
+      channel,
+      thumbnail: thumbnailOf(item.snippet),
+      duration: formatIsoDuration(video?.contentDetails?.duration ?? ""),
+      genre: genreOf(video, title, channel),
+    };
+  });
 
   if (store) await store.set(cacheKey, results, { ex: CACHE_TTL_S }).catch(() => {});
   return NextResponse.json({ results });

@@ -119,6 +119,15 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Fonts**: Outfit (`var(--font-display)`) for headings/buttons, DM Sans (`var(--font-body)`) for body. Both via `next/font/google`.
 - **Animations**: CSS keyframes in `globals.css` - `fade-in`, `slide-in`, `reaction-float`, `pulse-ring`.
 
+## Atmosphere Layer
+
+A third token layer on top of the primitives and the shadcn semantic layer. `src/lib/atmosphere.ts` registers ten typed `@property` custom properties (`--atmo-a/b/c`, `-glow`, `-tint`, `-strength`, `-pulse`, `-saturation`, `-warmth`, `-contrast`) so the between-song colour change cross-fades natively over 2s, declares the `AtmosphereProvider` interface and owns the only writer (`applyAtmosphere` on `document.documentElement`).
+
+- **Surfaces consume the contract, never the inputs.** The room mesh (`.atmo-mesh`), the stage and video frame glow (`.atmo-frame`) and the panel glass (`.atmo-glass`, behind `SURFACE_PANEL`) reference the vars only. Semantic colours stay static: violet is live, amber is host, red is attention, and no provider may repaint them.
+- **One provider today, structured for more.** `karaoke-theme` in localStorage selects it and is seeded with `auto` on first read, so a future picker is a new provider in `src/lib/atmosphereProviders.ts` plus a settings row.
+- **The `auto` provider**: thumbnail hue (`atmospherePalette.ts`, hue-bucketed off a 32px canvas, cached per videoId) decides colour, genre (`atmosphereGenre.ts`, from `topicDetails` on the search route's existing `videos.list` call, plus a `?id=` lookup for pasted links) decides behaviour, and `composeAtmosphere` in `atmosphereAuto.ts` turns both into oklch tokens. Idle rooms hold `IDLE_TOKENS`, the Neon Pulse violet.
+- **`--atmo-strength` is live and stays out of the cross-fade.** `AudioVisualizer` is the only writer: the singer's voice level drives it on a ~100ms tick through `setAtmosphereStrength`, under the 140ms opacity transition that smooths it, because the property is inherited and every write on the root costs a document-wide style recalc. Music energy is unmeasurable because YouTube audio never reaches the page, so the genre preset's `--atmo-pulse` is the tempo proxy. `prefers-reduced-motion` freezes the pulse and pins strength, and the colours still change.
+
 ## Component Conventions
 
 - **Named exports only**: `export function ComponentName() {}` (not default exports)

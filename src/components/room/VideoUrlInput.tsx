@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { LoaderCircle, Search } from "lucide-react";
 import { parseYouTubeId } from "~/lib/youtube";
+import { cacheGenre } from "~/lib/atmosphereAuto";
 import type { YouTubeSearchResult } from "~/app/api/youtube-search/route";
 
 interface VideoUrlInputProps {
@@ -20,7 +21,9 @@ export function VideoUrlInput({ onLoad, label = "Load video", autoFocus = false 
 
   const isUrl = parseYouTubeId(value) !== null;
 
-  const pick = (videoId: string) => {
+  const pick = (result: YouTubeSearchResult | string) => {
+    const videoId = typeof result === "string" ? result : result.videoId;
+    if (typeof result !== "string") cacheGenre(videoId, result.genre);
     setValue("");
     setResults(null);
     setError(null);
@@ -104,19 +107,19 @@ export function VideoUrlInput({ onLoad, label = "Load video", autoFocus = false 
       )}
       {results && (
         <div
-          className="max-h-64 space-y-1 overflow-y-auto rounded-xl border p-1.5"
-          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)" }}
+          className="max-h-64 space-y-1 overflow-y-auto rounded-xl p-1.5"
+          style={{ background: "var(--color-dark-card)", boxShadow: "var(--shadow-elevation-2)" }}
         >
           {results.map((result) => (
             <button
               key={result.videoId}
-              onClick={() => pick(result.videoId)}
+              onClick={() => pick(result)}
               className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-white/5"
             >
               <span className="relative h-10 w-[71px] shrink-0 overflow-hidden rounded-md" style={{ background: "#000" }}>
                 {result.thumbnail && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={result.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  <img src={result.thumbnail} alt="" className="h-full w-full object-cover outline outline-white/10 -outline-offset-1" loading="lazy" />
                 )}
                 {result.duration && (
                   <span className="absolute bottom-0.5 right-0.5 rounded px-1 text-[9px] tabular-nums" style={{ background: "rgba(0,0,0,0.8)", color: "#fff" }}>

@@ -2,6 +2,7 @@
 
 import { Mic, MicOff, SlidersHorizontal, Waves, Headphones, HeadphoneOff } from "lucide-react";
 import { useAudioLevel } from "~/hooks/useAudioLevel";
+import { DIVIDER } from "~/lib/surfaces";
 import type { VoiceEffect } from "~/lib/voiceEffects";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -39,7 +40,7 @@ const CIRCLE_CLASS =
   "flex size-11 shrink-0 items-center justify-center rounded-full outline-none transition-[transform,background-color,box-shadow] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const PILL_CLASS =
-  "flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]";
+  "flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-3 text-xs shadow-[var(--shadow-elevation-0)] outline-none transition-[background-color,border-color,transform] duration-150 focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]";
 
 export function Toolbar({
   getMicLevel,
@@ -69,11 +70,10 @@ export function Toolbar({
 
   return (
     <div
-      className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl border px-3 py-2.5"
+      className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2.5"
       style={{
         background: "var(--color-dark-surface)",
-        borderColor: "var(--color-dark-border)",
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.03) inset",
+        boxShadow: "var(--shadow-elevation-2)",
       }}
     >
       <Tooltip>
@@ -137,7 +137,7 @@ export function Toolbar({
         ))}
       </div>
 
-      <div className="h-8 w-px shrink-0" style={{ background: "var(--color-dark-border)" }} />
+      <div className="h-8 w-px shrink-0" style={{ background: DIVIDER }} />
 
       <Select value={noiseCancellationMode} onValueChange={(v) => onNoiseCancellationModeChange(v as NoiseCancellationMode)}>
         <Tooltip>
@@ -145,7 +145,7 @@ export function Toolbar({
             render={
               <SelectTrigger
                 aria-label="Noise cancellation"
-                className="shrink-0 cursor-pointer bg-[var(--color-dark-card)] text-xs"
+                className="shrink-0 cursor-pointer border-transparent bg-[var(--color-dark-card)] text-xs shadow-[var(--shadow-elevation-0)] hover:bg-[var(--color-dark-raised)]"
                 style={{ height: 40, borderRadius: 12, paddingLeft: 12, paddingRight: 8 }}
               >
                 <span className="flex items-center gap-2">
@@ -185,7 +185,7 @@ export function Toolbar({
         <TooltipTrigger
           onClick={onSoundProfileOpen}
           className={PILL_CLASS}
-          style={{ background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+          style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
         >
           <SlidersHorizontal size={14} style={{ color: "var(--color-primary-soft)" }} />
           <span>Sound</span>

@@ -15,11 +15,10 @@ export default function OfflinePage() {
         }}
       />
       <div
-        className="relative z-10 w-full max-w-sm rounded-2xl border p-7 text-center"
+        className="relative z-10 w-full max-w-sm rounded-2xl p-7 text-center"
         style={{
           background: "color-mix(in srgb, var(--color-dark-surface) 88%, transparent)",
-          borderColor: "var(--color-dark-border)",
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.45)",
+          boxShadow: "var(--shadow-elevation-3)",
         }}
       >
         <div

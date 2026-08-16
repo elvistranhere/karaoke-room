@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Mic, Lock, ArrowLeft, RefreshCw } from "lucide-react";
 import type { PublicRoomEntry } from "~/types/room";
+import { SURFACE_LIFT } from "~/lib/surfaces";
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -74,10 +75,10 @@ export default function BrowsePage() {
           </h1>
           <button
             onClick={() => void fetchRooms()}
-            className="flex min-h-10 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-all hover:border-[var(--color-primary)]"
+            className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs shadow-[var(--shadow-elevation-0)] transition-[filter] duration-150 hover:brightness-125"
             style={{
-              borderColor: "var(--color-dark-border)",
-              color: "var(--color-text-muted)",
+              background: "var(--color-dark-card)",
+              color: "var(--color-text-secondary)",
               fontFamily: "var(--font-display)",
             }}
           >
@@ -121,11 +122,8 @@ export default function BrowsePage() {
               <button
                 key={room.code}
                 onClick={() => router.push(`/room/${room.code}`)}
-                className="flex flex-col gap-2 rounded-xl border p-4 text-left transition-all hover:border-[var(--color-primary)] hover:brightness-110 active:scale-[0.98]"
-                style={{
-                  background: "var(--color-dark-surface)",
-                  borderColor: "var(--color-dark-border)",
-                }}
+                className={`flex cursor-pointer flex-col gap-2 rounded-xl p-4 text-left shadow-[var(--shadow-elevation-1)] active:scale-[0.98] ${SURFACE_LIFT}`}
+                style={{ background: "var(--color-dark-surface)" }}
               >
                 {/* Top row: name + lock */}
                 <div className="flex items-start justify-between gap-2">

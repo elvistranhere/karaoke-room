@@ -140,10 +140,10 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
 
       {/* Reaction buttons */}
       <div
-        className="flex items-center gap-1.5 rounded-xl border px-3 py-2"
+        className="flex items-center gap-1.5 rounded-xl px-3 py-2"
         style={{
           background: "var(--color-dark-surface)",
-          borderColor: "var(--color-dark-border)",
+          boxShadow: "var(--shadow-elevation-1)",
         }}
       >
         <span

@@ -5,6 +5,7 @@ import { Mic, Volume2 } from "lucide-react";
 import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 import type { MicCheckState } from "~/hooks/useLiveKit";
 import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
+import { DIVIDER } from "~/lib/surfaces";
 import type { NoiseCancellationMode } from "./Toolbar";
 import { Button } from "~/components/ui/button";
 import { Slider } from "~/components/ui/slider";
@@ -89,8 +90,8 @@ export function SoundProfileModal({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="gap-0 bg-background p-0 sm:max-w-[420px]">
-        <DialogHeader className="border-b px-5 py-4 pr-14">
+      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
+        <DialogHeader className="border-b px-5 py-4 pr-14" style={{ borderColor: DIVIDER }}>
           <DialogTitle className="text-sm font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-display)" }}>
             Sound Profile
           </DialogTitle>
@@ -106,8 +107,8 @@ export function SoundProfileModal({
                 Noise cancellation
               </h3>
             </div>
-            <div className="rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              <div className="grid grid-cols-3 gap-1 rounded-lg border p-1">
+            <div className="rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
+              <div className="grid grid-cols-3 gap-1 rounded-lg p-1" style={{ background: "var(--color-dark-card)" }}>
                 {(["auto", "on", "off"] as const).map((mode) => (
                   <Button
                     key={mode}
@@ -143,7 +144,7 @@ export function SoundProfileModal({
               </h3>
             </div>
 
-            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
+            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
               {/* Advanced voice effect selector */}
               <div>
                 <p className="mb-1 text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>Advanced effects</p>
@@ -200,8 +201,8 @@ export function SoundProfileModal({
                 Mic check
               </h3>
             </div>
-            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
-              <div className="grid grid-cols-2 gap-1 rounded-lg border p-1">
+            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
+              <div className="grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: "var(--color-dark-card)" }}>
                 {(["voice", "raw"] as const).map((profile) => (
                   <Button
                     key={profile}
@@ -254,7 +255,7 @@ export function SoundProfileModal({
               </h3>
             </div>
 
-            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-surface)" }}>
+            <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
               <div>
                 <label htmlFor="mic-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Microphone</label>
                 <select

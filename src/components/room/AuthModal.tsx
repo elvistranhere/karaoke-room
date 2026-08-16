@@ -55,7 +55,7 @@ export function AuthModal({ onSubmit, authFailed }: AuthModalProps) {
           placeholder="Password"
           aria-label="Room password"
           className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          style={{ background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
+          style={{ background: "var(--color-dark-raised)", color: "var(--color-text-primary)" }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSubmit();
           }}

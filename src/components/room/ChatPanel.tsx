@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Crown, Mic, Wrench } from "lucide-react";
+import { Crown, Mic, Wrench } from "lucide-react";
 import type { ChatMessage } from "~/types/room";
 import { REACTION_EMOJIS } from "~/lib/reactions";
 import { chatNameColor } from "~/lib/chatColors";
+import { DIVIDER } from "~/lib/surfaces";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -12,8 +13,6 @@ interface ChatPanelProps {
   myPeerId: string | null;
   adminPeerId?: string | null;
   currentSingerId?: string | null;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
   onReact?: (emoji: string) => void;
 }
 
@@ -22,7 +21,7 @@ function formatTime(timestamp: number): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, currentSingerId = null, collapsed, onToggleCollapse, onReact }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, currentSingerId = null, onReact }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -49,69 +48,11 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
   };
 
   return (
-    <div
-      className="flex h-full flex-col rounded-2xl border"
-      style={{
-        background: "var(--color-dark-surface)",
-        borderColor: "var(--color-dark-border)",
-      }}
-    >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between border-b px-4 py-4"
-        style={{ borderColor: "var(--color-dark-border)" }}
-      >
-        <h3
-          className="text-base font-medium"
-          style={{
-            fontFamily: "var(--font-display)",
-            color: "var(--color-text-primary)",
-          }}
-        >
-          Room chat
-        </h3>
-        <div className="flex items-center gap-2">
-          {onToggleCollapse ? (
-            <button
-              onClick={onToggleCollapse}
-              className="cursor-pointer inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-all hover:scale-105 active:scale-95"
-              style={{
-                fontFamily: "var(--font-display)",
-                borderColor: "var(--color-dark-border)",
-                color: "var(--color-text-muted)",
-                background: "var(--color-dark-card)",
-              }}
-              title={collapsed ? "Expand chat" : "Collapse chat"}
-            >
-              {collapsed ? <><ChevronUp size={11} />Show</> : <><ChevronDown size={11} />Hide</>}
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Last message preview when collapsed */}
-      {collapsed && messages.length > 0 ? (() => {
-        const last = messages[messages.length - 1]!;
-        const isMe = last.from === myPeerId;
-        return (
-          <div className="flex items-baseline gap-2 truncate px-5 py-2">
-            <span className="shrink-0 text-[10px] tabular-nums" style={{ color: "var(--color-text-secondary)" }}>
-              {formatTime(last.timestamp)}
-            </span>
-            <span className="text-xs font-semibold" style={{ color: isMe ? "var(--color-primary)" : chatNameColor(last.from) }}>
-              {last.fromName}
-            </span>
-            <span className="truncate text-xs" style={{ color: "var(--color-text-muted)" }}>
-              {last.text}
-            </span>
-          </div>
-        );
-      })() : null}
-
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Messages */}
       <div
         ref={listRef}
-        className={`overflow-y-auto px-4 py-3 transition-all duration-200 ${collapsed ? "hidden" : "flex-1"}`}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
         style={{ scrollbarWidth: "thin", scrollbarColor: "var(--color-dark-border) transparent" }}
       >
         {messages.length === 0 ? (
@@ -176,8 +117,8 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className={`items-center gap-2 border-t px-4 py-3 ${collapsed ? "hidden" : "flex"}`}
-        style={{ borderColor: "var(--color-dark-border)" }}
+        className="flex shrink-0 items-center gap-2 border-t px-4 py-3"
+        style={{ borderColor: DIVIDER }}
       >
         <input
           type="text"
@@ -194,29 +135,25 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
         <button
           type="submit"
           disabled={!input.trim()}
-          className="cursor-pointer rounded-lg px-4 py-2 text-sm font-bold tracking-wide transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-default disabled:opacity-40 disabled:hover:scale-100"
+          className="cursor-pointer rounded-lg px-4 py-2 text-sm font-bold tracking-wide shadow-[var(--shadow-elevation-0)] transition-[transform,background-color,color] duration-200 hover:scale-105 active:scale-95 disabled:cursor-default disabled:opacity-40 disabled:hover:scale-100"
           style={{
             fontFamily: "var(--font-display)",
             background: input.trim()
-              ? "var(--color-primary-dim)"
+              ? "color-mix(in srgb, var(--color-primary) 28%, transparent)"
               : "var(--color-dark-card)",
             color: input.trim()
-              ? "var(--color-primary)"
+              ? "var(--color-primary-bright)"
               : "var(--color-text-secondary)",
-            borderWidth: "1px",
-            borderColor: input.trim()
-              ? "var(--color-primary)"
-              : "var(--color-dark-border)",
           }}
         >
           Send
         </button>
       </form>
 
-      {onReact && !collapsed ? (
+      {onReact ? (
         <div
-          className="flex items-center justify-around border-t px-4 py-2.5"
-          style={{ borderColor: "var(--color-dark-border)", background: "color-mix(in srgb, var(--color-dark-card) 45%, transparent)" }}
+          className="flex shrink-0 items-center justify-around border-t px-4 py-2.5"
+          style={{ borderColor: DIVIDER, background: "color-mix(in srgb, var(--color-dark-card) 45%, transparent)" }}
           aria-label="Room reactions"
         >
           {REACTION_EMOJIS.map((emoji) => (

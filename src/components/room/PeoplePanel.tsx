@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Mic, MicOff, Music, Crown, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, Crown, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
 import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/lib/volumeModel";
+import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
 import {
@@ -19,8 +20,6 @@ import {
 interface PeoplePanelProps {
   roomState: RoomState;
   myPeerId: string | null;
-  onRequestJoinQueue: () => void;
-  onLeaveQueue: () => void;
   participantStatus: Record<string, ParticipantStatus>;
   activeSpeakers: Set<string>;
   people: Record<string, PersonMix>;
@@ -35,8 +34,6 @@ interface PeoplePanelProps {
 export function PeoplePanel({
   roomState,
   myPeerId,
-  onRequestJoinQueue,
-  onLeaveQueue,
   participantStatus,
   activeSpeakers,
   people,
@@ -51,26 +48,12 @@ export function PeoplePanel({
   const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = myPeerId !== null && roomState.adminPeerId === myPeerId;
 
-  const isInQueue = myPeerId ? roomState.queue.includes(myPeerId) : false;
-  const isSinging = myPeerId !== null && roomState.currentSingerId === myPeerId;
-  const isInQueueOrSinging = isInQueue || isSinging;
-
-  // Build a unified list: participants with their queue position
   const queuePositions = new Map(roomState.queue.map((id, i) => [id, i + 1]));
   const hasQueue = roomState.queue.length > 0;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col rounded-2xl border"
-      style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}
-    >
-      <div className="flex shrink-0 items-center border-b px-4 py-4" style={{ borderColor: "var(--color-dark-border)" }}>
-        <h3 className="text-base font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-          Participants ({roomState.participants.length})
-        </h3>
-      </div>
-
-      <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-3">
         {roomState.participants.map((p) => {
           const isMe = p.id === myPeerId;
           const isSpeaking = Array.from(activeSpeakers).some((id) =>
@@ -184,7 +167,7 @@ export function PeoplePanel({
               {/* Per-person volume slider */}
               {isExpanded && (
                 <div
-                  className="mt-1 space-y-1.5 rounded-lg px-3 py-2"
+                  className="mt-1 space-y-1.5 rounded-lg px-3 py-2 shadow-[var(--shadow-elevation-0)]"
                   style={{ background: "var(--color-dark-card)", animation: "fade-in 0.1s ease-out" }}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -218,10 +201,10 @@ export function PeoplePanel({
                     {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
                   </p>
                   {isAdmin && (
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-2" style={{ borderColor: "var(--color-dark-border)" }}>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-2" style={{ borderColor: DIVIDER }}>
                       <button
                         onClick={() => onTransferAdmin?.(p.id)}
-                        className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-primary-dim)]"
+                        className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-primary-dim)]"
                         style={{ color: "var(--color-primary)" }}
                       >
                         <Crown size={12} />
@@ -230,7 +213,7 @@ export function PeoplePanel({
                       {onRemoveFromQueue && queuePos ? (
                         <button
                           onClick={() => onRemoveFromQueue(p.id)}
-                          className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-white/5"
+                          className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-white/5"
                           style={{ color: "var(--color-text-secondary)" }}
                         >
                           Remove from queue
@@ -238,7 +221,7 @@ export function PeoplePanel({
                       ) : null}
                       <button
                         onClick={() => setKickTarget({ id: p.id, name: p.name })}
-                        className="ml-auto flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-danger-dim)]"
+                        className="ml-auto flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-danger-dim)]"
                         style={{ color: "var(--color-danger)" }}
                       >
                         Kick
@@ -251,85 +234,6 @@ export function PeoplePanel({
           );
         })}
       </ul>
-
-      {/* Song queue */}
-      {(roomState.currentSingerId !== null || roomState.queue.length > 0) && <section className="flex max-h-[46%] shrink-0 flex-col border-t" style={{ borderColor: "var(--color-dark-border)" }}>
-        <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
-          <h3 className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "color-mix(in srgb, var(--color-primary) 65%, white)" }}>
-            Song Queue
-          </h3>
-          <span className="rounded-full border px-2 py-0.5 text-[9px] font-semibold" style={{ borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}>
-            {roomState.queue.length} queued
-          </span>
-        </div>
-
-        {roomState.queue.length > 0 ? (
-          <div className="min-h-0 overflow-y-auto px-3 pb-2">
-            <ul className="space-y-1">
-              {roomState.queue.map((id, i) => {
-                const participant = roomState.participants.find((p) => p.id === id);
-                const song = participantStatus[id]?.currentSong?.trim();
-                const isMe = id === myPeerId;
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center gap-3 rounded-lg px-2 py-2"
-                    style={{ background: isMe ? "var(--color-primary-dim)" : "transparent", animation: `slide-in 0.2s ease-out ${i * 0.04}s both` }}
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md" style={{ background: "var(--color-dark-card)", color: "var(--color-accent)" }}>
-                      <Music size={16} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-xs font-medium"
-                        style={{ color: isMe ? "var(--color-primary)" : "var(--color-text-primary)" }}
-                      >
-                        {participant?.name ?? "Someone"}
-                      </p>
-                      {song ? (
-                        <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--color-text-secondary)" }}>{song}</p>
-                      ) : null}
-                    </div>
-                    <span className="text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>#{i + 1}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ) : (
-          <p className="px-4 pb-3 text-center text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-            The queue is empty. Add a song to sing next.
-          </p>
-        )}
-
-        <div className="shrink-0 px-3 pb-3 pt-1">
-        {!isInQueueOrSinging ? (
-          <button
-            onClick={onRequestJoinQueue}
-            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all hover:brightness-110 active:scale-[0.98]"
-            style={{ fontFamily: "var(--font-display)", background: "color-mix(in srgb, var(--color-primary) 62%, white)", color: "#24153a" }}
-          >
-            <Plus size={14} />
-            Add to Queue
-          </button>
-        ) : isSinging ? (
-          <p
-            className="text-center text-xs font-bold"
-            style={{ color: "var(--color-primary)" }}
-          >
-            You&apos;re singing!
-          </p>
-        ) : (
-          <button
-            onClick={onLeaveQueue}
-            className="w-full cursor-pointer rounded-lg border py-2.5 text-xs font-medium transition-all hover:brightness-110"
-            style={{ fontFamily: "var(--font-display)", borderColor: "var(--color-dark-border)", color: "var(--color-text-muted)" }}
-          >
-            Leave Queue
-          </button>
-        )}
-        </div>
-      </section>}
 
       {kickTarget && onKick ? (
         <KickConfirm

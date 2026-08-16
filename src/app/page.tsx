@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Users, Music, Lock, Search, Plus, LogIn, Eye, EyeOff } from "lucide-react";
+import { SURFACE_LIFT } from "~/lib/surfaces";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -92,8 +93,8 @@ export default function Home() {
         }}
       >
         <section
-          className="group flex min-h-[280px] flex-col rounded-2xl border p-5 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-dark-border))] sm:p-6"
-          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))", borderColor: "var(--color-dark-border)" }}
+          className="flex min-h-[280px] flex-col rounded-2xl p-5 shadow-[var(--shadow-elevation-1)] sm:p-6"
+          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))" }}
         >
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "color-mix(in srgb, var(--color-primary) 14%, transparent)", color: "var(--color-primary)" }}>
@@ -219,8 +220,8 @@ export default function Home() {
         </section>
 
         <section
-          className="group flex min-h-[280px] flex-col rounded-2xl border p-5 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-dark-border))] sm:p-6"
-          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))", borderColor: "var(--color-dark-border)" }}
+          className="flex min-h-[280px] flex-col rounded-2xl p-5 shadow-[var(--shadow-elevation-1)] sm:p-6"
+          style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--color-dark-surface) 96%, var(--color-primary)), var(--color-dark-surface))" }}
         >
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "color-mix(in srgb, var(--color-accent) 14%, transparent)", color: "var(--color-accent)" }}>
@@ -256,8 +257,8 @@ export default function Home() {
           <button
             onClick={handleJoin}
             disabled={!canJoin}
-            className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-bold transition-all enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:brightness-110 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ fontFamily: "var(--font-display)", background: "var(--color-dark-card)", borderColor: "var(--color-dark-border)", color: "var(--color-text-primary)" }}
+            className="mt-auto flex min-h-10 w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold shadow-[var(--shadow-elevation-0)] transition-[filter,transform] duration-150 enabled:cursor-pointer enabled:hover:brightness-125 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ fontFamily: "var(--font-display)", background: "var(--color-dark-card)", color: "var(--color-text-primary)" }}
           >
             Join
           </button>
@@ -267,8 +268,8 @@ export default function Home() {
       {/* Browse link */}
       <button
         onClick={() => router.push("/browse")}
-        className="mt-7 flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-all hover:border-[var(--color-primary)] hover:brightness-125"
-        style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)", color: "color-mix(in srgb, var(--color-primary) 65%, white)", fontFamily: "var(--font-display)" }}
+        className={`mt-7 flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-[var(--shadow-elevation-1)] ${SURFACE_LIFT}`}
+        style={{ background: "var(--color-dark-surface)", color: "color-mix(in srgb, var(--color-primary) 65%, white)", fontFamily: "var(--font-display)" }}
       >
         <Search size={14} />
         Browse Public Rooms

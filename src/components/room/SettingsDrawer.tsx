@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Crown, Lock, LockOpen } from "lucide-react";
+import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider, VOLUME_MAX } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
@@ -95,10 +96,10 @@ export function SettingsDrawer({
     <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <SheetContent
         side="right"
-        className="max-sm:w-full! bg-background gap-0 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+        className="max-sm:w-full! gap-0 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
         initialFocus={focusRoomName ? roomNameInputRef : undefined}
       >
-        <SheetHeader className="border-b px-5 pb-4 pr-14 pt-[max(env(safe-area-inset-top),1rem)]">
+        <SheetHeader className="border-b px-5 pb-4 pr-14 pt-[max(env(safe-area-inset-top),1rem)]" style={{ borderColor: DIVIDER }}>
           <SheetTitle className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
             Settings
           </SheetTitle>
@@ -176,7 +177,7 @@ export function SettingsDrawer({
           </section>
 
           {showHostSettings ? (
-            <section className="space-y-5 border-t pt-5">
+            <section className="space-y-5 border-t pt-5" style={{ borderColor: DIVIDER }}>
               <div>
                 <div className="flex items-center gap-1.5">
                   <Crown size={13} style={{ color: "var(--color-accent)" }} />
@@ -253,10 +254,10 @@ export function SettingsDrawer({
                   </div>
 
                   <div
-                    className="mb-4 flex items-center gap-3 rounded-xl border p-3"
+                    className="mb-4 flex items-center gap-3 rounded-xl border p-3 shadow-[var(--shadow-elevation-0)]"
                     style={{
-                      background: isLocked ? "var(--color-primary-dim)" : "var(--color-dark-surface)",
-                      borderColor: isLocked ? "color-mix(in srgb, var(--color-primary) 35%, var(--color-dark-border))" : undefined,
+                      background: isLocked ? "var(--color-primary-dim)" : "var(--color-dark-card)",
+                      borderColor: isLocked ? "color-mix(in srgb, var(--color-primary) 35%, transparent)" : "transparent",
                     }}
                   >
                     <div
@@ -313,7 +314,7 @@ export function SettingsDrawer({
             </section>
           ) : null}
 
-          <div className="rounded-lg p-4 text-center" style={{ background: "var(--color-dark-surface)" }}>
+          <div className="rounded-lg p-4 text-center shadow-[var(--shadow-elevation-0)]" style={{ background: "var(--color-dark-card)" }}>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
               Mic check, voice effects, and device selection live in
             </p>
