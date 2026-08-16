@@ -145,7 +145,7 @@ export function Toolbar({
               <SelectTrigger
                 aria-label="Noise cancellation"
                 className="shrink-0 cursor-pointer border-transparent bg-[var(--color-dark-card)] text-xs shadow-[var(--shadow-control)] hover:bg-[var(--color-dark-raised)]"
-                style={{ height: 40, borderRadius: 12, paddingLeft: 12, paddingRight: 12 }}
+                style={{ height: 40, borderRadius: "var(--radius-xl)", paddingLeft: 12, paddingRight: 12 }}
               >
                 <span className="flex items-center gap-2">
                   <Waves size={14} style={{ color: "var(--color-primary-soft)" }} />
