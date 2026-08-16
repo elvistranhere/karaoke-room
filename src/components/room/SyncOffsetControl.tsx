@@ -84,37 +84,35 @@ interface SyncOffsetControlProps {
 export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, onOffsetChange, singerName }: SyncOffsetControlProps) {
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Timer size={15} style={{ color: "var(--color-primary)" }} />
-          <span className="text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
-            Voice sync{singerName ? ` for ${singerName}` : ""}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Timer size={14} className="shrink-0" style={{ color: "var(--color-primary)" }} />
+          <span className="truncate text-sm font-medium" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+            Voice sync
           </span>
           <span
-            className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+            className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
             style={{ background: "var(--color-accent-dim, rgba(245, 158, 11, 0.15))", color: "var(--color-accent)" }}
           >
             Experimental
           </span>
         </div>
-        <span className="text-xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
-          {auto ? `Auto (${autoOffsetMs} ms)` : `${offsetMs} ms`}
-        </span>
-      </div>
-      <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "var(--color-dark-card)" }}>
-        {([true, false] as const).map((mode) => (
-          <button
-            key={String(mode)}
-            onClick={() => onAutoChange(mode)}
-            className="flex-1 cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all"
-            style={{
-              background: auto === mode ? "var(--color-primary-dim)" : "transparent",
-              color: auto === mode ? "var(--color-primary)" : "var(--color-text-muted)",
-            }}
-          >
-            {mode ? "Auto" : "Manual"}
-          </button>
-        ))}
+        <div className="flex shrink-0 gap-0.5 rounded-lg p-0.5 shadow-[var(--shadow-control)]" style={{ background: "var(--color-dark-raised)" }} role="group" aria-label="Voice sync mode">
+          {([true, false] as const).map((mode) => (
+            <button
+              key={String(mode)}
+              onClick={() => onAutoChange(mode)}
+              aria-pressed={auto === mode}
+              className="cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium transition-all"
+              style={{
+                background: auto === mode ? "var(--color-primary-dim)" : "transparent",
+                color: auto === mode ? "var(--color-primary)" : "var(--color-text-muted)",
+              }}
+            >
+              {mode ? "Auto" : "Manual"}
+            </button>
+          ))}
+        </div>
       </div>
       {!auto && (
         <Slider
@@ -126,10 +124,10 @@ export function SyncOffsetControl({ auto, onAutoChange, autoOffsetMs, offsetMs, 
           className="mt-3 [&_[data-slot=slider-control]]:h-10"
         />
       )}
-      <p className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+      <p className="mt-2 text-[10px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>
         {auto
-          ? "Lines the music up with this singer's voice automatically."
-          : "Slide right if the music runs ahead. Remembered per singer."}
+          ? `Auto (${autoOffsetMs} ms). Lines the music up with ${singerName ? `${singerName}'s` : "the singer's"} voice automatically.`
+          : `${offsetMs} ms. Slide right if the music runs ahead. Remembered per singer.`}
       </p>
     </div>
   );

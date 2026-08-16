@@ -28,9 +28,10 @@ export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled
         disabled={disabled}
         className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
         style={{
-          background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)",
+          background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
           color: "#fff",
-          boxShadow: "0 6px 24px rgba(157, 92, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18)",
+          boxShadow:
+            "0 6px 24px color-mix(in srgb, var(--color-primary) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18)",
         }}
         title={playing ? "Pause for everyone" : "Play for everyone"}
         aria-label={playing ? "Pause for everyone" : "Play for everyone"}

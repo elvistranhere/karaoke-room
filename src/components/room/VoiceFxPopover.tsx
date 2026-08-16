@@ -39,7 +39,6 @@ export function VoiceFxPopover({
               aria-label={active ? `Voice effect: ${activeLabel}` : "Voice effects"}
               style={{
                 background: active ? "var(--color-primary-dim)" : "var(--color-dark-card)",
-                borderColor: active ? "color-mix(in srgb, var(--color-primary) 45%, transparent)" : "transparent",
                 color: active ? "var(--color-primary-bright)" : "var(--color-text-primary)",
               }}
             >

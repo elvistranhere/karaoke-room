@@ -12,6 +12,11 @@ export interface AtmosphereTokens {
   c: string;
   glow: string;
   tint: string;
+  accent: string;
+  accentSoft: string;
+  accentDim: string;
+  accentBright: string;
+  accentLevel: string;
   pulseMs: number;
   saturation: number;
   warmth: number;
@@ -35,13 +40,29 @@ export const IDLE_TOKENS: AtmosphereTokens = {
   c: "oklch(0.506 0.105 262.0)",
   glow: "oklch(0.680 0.188 292.0)",
   tint: "oklch(0.156 0.075 292.0)",
+  accent: "#8B5CF6",
+  accentSoft: "#C9A7FF",
+  accentDim: "rgba(139, 92, 246, 0.15)",
+  accentBright: "#D7BBFF",
+  accentLevel: "#B78CFF",
   pulseMs: 3600,
   saturation: 0.9,
   warmth: 0,
   contrast: 0.5,
 };
 
-const COLOR_VARS = ["--atmo-a", "--atmo-b", "--atmo-c", "--atmo-glow", "--atmo-tint"] as const;
+const COLOR_VARS = [
+  "--atmo-a",
+  "--atmo-b",
+  "--atmo-c",
+  "--atmo-glow",
+  "--atmo-tint",
+  "--atmo-accent",
+  "--atmo-accent-soft",
+  "--atmo-accent-dim",
+  "--atmo-accent-bright",
+  "--atmo-accent-level",
+] as const;
 
 const NUMBER_VARS = ["--atmo-saturation", "--atmo-warmth", "--atmo-contrast"] as const;
 
@@ -51,6 +72,11 @@ const REGISTRATIONS: PropertyDefinition[] = [
   { name: "--atmo-c", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.c },
   { name: "--atmo-glow", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.glow },
   { name: "--atmo-tint", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.tint },
+  { name: "--atmo-accent", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.accent },
+  { name: "--atmo-accent-soft", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.accentSoft },
+  { name: "--atmo-accent-dim", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.accentDim },
+  { name: "--atmo-accent-bright", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.accentBright },
+  { name: "--atmo-accent-level", syntax: "<color>", inherits: true, initialValue: IDLE_TOKENS.accentLevel },
   { name: "--atmo-strength", syntax: "<number>", inherits: true, initialValue: "0" },
   { name: "--atmo-pulse", syntax: "<time>", inherits: true, initialValue: `${IDLE_TOKENS.pulseMs}ms` },
   { name: "--atmo-saturation", syntax: "<number>", inherits: true, initialValue: String(IDLE_TOKENS.saturation) },
@@ -84,6 +110,11 @@ export function applyAtmosphere(root: HTMLElement, tokens: AtmosphereTokens): vo
   root.style.setProperty("--atmo-c", tokens.c);
   root.style.setProperty("--atmo-glow", tokens.glow);
   root.style.setProperty("--atmo-tint", tokens.tint);
+  root.style.setProperty("--atmo-accent", tokens.accent);
+  root.style.setProperty("--atmo-accent-soft", tokens.accentSoft);
+  root.style.setProperty("--atmo-accent-dim", tokens.accentDim);
+  root.style.setProperty("--atmo-accent-bright", tokens.accentBright);
+  root.style.setProperty("--atmo-accent-level", tokens.accentLevel);
   root.style.setProperty("--atmo-saturation", String(tokens.saturation));
   root.style.setProperty("--atmo-warmth", String(tokens.warmth));
   root.style.setProperty("--atmo-contrast", String(tokens.contrast));

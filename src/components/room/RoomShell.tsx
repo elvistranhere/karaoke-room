@@ -5,8 +5,8 @@ import { PanelHost } from "./PanelHost";
 import { panelsInRegion, type PanelId, type PanelRegion, type RoomPanel, type RoomSectionId } from "./panels";
 
 const RAIL_CLASS: Record<PanelRegion, string> = {
-  left: "min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72",
-  right: "min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex lg:w-72 lg:flex-none lg:shrink-0 xl:w-80",
+  left: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72",
+  right: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-72 lg:flex-none lg:shrink-0 xl:w-80",
 };
 
 const RAIL_LABEL: Record<PanelRegion, string> = {
@@ -74,7 +74,10 @@ export function RoomShell({ panels, stage }: RoomShellProps) {
 
       {renderRail("left")}
 
-      <section className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${section === "stage" ? "flex" : "hidden"} lg:flex`}>
+      <section
+        data-testid="room-stage"
+        className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${section === "stage" ? "flex" : "hidden"} lg:flex`}
+      >
         {stage}
       </section>
 

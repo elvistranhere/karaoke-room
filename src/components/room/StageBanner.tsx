@@ -116,7 +116,11 @@ export function StageBanner({
           <button
             onClick={onAddToQueue}
             className="mt-5 flex cursor-pointer items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-all hover:brightness-110 active:scale-[0.98]"
-            style={{ background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)", color: "#fff", boxShadow: "0 0 20px rgba(157, 92, 255, 0.25)" }}
+            style={{
+              background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
+              color: "#fff",
+              boxShadow: "0 0 20px color-mix(in srgb, var(--color-primary) 25%, transparent)",
+            }}
           >
             <Plus size={16} />
             Add to queue
@@ -149,7 +153,7 @@ export function StageBanner({
               {currentSinger?.name ?? "Someone"} is singing
             </h2>
             {singerSongName ? (
-              <p className="mt-0.5 truncate text-sm" style={{ color: "var(--color-primary-soft, #c9a7ff)" }}>
+              <p data-testid="stage-song-title" className="mt-0.5 truncate text-sm" style={{ color: "var(--color-primary-soft, #c9a7ff)" }}>
                 {singerSongName}
               </p>
             ) : null}
@@ -180,7 +184,7 @@ export function StageBanner({
 
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
-          <div className="mt-5 space-y-2 rounded-xl p-3.5 shadow-[var(--shadow-elevation-0)]" style={{ background: "var(--color-dark-card)" }}>
+          <div className="mt-6 space-y-2.5">
             <VolumeSlider
               label="Voice"
               icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
@@ -207,9 +211,9 @@ export function StageBanner({
               icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />}
               value={mixMusicValue}
               max={MUSIC_MAX}
-                            onChange={(v) => onMixMusicGain(v / 100)}
+              onChange={(v) => onMixMusicGain(v / 100)}
             />
-            <p className="pt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+            <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
               {listenerVoiceMuted
                 ? "Muted for you. Unmuting restores this level. YouTube caps music at 100%."
                 : "Only changes what you hear. YouTube caps music at 100%."}
@@ -217,7 +221,7 @@ export function StageBanner({
           </div>
         )}
         {onSyncAutoChange && onSyncOffsetChange && (
-          <div className="mt-2 rounded-xl p-3.5 shadow-[var(--shadow-elevation-0)]" style={{ background: "var(--color-dark-card)" }}>
+          <div className="atmo-card mt-4 rounded-xl p-3 shadow-[var(--shadow-elevation-0)]">
             <SyncOffsetControl
               auto={syncAuto}
               onAutoChange={onSyncAutoChange}

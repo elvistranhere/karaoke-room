@@ -11,11 +11,21 @@ npm run dev:party        # PartyKit only
 npm run lint             # biome lint . (linter only, formatter disabled)
 npm run typecheck        # tsc --noEmit
 npm run test             # vitest run (pure-function tests under src/**/*.test.ts)
+npm run e2e              # playwright test (two-client browser suite under e2e/)
 npm run build            # Production build
 npm run deploy:party     # Deploy PartyKit server to Cloudflare
 ```
 
-Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`); there is no component or browser test layer. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
+Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`); there is no component test layer. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
+
+## Playwright E2E
+
+`e2e/` drives real browser contexts, one per participant, against the local Next.js and PartyKit servers that `playwright.config.ts` starts for the run. Chromium launches with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --autoplay-policy=no-user-gesture-required`, so `getUserMedia` resolves without a prompt and LiveKit gets a real track.
+
+- **One-time setup: `npx playwright install chromium`.** The project pins `channel: "chromium"`, so a fresh clone or CI runner fails at launch with "Chromium distribution 'chromium' is not found" until the browser is downloaded. `npm ci` does not do it.
+- **`NEXT_PUBLIC_PARTY_HOST` is pinned to `localhost:1999` in the webServer env**, so a `.env` pointing at the deployed PartyKit cannot silently take the room off the server under test. Override the ports with `E2E_NEXT_PORT` and `E2E_PARTY_PORT` when 3000 or 1999 is already taken by something other than this app; `reuseExistingServer` is on outside CI, so a stray server on either port would be used as-is.
+- **YouTube never loads.** `e2e/fixtures/youtubeStub.ts` answers `https://www.youtube.com/iframe_api` with a wall-clock implementation of the `YT.Player` surface that `useYouTubePlayer` and `useVideoSync` drive, and exposes it as `window.__ytStub` so a test can read the exact playback position. Thumbnails and the genre lookup are stubbed to the empty answers both call sites already handle. The suite asserts the sync protocol and its UI, never pixels of a real embed.
+- **No arbitrary sleeps.** Every wait is `expect` polling on a real condition: an attribute on the entry overlay, a rendered participant row, or a player position.
 
 ## Git
 
@@ -37,7 +47,7 @@ Never use em dashes (—). Use regular dashes (-) or rewrite the sentence.
 
 ### Voice Pipeline (Critical Path)
 
-The singer's audio pipeline in `useLiveKit.ts`:
+The singer's audio pipeline in `src/hooks/livekit/capture.ts`:
 ```
 getUserMedia (mic) → Voice Effect Chain → Mic GainNode
                                               ↓
@@ -45,7 +55,7 @@ getUserMedia (mic) → Voice Effect Chain → Mic GainNode
                                               ↓
                                   publishTrack (LiveKit, Track.Source.Microphone)
 ```
-`startSinging` runs automatically when the turn starts and `stopSinging` when it ends. Changes to `startSinging`/`stopSinging`/`cleanupMix` require careful review.
+`startSinging` runs automatically when the turn starts and `stopSinging` when it ends. All three of `startSinging`, `stopSinging` and `cleanupMix` live in `src/hooks/livekit/capture.ts`, and changes to them require careful review.
 
 ### Synced YouTube Playback (Critical Path)
 
@@ -75,7 +85,7 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 ## Key Hooks
 
 - **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions, mute-all. Returns `send()` for raw messages.
-- **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook (~1000 lines).
+- **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook, and the only one that is split: `src/hooks/useLiveKit.ts` is a ~115-line facade that composes four modules under `src/hooks/livekit/`. `context.ts` owns the shared refs, state and `UseLiveKitParams`; `connection.ts` owns the room connection and the device/NC switch effects; `capture.ts` owns the singer path (`startSinging`, `stopSinging`, `cleanupMix`, `toggleMic`, the voice effect chain); `micCheck.ts` owns the isolated loopback context.
 - **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable handle.
 - **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast. The policy itself is `computeSyncAction`/`computeTarget` in `src/lib/syncMath.ts`; the hook only owns the interval, the refs and the seek cooldown.
 - **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples, computed by `estimateClockOffset`).
@@ -121,11 +131,13 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 
 ## Atmosphere Layer
 
-A third token layer on top of the primitives and the shadcn semantic layer. `src/lib/atmosphere.ts` registers ten typed `@property` custom properties (`--atmo-a/b/c`, `-glow`, `-tint`, `-strength`, `-pulse`, `-saturation`, `-warmth`, `-contrast`) so the between-song colour change cross-fades natively over 2s, declares the `AtmosphereProvider` interface and owns the only writer (`applyAtmosphere` on `document.documentElement`).
+A third token layer on top of the primitives and the shadcn semantic layer. `src/lib/atmosphere.ts` registers fifteen typed `@property` custom properties (`--atmo-a/b/c`, `-glow`, `-tint`, `-accent`, `-accent-soft/-dim/-bright/-level`, `-strength`, `-pulse`, `-saturation`, `-warmth`, `-contrast`) so the between-song colour change cross-fades natively over 2s, declares the `AtmosphereProvider` interface and owns the only writer (`applyAtmosphere` on `document.documentElement`).
 
-- **Surfaces consume the contract, never the inputs.** The room mesh (`.atmo-mesh`), the stage and video frame glow (`.atmo-frame`) and the panel glass (`.atmo-glass`, behind `SURFACE_PANEL`) reference the vars only. Semantic colours stay static: violet is live, amber is host, red is attention, and no provider may repaint them.
+- **Surfaces consume the contract, never the inputs.** The room mesh (`.atmo-mesh`), the stage and video frame glow (`.atmo-frame`) and the panel glass (`.atmo-glass`, behind `SURFACE_PANEL`) reference the vars only.
+- **Primary is atmosphere-driven, the rest of the semantic layer is not.** The whole `--color-primary` family (and shadcn's `--primary`/`--ring`, which Tailwind's `@theme inline` block makes the real source of `--color-primary`) resolves to `var(--atmo-accent*, <violet>)`, so the interactive accent follows the playing song's hue. Only the hue moves: `composeAtmosphere` pins each band to the idle violet's own oklch lightness (accent 0.606 < level 0.728 < soft 0.791 < bright 0.839, so the scale never inverts mid-song), takes that step's chroma as a ceiling and clamps it to the sRGB gamut for the hue with `srgbSafeChroma`, so the browser never gamut-maps a token and quietly moves its lightness. `avoidDangerHue` pushes any hue within 18deg of red back out, so contrast and meaning never ride on the thumbnail. Amber is host, red is attention, green is success, and those stay static. The violet fallbacks are also the `@property` initial values, so an idle room resolves to exactly today's violet tokens.
+- **White-on-primary surfaces ramp off `--color-primary`, never off `-bright`.** The three white-text CTAs (`PlaybackControls` transport, `StageBanner` "Add to queue", `RoomView`'s audio unlock) are `linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))`, both stops in the accent's dark half, so white holds 3.6:1 or better at every hue instead of the 1.7:1 the `-bright` step would give. `-soft`, `-bright` and `-level` are for text and icons on dark panels only. Dark text on a tinted-white surface (QueuePanel's "Add to Queue") mixes 25% primary into black, so the label stays anchored while the background floats with the hue.
 - **One provider today, structured for more.** `karaoke-theme` in localStorage selects it and is seeded with `auto` on first read, so a future picker is a new provider in `src/lib/atmosphereProviders.ts` plus a settings row.
-- **The `auto` provider**: thumbnail hue (`atmospherePalette.ts`, hue-bucketed off a 32px canvas, cached per videoId) decides colour, genre (`atmosphereGenre.ts`, from `topicDetails` on the search route's existing `videos.list` call, plus a `?id=` lookup for pasted links) decides behaviour, and `composeAtmosphere` in `atmosphereAuto.ts` turns both into oklch tokens. Idle rooms hold `IDLE_TOKENS`, the Neon Pulse violet.
+- **The `auto` provider**: thumbnail hue (`atmospherePalette.ts`, hue-bucketed off a 32px canvas, cached per videoId) decides colour, genre (`atmosphereGenre.ts`, from `topicDetails` on the search route's existing `videos.list` call, plus a `?id=` lookup for pasted links) decides behaviour, and `composeAtmosphere` in `atmosphereAuto.ts` turns both into oklch tokens. Idle rooms hold `IDLE_TOKENS`, the Neon Pulse violet, accents included.
 - **`--atmo-strength` is live and stays out of the cross-fade.** `AudioVisualizer` is the only writer: the singer's voice level drives it on a ~100ms tick through `setAtmosphereStrength`, under the 140ms opacity transition that smooths it, because the property is inherited and every write on the root costs a document-wide style recalc. Music energy is unmeasurable because YouTube audio never reaches the page, so the genre preset's `--atmo-pulse` is the tempo proxy. `prefers-reduced-motion` freezes the pulse and pins strength, and the colours still change.
 
 ## Component Conventions
@@ -166,7 +178,8 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 - **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
 - **PartyKit secret**: `partykit env add REGISTRY_TOKEN` must be set on the deployed project. The registry party rejects every POST/DELETE from a non-local host when it is missing, so `/browse` goes empty instead of accepting forged listings.
 - **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
-- Deploy PartyKit before Vercel: the protocol is additive, so old clients keep working during the gap. `.github/workflows/deploy-partykit.yml` carries `concurrency: partykit-deploy` with `cancel-in-progress: false`, so two merges in quick succession cannot deploy out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR.
+- Deploy PartyKit before Vercel: the protocol is additive, so old clients keep working during the gap. `.github/workflows/deploy-partykit.yml` carries `concurrency: partykit-deploy` with `cancel-in-progress: false`, so two merges in quick succession cannot deploy out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR. After a successful `npx partykit deploy`, the workflow health-checks `/parties/main/health-probe` (the `onRequest` GET), then POSTs to a Vercel deploy hook.
+- **`VERCEL_DEPLOY_HOOK_URL` secret** (optional, GitHub Actions): a Vercel deploy hook URL that chains a Vercel redeploy onto the tail of `deploy-partykit.yml`, after the health check passes. Create one under Vercel project settings > Git > Deploy Hooks and add it as a repo secret. When absent, the workflow logs a line and skips the trigger instead of failing.
 
 ## Skills and Workflows
 

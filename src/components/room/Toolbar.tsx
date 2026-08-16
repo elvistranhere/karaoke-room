@@ -82,9 +82,9 @@ export function Toolbar({
           className={`${CIRCLE_CLASS} ${deafened ? "cursor-not-allowed" : "cursor-pointer hover:scale-105 active:scale-[0.97]"}`}
           style={{
             background: micIsLive ? "var(--color-primary-soft)" : "var(--color-danger-dim)",
-            color: micIsLive ? "#4c00af" : "var(--color-danger)",
+            color: micIsLive ? "color-mix(in srgb, var(--color-primary) 55%, black)" : "var(--color-danger)",
             border: micIsLive ? "none" : "1px solid var(--color-danger)",
-            boxShadow: micIsLive ? "0 6px 20px rgba(166, 110, 255, 0.22)" : "none",
+            boxShadow: micIsLive ? "0 6px 20px color-mix(in srgb, var(--color-primary) 22%, transparent)" : "none",
             opacity: deafened ? 0.5 : 1,
           }}
           aria-label={micLabel}
@@ -102,9 +102,9 @@ export function Toolbar({
           className={`${CIRCLE_CLASS} cursor-pointer hover:scale-105 active:scale-[0.97]`}
           style={{
             background: deafened ? "var(--color-danger-dim)" : "var(--color-primary-soft, #c9a7ff)",
-            color: deafened ? "var(--color-danger)" : "#4c00af",
+            color: deafened ? "var(--color-danger)" : "color-mix(in srgb, var(--color-primary) 55%, black)",
             border: deafened ? "1px solid var(--color-danger)" : "none",
-            boxShadow: deafened ? "none" : "0 6px 20px rgba(166, 110, 255, 0.22)",
+            boxShadow: deafened ? "none" : "0 6px 20px color-mix(in srgb, var(--color-primary) 22%, transparent)",
           }}
           aria-label={deafenLabel}
         >
@@ -144,8 +144,8 @@ export function Toolbar({
             render={
               <SelectTrigger
                 aria-label="Noise cancellation"
-                className="shrink-0 cursor-pointer border-transparent bg-[var(--color-dark-card)] text-xs shadow-[var(--shadow-elevation-0)] hover:bg-[var(--color-dark-raised)]"
-                style={{ height: 40, borderRadius: 12, paddingLeft: 12, paddingRight: 8 }}
+                className="shrink-0 cursor-pointer border-transparent bg-[var(--color-dark-card)] text-xs shadow-[var(--shadow-control)] hover:bg-[var(--color-dark-raised)]"
+                style={{ height: 40, borderRadius: 12, paddingLeft: 12, paddingRight: 12 }}
               >
                 <span className="flex items-center gap-2">
                   <Waves size={14} style={{ color: "var(--color-primary-soft)" }} />

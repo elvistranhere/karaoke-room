@@ -96,7 +96,7 @@ export function QueuePanel({
             style={{
               fontFamily: "var(--font-display)",
               background: "color-mix(in srgb, var(--color-primary) 62%, white)",
-              color: "#24153a",
+              color: "color-mix(in srgb, var(--color-primary) 25%, black)",
             }}
           >
             <Plus size={16} />

@@ -8,11 +8,13 @@
   --font-display: "Baloo 2", sans-serif;
   --font-body: "Be Vietnam Pro", sans-serif;
 
-  --color-primary: #8B5CF6;
-  --color-primary-dim: rgba(139, 92, 246, 0.15);
-  --color-primary-soft: #C9A7FF;
-  --color-primary-bright: #D7BBFF;
-  --color-primary-level: #B78CFF;
+  /* Primary follows the playing song's hue through the atmosphere layer; the violet
+     fallbacks are also the @property initial values, so an idle room is unchanged. */
+  --color-primary: var(--atmo-accent, #8B5CF6);
+  --color-primary-dim: var(--atmo-accent-dim, rgba(139, 92, 246, 0.15));
+  --color-primary-soft: var(--atmo-accent-soft, #C9A7FF);
+  --color-primary-bright: var(--atmo-accent-bright, #D7BBFF);
+  --color-primary-level: var(--atmo-accent-level, #B78CFF);
   --color-accent: #F59E0B;
   --color-accent-dim: rgba(245, 158, 11, 0.15);
   --color-success: #22C55E;
@@ -61,6 +63,11 @@
   --atmo-c: oklch(0.506 0.105 262.0);
   --atmo-glow: oklch(0.680 0.188 292.0);
   --atmo-tint: oklch(0.156 0.075 292.0);
+  --atmo-accent: #8B5CF6;
+  --atmo-accent-soft: #C9A7FF;
+  --atmo-accent-dim: rgba(139, 92, 246, 0.15);
+  --atmo-accent-bright: #D7BBFF;
+  --atmo-accent-level: #B78CFF;
   --atmo-strength: 0;
   --atmo-pulse: 3600ms;
   --atmo-saturation: 0.9;
@@ -68,11 +75,14 @@
   --atmo-contrast: 0.5;
 }
 
+/* Every radial ends on a long two-step falloff: a hard transparent stop paints a
+   visible terminator arc, and where that arc crosses a panel edge it reads as a
+   square corner behind the rounded surface. */
 .atmo-mesh {
   background:
-    radial-gradient(ellipse 52% 46% at 18% 82%, color-mix(in oklab, var(--atmo-a) 46%, transparent), transparent 70%),
-    radial-gradient(ellipse 46% 40% at 82% 18%, color-mix(in oklab, var(--atmo-b) 36%, transparent), transparent 70%),
-    radial-gradient(ellipse 74% 58% at 50% 106%, color-mix(in oklab, var(--atmo-c) 28%, transparent), transparent 74%);
+    radial-gradient(ellipse 52% 46% at 18% 82%, color-mix(in oklab, var(--atmo-a) 46%, transparent), color-mix(in oklab, var(--atmo-a) 14%, transparent) 55%, transparent 92%),
+    radial-gradient(ellipse 46% 40% at 82% 18%, color-mix(in oklab, var(--atmo-b) 36%, transparent), color-mix(in oklab, var(--atmo-b) 11%, transparent) 55%, transparent 92%),
+    radial-gradient(ellipse 74% 58% at 50% 106%, color-mix(in oklab, var(--atmo-c) 28%, transparent), color-mix(in oklab, var(--atmo-c) 9%, transparent) 58%, transparent 94%);
   opacity: calc(0.4 + var(--atmo-strength) * 0.55);
   filter: saturate(calc(0.6 + var(--atmo-saturation) * 0.5)) brightness(calc(1 + var(--atmo-warmth) * 0.08));
   animation: atmo-breathe var(--atmo-pulse) ease-in-out infinite;
@@ -80,13 +90,11 @@
   will-change: transform, opacity;
 }
 
-/* Near glow only: it must die out inside the layout gaps, because the frame paints
-   under the opaque rails and any longer reach gets guillotined at their edges.
-   The long-range wash lives in .atmo-halo, behind every panel like the mesh. */
+/* Long-range ambient wash, behind every panel like the mesh. */
 .atmo-halo {
   background:
-    radial-gradient(ellipse 46% 38% at 50% 34%, color-mix(in oklab, var(--atmo-glow) 30%, transparent), transparent 72%),
-    radial-gradient(ellipse 58% 34% at 50% 88%, color-mix(in oklab, var(--atmo-glow) 22%, transparent), transparent 74%);
+    radial-gradient(ellipse 46% 38% at 50% 34%, color-mix(in oklab, var(--atmo-glow) 30%, transparent), color-mix(in oklab, var(--atmo-glow) 9%, transparent) 55%, transparent 92%),
+    radial-gradient(ellipse 58% 34% at 50% 88%, color-mix(in oklab, var(--atmo-glow) 22%, transparent), color-mix(in oklab, var(--atmo-glow) 7%, transparent) 55%, transparent 92%);
   opacity: calc(var(--atmo-strength) * (0.65 + var(--atmo-contrast) * 0.5));
   transition: opacity 140ms linear;
 }
@@ -94,7 +102,8 @@
 .atmo-frame {
   border-radius: inherit;
   box-shadow:
-    0 0 18px color-mix(in oklab, var(--atmo-glow) 52%, transparent),
+    0 0 40px color-mix(in oklab, var(--atmo-glow) 60%, transparent),
+    0 0 92px color-mix(in oklab, var(--atmo-glow) 28%, transparent),
     inset 0 0 26px color-mix(in oklab, var(--atmo-glow) 24%, transparent),
     inset 0 0 0 1px color-mix(in oklab, var(--atmo-glow) 42%, transparent);
   opacity: calc(var(--atmo-strength) * (0.7 + var(--atmo-contrast) * 0.6));
@@ -377,7 +386,9 @@ body {
   --card-foreground: #FAFAFA;
   --popover: #27272A;
   --popover-foreground: #FAFAFA;
-  --primary: #8B5CF6;
+  /* `@theme inline` remaps --color-primary onto --primary, so the atmosphere accent has to
+     land here too or shadcn's bg-primary would stay violet while inline styles shifted. */
+  --primary: var(--atmo-accent, #8B5CF6);
   --primary-foreground: #FFFFFF;
   --secondary: #27272A;
   --secondary-foreground: #FAFAFA;
@@ -388,7 +399,7 @@ body {
   --destructive: #EF4444;
   --border: #3F3F46;
   --input: #3F3F46;
-  --ring: #8B5CF6;
+  --ring: var(--atmo-accent, #8B5CF6);
   --chart-1: #8B5CF6;
   --chart-2: #F59E0B;
   --chart-3: #22C55E;

@@ -752,13 +752,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               embedBlocked={embedBlocked}
               errorCode={playerErrorCode}
               isSinger={isMyTurn}
-              videoId={roomState.video?.videoId ?? null}
-              playing={roomState.video?.playing ?? false}
-              songName={
-                roomState.currentSingerId
-                  ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
-                  : null
-              }
               showTapToPlay={playbackBlocked && !isMyTurn}
               onTapToPlay={() => { resumeMixer(); player.play(); }}
             />
@@ -913,7 +906,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             <Toolbar
               getMicLevel={room ? getMicLevel : null}
               isMicEnabled={isMicEnabled}
-              toggleMic={toggleMic}
+              toggleMic={() => toggleMic(!isMicEnabled)}
               voiceEffect={voiceEffect}
               onVoiceEffectChange={setVoiceEffect}
               effectWetDry={effectWetDry}
@@ -1081,9 +1074,9 @@ function AudioUnlockOverlay({
             className="mt-6 w-full cursor-pointer rounded-xl px-6 py-3 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.98]"
             style={{
               fontFamily: "var(--font-display)",
-              background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)",
+              background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
               color: "#fff",
-              boxShadow: "0 0 24px rgba(157, 92, 255, 0.35)",
+              boxShadow: "0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent)",
               animation: "fade-in 0.25s ease-out",
             }}
           >

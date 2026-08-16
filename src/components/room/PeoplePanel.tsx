@@ -80,18 +80,18 @@ export function PeoplePanel({
                 onContextMenu={(e) => { if (!isMe) { e.preventDefault(); setExpandedId(isExpanded ? null : p.id); } }}
                 style={{
                   background: isSpeaking
-                    ? "rgba(139, 92, 246, 0.15)"
+                    ? "color-mix(in srgb, var(--color-primary) 15%, transparent)"
                     : isSinger
                       ? "var(--color-primary-dim)"
                     : isMe
-                      ? "rgba(139, 92, 246, 0.05)"
+                      ? "color-mix(in srgb, var(--color-primary) 5%, transparent)"
                       : undefined,
                   boxShadow: isSpeaking
-                    ? "inset 0 0 0 1px rgba(139, 92, 246, 0.4)"
+                    ? "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent)"
                     : isSinger
-                      ? "0 0 14px rgba(139, 92, 246, 0.18), inset 0 0 0 1px rgba(139, 92, 246, 0.35)"
+                      ? "0 0 14px color-mix(in srgb, var(--color-primary) 18%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)"
                     : isExpanded
-                      ? "0 0 8px rgba(139, 92, 246, 0.3), inset 0 0 0 1px rgba(139, 92, 246, 0.2)"
+                      ? "0 0 8px color-mix(in srgb, var(--color-primary) 30%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent)"
                       : undefined,
                 }}
               >
@@ -103,7 +103,7 @@ export function PeoplePanel({
                     background: isSinger
                       ? "var(--color-primary-dim)"
                       : isSpeaking
-                        ? "rgba(139, 92, 246, 0.3)"
+                        ? "color-mix(in srgb, var(--color-primary) 30%, transparent)"
                         : "var(--color-dark-card)",
                     color: isSinger || isSpeaking
                       ? "var(--color-primary)"
