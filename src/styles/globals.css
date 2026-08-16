@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-display: "Outfit", sans-serif;
-  --font-body: "DM Sans", sans-serif;
+  --font-display: "Baloo 2", sans-serif;
+  --font-body: "Be Vietnam Pro", sans-serif;
 
   --color-primary: #8B5CF6;
   --color-primary-dim: rgba(139, 92, 246, 0.15);
@@ -19,10 +19,18 @@
   --color-danger: #EF4444;
   --color-danger-dim: rgba(239, 68, 68, 0.12);
 
+  /* Elevation model: depth is a tone step plus a layered shadow, never an outline.
+     0 flush inside a panel, 1 resting, 2 floating, 3 modal. */
   --color-dark-bg: #09090B;
   --color-dark-surface: #18181B;
   --color-dark-card: #27272A;
+  --color-dark-raised: #323238;
   --color-dark-border: #3F3F46;
+  --color-divider: rgba(255, 255, 255, 0.07);
+  --shadow-elevation-0: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --shadow-elevation-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-elevation-3: 0 4px 12px rgba(0, 0, 0, 0.36), 0 24px 56px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --color-text-primary: #FAFAFA;
   --color-text-secondary: #A1A1AA;
   --color-text-muted: #71717A;
@@ -138,7 +146,7 @@ body {
   white-space: nowrap;
   background: var(--color-dark-card);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-dark-border);
+  box-shadow: var(--shadow-elevation-2);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -221,15 +229,15 @@ body {
   --foreground: #FAFAFA;
   --card: #18181B;
   --card-foreground: #FAFAFA;
-  --popover: #18181B;
+  --popover: #27272A;
   --popover-foreground: #FAFAFA;
   --primary: #8B5CF6;
   --primary-foreground: #FFFFFF;
   --secondary: #27272A;
   --secondary-foreground: #FAFAFA;
-  --muted: #27272A;
+  --muted: #323238;
   --muted-foreground: #71717A;
-  --accent: #27272A;
+  --accent: #323238;
   --accent-foreground: #FAFAFA;
   --destructive: #EF4444;
   --border: #3F3F46;

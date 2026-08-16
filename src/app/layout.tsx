@@ -1,19 +1,20 @@
 import "~/styles/globals.css";
 
 import type { Metadata, Viewport } from "next";
-import { Outfit, DM_Sans } from "next/font/google";
+import { Baloo_2, Be_Vietnam_Pro } from "next/font/google";
 import { TRPCReactProvider } from "~/trpc/react";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ServiceWorkerRegistrar } from "~/components/ServiceWorkerRegistrar";
 
-const outfit = Outfit({
-  subsets: ["latin"],
+const display = Baloo_2({
+  subsets: ["latin", "vietnamese"],
   variable: "--font-display",
   display: "swap",
 });
 
-const dmSans = DM_Sans({
-  subsets: ["latin"],
+const body = Be_Vietnam_Pro({
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600"],
   variable: "--font-body",
   display: "swap",
 });
@@ -45,7 +46,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${dmSans.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="antialiased">
         <TRPCReactProvider>
           <TooltipProvider delay={250}>{children}</TooltipProvider>
