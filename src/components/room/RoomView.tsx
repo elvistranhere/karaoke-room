@@ -605,6 +605,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
       {/* Atmosphere mesh: colors come from the atmosphere contract, intensity from the singer */}
       <div className="atmo-mesh pointer-events-none fixed inset-0" aria-hidden="true" />
+      <div className="atmo-halo pointer-events-none fixed inset-0" aria-hidden="true" />
 
       {/* Header */}
       <header
@@ -751,6 +752,13 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               embedBlocked={embedBlocked}
               errorCode={playerErrorCode}
               isSinger={isMyTurn}
+              videoId={roomState.video?.videoId ?? null}
+              playing={roomState.video?.playing ?? false}
+              songName={
+                roomState.currentSingerId
+                  ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
+                  : null
+              }
               showTapToPlay={playbackBlocked && !isMyTurn}
               onTapToPlay={() => { resumeMixer(); player.play(); }}
             />

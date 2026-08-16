@@ -80,11 +80,21 @@
   will-change: transform, opacity;
 }
 
+/* Near glow only: it must die out inside the layout gaps, because the frame paints
+   under the opaque rails and any longer reach gets guillotined at their edges.
+   The long-range wash lives in .atmo-halo, behind every panel like the mesh. */
+.atmo-halo {
+  background:
+    radial-gradient(ellipse 46% 38% at 50% 34%, color-mix(in oklab, var(--atmo-glow) 30%, transparent), transparent 72%),
+    radial-gradient(ellipse 58% 34% at 50% 88%, color-mix(in oklab, var(--atmo-glow) 22%, transparent), transparent 74%);
+  opacity: calc(var(--atmo-strength) * (0.65 + var(--atmo-contrast) * 0.5));
+  transition: opacity 140ms linear;
+}
+
 .atmo-frame {
   border-radius: inherit;
   box-shadow:
-    0 0 40px color-mix(in oklab, var(--atmo-glow) 60%, transparent),
-    0 0 92px color-mix(in oklab, var(--atmo-glow) 28%, transparent),
+    0 0 18px color-mix(in oklab, var(--atmo-glow) 52%, transparent),
     inset 0 0 26px color-mix(in oklab, var(--atmo-glow) 24%, transparent),
     inset 0 0 0 1px color-mix(in oklab, var(--atmo-glow) 42%, transparent);
   opacity: calc(var(--atmo-strength) * (0.7 + var(--atmo-contrast) * 0.6));
@@ -185,6 +195,7 @@
     animation: none;
   }
   .atmo-mesh,
+  .atmo-halo,
   .atmo-frame {
     transition: none;
     will-change: auto;
