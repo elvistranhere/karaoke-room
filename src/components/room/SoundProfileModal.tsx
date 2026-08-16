@@ -259,7 +259,7 @@ export function SoundProfileModal({
             <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--color-dark-raised)" }}>
               <div>
                 <label htmlFor="mic-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Microphone</label>
-                <Select value={selectedInputId} onValueChange={onInputChange}>
+                <Select value={selectedInputId} onValueChange={(v) => { if (v) onInputChange(v); }}>
                   <SelectTrigger id="mic-device" aria-label="Microphone" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -272,7 +272,7 @@ export function SoundProfileModal({
 
               <div>
                 <label htmlFor="speaker-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
-                <Select value={selectedOutputId} onValueChange={onOutputChange}>
+                <Select value={selectedOutputId} onValueChange={(v) => { if (v) onOutputChange(v); }}>
                   <SelectTrigger id="speaker-device" aria-label="Speaker" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
                     <SelectValue />
                   </SelectTrigger>
