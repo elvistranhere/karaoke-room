@@ -338,7 +338,7 @@ export function StageBanner({
 
           <button
             onClick={onFinishSinging}
-            className="w-full cursor-pointer rounded-lg py-2 text-xs font-medium transition-all hover:brightness-110"
+            className="min-h-10 w-full cursor-pointer rounded-xl py-2 text-xs font-semibold shadow-[var(--shadow-control)] transition-[background-color,filter] duration-150 hover:brightness-125"
             style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
           >
             Finish Turn

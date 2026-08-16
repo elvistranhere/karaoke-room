@@ -12,27 +12,33 @@ interface PlaybackControlsProps {
 
 export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled = false }: PlaybackControlsProps) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <button
-        onClick={playing ? onPause : onPlay}
-        disabled={disabled}
-        className="flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-[filter] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ fontFamily: "var(--font-display)", background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)", color: "#fff" }}
-        title={playing ? "Pause for everyone" : "Play for everyone"}
-      >
-        {playing ? <Pause size={13} /> : <Play size={13} />}
-        {playing ? "Pause" : "Play"}
-      </button>
+    <div className="flex items-center justify-center gap-3">
       <button
         onClick={onRestart}
         disabled={disabled}
-        className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium shadow-[var(--shadow-elevation-0)] transition-[filter] duration-150 hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}
+        className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full shadow-[var(--shadow-control)] transition-[transform,filter] duration-150 hover:brightness-125 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
+        style={{ background: "var(--color-dark-raised)", color: "var(--color-text-secondary)" }}
         title="Restart from the beginning for everyone"
+        aria-label="Restart from the beginning for everyone"
       >
-        <RotateCcw size={12} />
-        Restart
+        <RotateCcw size={16} />
       </button>
+      <button
+        onClick={playing ? onPause : onPlay}
+        disabled={disabled}
+        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
+        style={{
+          background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)",
+          color: "#fff",
+          boxShadow: "0 6px 24px rgba(157, 92, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18)",
+        }}
+        title={playing ? "Pause for everyone" : "Play for everyone"}
+        aria-label={playing ? "Pause for everyone" : "Play for everyone"}
+      >
+        {/* Play glyphs sit optically left of center; nudge to balance */}
+        {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="translate-x-[1.5px]" />}
+      </button>
+      <span className="w-11" aria-hidden />
     </div>
   );
 }
