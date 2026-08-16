@@ -7,7 +7,7 @@ import { useLiveKit } from "~/hooks/useLiveKit";
 import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
-import { LogOut, Pencil, Settings as SettingsIcon, SkipForward } from "lucide-react";
+import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, SkipForward } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageBanner } from "./StageBanner";
 import { Toolbar, type NoiseCancellationMode } from "./Toolbar";
@@ -116,6 +116,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const {
     room,
+    isConnected: isLiveKitConnected,
     error: liveKitError,
     isMicEnabled,
     toggleMic,
@@ -450,7 +451,15 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       {/* Audio unlock prompt - dismisses on first click to satisfy autoplay policy */}
-      <AudioUnlockOverlay onUnlock={() => { createPlayer(); resumeMixer(); }} apiReady={apiReady} />
+      <AudioUnlockOverlay
+        onUnlock={() => { createPlayer(); resumeMixer(); }}
+        apiReady={apiReady}
+        partyConnected={isPartyConnected}
+        livekitConnected={isLiveKitConnected}
+        roomName={roomState.roomName}
+        roomCode={roomCode}
+        participantCount={roomState.participants.length}
+      />
 
       {/* Ambient background — driven by audio visualizer when someone sings */}
       <div
@@ -899,36 +908,87 @@ function SkipSingerConfirm({
   );
 }
 
-function AudioUnlockOverlay({ onUnlock, apiReady }: { onUnlock: () => void; apiReady: boolean }) {
-  const [visible, setVisible] = useState(true);
-  const [waitedForApi, setWaitedForApi] = useState(false);
+interface EntryStep {
+  label: string;
+  done: boolean;
+}
 
-  // The player must be built inside this click for autoplay to work, which needs the
-  // IFrame API in hand. If it never arrives, let people into the room anyway.
+function AudioUnlockOverlay({
+  onUnlock,
+  apiReady,
+  partyConnected,
+  livekitConnected,
+  roomName,
+  roomCode,
+  participantCount,
+}: {
+  onUnlock: () => void;
+  apiReady: boolean;
+  partyConnected: boolean;
+  livekitConnected: boolean;
+  roomName: string | null;
+  roomCode: string;
+  participantCount: number;
+}) {
+  const [visible, setVisible] = useState(true);
+  const [waited, setWaited] = useState(false);
+
+  // The player must be built inside the join click for autoplay to work, which needs
+  // the IFrame API in hand. The timer is the escape hatch if anything never arrives.
   useEffect(() => {
-    const timer = setTimeout(() => setWaitedForApi(true), API_WAIT_MS);
+    const timer = setTimeout(() => setWaited(true), API_WAIT_MS);
     return () => clearTimeout(timer);
   }, []);
 
   if (!visible) return null;
-  const canEnter = apiReady || waitedForApi;
+  const steps: EntryStep[] = [
+    { label: "Connecting to the room", done: partyConnected },
+    { label: "Setting up audio", done: livekitConnected },
+    { label: "Preparing the stage", done: apiReady },
+  ];
+  const ready = waited || steps.every((s) => s.done);
+  const title = roomName ?? `Room ${roomCode}`;
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center ${canEnter ? "cursor-pointer" : "cursor-progress"}`}
-      style={{ background: "rgba(9, 9, 11, 0.85)" }}
-      onClick={canEnter ? () => { onUnlock(); setVisible(false); } : undefined}
+      className={`fixed inset-0 z-50 flex items-center justify-center px-6 ${ready ? "cursor-pointer" : "cursor-progress"}`}
+      style={{ background: "rgba(9, 9, 11, 0.92)" }}
+      onClick={ready ? () => { onUnlock(); setVisible(false); } : undefined}
     >
-      <div className="text-center" style={{ animation: "fade-in 0.3s ease-out" }}>
-        <p
-          className="text-xl font-bold"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}
-        >
-          {canEnter ? "Click to enter room" : "Preparing the stage"}
+      <div className="w-full max-w-xs text-center" style={{ animation: "fade-in 0.3s ease-out" }}>
+        <img src="/icon-192.png" alt="" className="mx-auto mb-4 size-16 rounded-2xl" style={{ animation: ready ? undefined : "pulse-ring 1.6s ease-in-out infinite" }} />
+        <p className="text-xl font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
+          {title}
         </p>
-        <p className="mt-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
-          {canEnter ? "This enables audio and video playback" : "One moment"}
+        <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+          {participantCount > 1 ? `${participantCount} in the room` : "Be the first one in"}
         </p>
+
+        {ready ? (
+          <button
+            className="mt-6 w-full cursor-pointer rounded-xl px-6 py-3 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{
+              fontFamily: "var(--font-display)",
+              background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)",
+              color: "#fff",
+              boxShadow: "0 0 24px rgba(157, 92, 255, 0.35)",
+              animation: "fade-in 0.25s ease-out",
+            }}
+          >
+            Join the party
+          </button>
+        ) : (
+          <div className="mt-6 space-y-2 text-left">
+            {steps.map((step) => (
+              <div key={step.label} className="flex items-center gap-2.5 text-xs" style={{ color: step.done ? "var(--color-text-secondary)" : "var(--color-text-muted)" }}>
+                {step.done
+                  ? <Check size={13} style={{ color: "var(--color-success)" }} />
+                  : <LoaderCircle size={13} className="animate-spin" style={{ color: "var(--color-primary)" }} />}
+                {step.label}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
