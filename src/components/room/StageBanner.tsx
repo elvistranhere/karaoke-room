@@ -152,7 +152,7 @@ export function StageBanner({
               {currentSinger?.name ?? "Someone"} is singing
             </h2>
             {singerSongName ? (
-              <p className="mt-0.5 truncate text-sm" style={{ color: "var(--color-accent)" }}>
+              <p className="mt-0.5 truncate text-sm" style={{ color: "var(--color-primary-soft, #c9a7ff)" }}>
                 {singerSongName}
               </p>
             ) : null}
@@ -207,11 +207,10 @@ export function StageBanner({
             />
             <VolumeSlider
               label="Music"
-              icon={<Music size={14} style={{ color: "var(--color-accent)" }} />}
+              icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />}
               value={mixMusicValue}
               max={MUSIC_MAX}
-              accent="var(--color-accent)"
-              onChange={(v) => onMixMusicGain(v / 100)}
+                            onChange={(v) => onMixMusicGain(v / 100)}
             />
             <p className="pt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
               {listenerVoiceMuted
@@ -247,7 +246,7 @@ export function StageBanner({
     >
       <div
         className="absolute left-0 top-0 h-0.5 w-full"
-        style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-accent))" }}
+        style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }}
       />
 
       {audioError && (
@@ -270,7 +269,7 @@ export function StageBanner({
           <h2 className="mt-3 text-xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
             Your turn to sing
           </h2>
-          {singerSongName && <p className="mt-1 text-sm" style={{ color: "var(--color-accent)" }}>{singerSongName}</p>}
+          {singerSongName && <p className="mt-1 text-sm" style={{ color: "var(--color-primary-soft, #c9a7ff)" }}>{singerSongName}</p>}
           <p className="mx-auto mt-2 max-w-sm text-sm leading-6" style={{ color: "var(--color-text-muted)" }}>
             Paste a YouTube link and everyone in the room watches it with you, in sync.
           </p>
@@ -314,7 +313,7 @@ export function StageBanner({
 
           {/* Music volume only: the singer never gets a gain stage on their own voice */}
           {onMixMusicGain && (
-            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-accent)" }} />} value={mixMusicValue} max={MUSIC_MAX} accent="var(--color-accent)" onChange={(v) => onMixMusicGain(v / 100)} />
+            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />} value={mixMusicValue} max={MUSIC_MAX} onChange={(v) => onMixMusicGain(v / 100)} />
           )}
 
           {/* Stage controls: everything below the separator acts on the room, not on
@@ -369,11 +368,11 @@ function SongNameInput({ initial, onSet }: { initial: string; onSet: (name: stri
       <button
         onClick={() => setEditing(true)}
         className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-semibold transition-all hover:bg-[var(--color-dark-card)]"
-        style={{ fontFamily: "var(--font-display)", color: value ? "var(--color-accent)" : "var(--color-text-secondary)" }}
+        style={{ fontFamily: "var(--font-display)", color: value ? "var(--color-primary-soft, #c9a7ff)" : "var(--color-text-secondary)" }}
         aria-label={value ? `Song: ${value}. Edit song name` : "Set song name"}
       >
         <span className="flex-1 truncate">{value || "What are you singing?"}</span>
-        <Pencil size={13} className="shrink-0" style={{ color: "var(--color-accent)" }} />
+        <Pencil size={13} className="shrink-0" style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />
       </button>
     );
   }
