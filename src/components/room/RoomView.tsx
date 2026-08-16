@@ -251,7 +251,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     player,
     participants: roomState.participants,
     participantStatus,
-    currentSingerId: roomState.currentSingerId,
     micChecking,
   });
 
@@ -768,10 +767,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 playbackReady={playerReady}
                 onMixMusicGain={setMusic}
                 mixMusicValue={Math.round(music * 100)}
-                listenerVoiceValue={Math.round(singerMix.stage * 100)}
+                listenerVoiceValue={Math.round(singerMix.volume * 100)}
                 listenerVoiceMuted={singerMix.muted}
                 onListenerVoiceChange={!isMyTurn && singerMixKey
-                  ? (v) => setPersonVolume(singerMixKey, "stage", v / 100)
+                  ? (v) => setPersonVolume(singerMixKey, v / 100)
                   : undefined}
                 onToggleListenerVoiceMute={!isMyTurn && singerMixKey
                   ? () => togglePersonMute(singerMixKey)

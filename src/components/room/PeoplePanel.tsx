@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Mic, MicOff, Crown, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
-import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/lib/volumeModel";
+import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix } from "~/lib/volumeModel";
 import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
@@ -25,7 +25,7 @@ interface PeoplePanelProps {
   activeSpeakers: Set<string>;
   people: Record<string, PersonMix>;
   master: number;
-  onPersonVolumeChange: (name: string, key: PersonMixKey, value: number) => void;
+  onPersonVolumeChange: (name: string, value: number) => void;
   onTogglePersonMute: (name: string) => void;
   onKick?: (peerId: string) => void;
   onTransferAdmin?: (peerId: string) => void;
@@ -68,10 +68,8 @@ export function PeoplePanel({
           // Keyed by name so it survives reconnects, except for duplicate "Anonymous"
           const mixKeyId = personMixKey(p);
           const mix = people[mixKeyId] ?? DEFAULT_PERSON_MIX;
-          const mixKey: PersonMixKey = isSinger ? "stage" : "talk";
-          const personVol = mixKey === "stage" ? mix.stage : mix.talk;
-          const personPercent = Math.round(personVol * 100);
-          const outPercent = Math.round(personVol * master * 100);
+          const personPercent = Math.round(mix.volume * 100);
+          const outPercent = Math.round(mix.volume * master * 100);
 
           return (
             <li key={p.id}>
@@ -180,11 +178,11 @@ export function PeoplePanel({
               >
                 <div className="space-y-1.5 px-2 pb-2 pt-1.5">
                   <VolumeSlider
-                    label={isSinger ? "Stage" : "Volume"}
+                    label="Volume"
                     compact
                     value={personPercent}
-                    ariaLabel={isSinger ? `Stage volume for ${p.name}` : `Volume for ${p.name}`}
-                    onChange={(v) => onPersonVolumeChange(mixKeyId, mixKey, v / 100)}
+                    ariaLabel={`Volume for ${p.name}`}
+                    onChange={(v) => onPersonVolumeChange(mixKeyId, v / 100)}
                     trailing={
                       <button
                         onClick={() => onTogglePersonMute(mixKeyId)}
@@ -203,9 +201,7 @@ export function PeoplePanel({
                   <p className="text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
                     {mix.muted
                       ? "Muted for you. Unmuting restores this level."
-                      : isSinger
-                        ? "Their level while on stage. Kept apart from their talking level."
-                        : "Their level while chatting. Kept apart from their stage level."}
+                      : "Only changes what you hear."}
                     {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
                   </p>
                 </div>

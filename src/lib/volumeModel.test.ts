@@ -14,13 +14,10 @@ import {
   MAX_TRACKED_IDENTITIES,
   type PersonMix,
   type ResolveGainsInput,
-  type TrackedPerson,
 } from "~/lib/volumeModel";
 import { MASTER_MAX, PERSON_MAX } from "~/lib/voiceMixer";
 
 const mix = (overrides: Partial<PersonMix> = {}): PersonMix => ({ ...DEFAULT_PERSON_MIX, ...overrides });
-
-const person = (peerId: string, key: string): TrackedPerson => ({ peerId, key });
 
 function gainsFor(overrides: Partial<ResolveGainsInput> = {}) {
   return resolveGains({
@@ -28,7 +25,6 @@ function gainsFor(overrides: Partial<ResolveGainsInput> = {}) {
     tracked: new Map(),
     master: 1,
     music: 0.7,
-    currentSingerId: null,
     micChecking: false,
     deafened: false,
     ...overrides,
@@ -66,26 +62,16 @@ describe("clampGain", () => {
 });
 
 describe("resolveGains person gains", () => {
-  const tracked = new Map([["elvis-044ef3d6", person("peer-1", "Elvis")]]);
+  const tracked = new Map([["elvis-044ef3d6", "Elvis"]]);
 
-  it("gives a listener their talk level and the singer their stage level", () => {
-    const people = { Elvis: mix({ talk: 0.4, stage: 1.6 }) };
+  it("gives one person one gain", () => {
+    const people = { Elvis: mix({ volume: 0.4 }) };
     expect(gainsFor({ people, tracked }).people["elvis-044ef3d6"]).toBe(0.4);
-    expect(gainsFor({ people, tracked, currentSingerId: "peer-1" }).people["elvis-044ef3d6"]).toBe(1.6);
   });
 
-  it("switches back to talk when the singer leaves the stage", () => {
-    const people = { Elvis: mix({ talk: 0.4, stage: 1.6 }) };
-    const onStage = gainsFor({ people, tracked, currentSingerId: "peer-1" });
-    const offStage = gainsFor({ people, tracked, currentSingerId: "peer-9" });
-    expect(onStage.people["elvis-044ef3d6"]).toBe(1.6);
-    expect(offStage.people["elvis-044ef3d6"]).toBe(0.4);
-  });
-
-  it("mutes to zero on stage and off", () => {
-    const people = { Elvis: mix({ talk: 0.4, stage: 1.6, muted: true }) };
+  it("mutes to zero", () => {
+    const people = { Elvis: mix({ volume: 0.4, muted: true }) };
     expect(gainsFor({ people, tracked }).people["elvis-044ef3d6"]).toBe(0);
-    expect(gainsFor({ people, tracked, currentSingerId: "peer-1" }).people["elvis-044ef3d6"]).toBe(0);
   });
 
   it("defaults an untouched person to unity", () => {
@@ -93,40 +79,29 @@ describe("resolveGains person gains", () => {
   });
 
   it("clamps a stored value that is out of range", () => {
-    const people = { Elvis: mix({ talk: 99, stage: -3 }) };
-    expect(gainsFor({ people, tracked }).people["elvis-044ef3d6"]).toBe(PERSON_MAX);
-    expect(gainsFor({ people, tracked, currentSingerId: "peer-1" }).people["elvis-044ef3d6"]).toBe(0);
+    expect(gainsFor({ people: { Elvis: mix({ volume: 99 }) }, tracked }).people["elvis-044ef3d6"]).toBe(PERSON_MAX);
+    expect(gainsFor({ people: { Elvis: mix({ volume: -3 }) }, tracked }).people["elvis-044ef3d6"]).toBe(0);
   });
 
   it("also emits the name key so the mixer's suffix fallback applies before the roster lands", () => {
-    const gains = gainsFor({ people: { Elvis: mix({ talk: 0.4, stage: 1.6 }) }, tracked: new Map() });
+    const gains = gainsFor({ people: { Elvis: mix({ volume: 0.4 }) }, tracked: new Map() });
     expect(gains.people).toEqual({ Elvis: 0.4 });
   });
 
   it("never emits an anonymous mix key, which would collide across peers", () => {
-    const people = { [`${ANON_KEY_PREFIX}peer-1`]: mix({ talk: 0.2 }) };
-    const gains = gainsFor({ people, tracked: new Map([["anon-abc", person("peer-1", `${ANON_KEY_PREFIX}peer-1`)]]) });
+    const people = { [`${ANON_KEY_PREFIX}peer-1`]: mix({ volume: 0.2 }) };
+    const gains = gainsFor({ people, tracked: new Map([["anon-abc", `${ANON_KEY_PREFIX}peer-1`]]) });
     expect(gains.people[`${ANON_KEY_PREFIX}peer-1`]).toBeUndefined();
     expect(gains.people["anon-abc"]).toBe(0.2);
   });
 
   it("keeps identities that are no longer on the roster at their stored level", () => {
     const gains = gainsFor({
-      people: { Elvis: mix({ talk: 0.3 }) },
-      tracked: new Map([["elvis-old", person("peer-1", "Elvis")], ["elvis-new", person("peer-2", "Elvis")]]),
+      people: { Elvis: mix({ volume: 0.3 }) },
+      tracked: new Map([["elvis-old", "Elvis"], ["elvis-new", "Elvis"]]),
     });
     expect(gains.people["elvis-old"]).toBe(0.3);
     expect(gains.people["elvis-new"]).toBe(0.3);
-  });
-
-  it("stages only the live peer when an earlier session of the same person is still tracked", () => {
-    const gains = gainsFor({
-      people: { Elvis: mix({ talk: 0.2, stage: 2 }) },
-      tracked: new Map([["elvis-old", person("peer-1", "Elvis")], ["elvis-new", person("peer-2", "Elvis")]]),
-      currentSingerId: "peer-2",
-    });
-    expect(gains.people["elvis-old"]).toBe(0.2);
-    expect(gains.people["elvis-new"]).toBe(2);
   });
 });
 
@@ -145,8 +120,8 @@ describe("resolveGains master and music", () => {
 
   it("silences everything while deafened, people included", () => {
     const gains = gainsFor({
-      people: { Elvis: mix({ talk: 0.4 }) },
-      tracked: new Map([["elvis-1", person("peer-1", "Elvis")]]),
+      people: { Elvis: mix({ volume: 0.4 }) },
+      tracked: new Map([["elvis-1", "Elvis"]]),
       master: 1.5,
       deafened: true,
     });
@@ -170,42 +145,42 @@ describe("resolveGains master and music", () => {
 });
 
 describe("trackIdentities", () => {
-  it("maps a LiveKit identity to the peer and the mix key", () => {
-    const tracked = trackIdentities(new Map(), [{ identity: "elvis-1", peerId: "peer-1", key: "Elvis" }]);
-    expect([...tracked]).toEqual([["elvis-1", person("peer-1", "Elvis")]]);
+  it("maps a LiveKit identity to the mix key", () => {
+    const tracked = trackIdentities(new Map(), [{ identity: "elvis-1", key: "Elvis" }]);
+    expect([...tracked]).toEqual([["elvis-1", "Elvis"]]);
   });
 
   it("falls back to the name while the identity is unknown", () => {
-    const tracked = trackIdentities(new Map(), [{ identity: null, peerId: "peer-1", key: "Elvis" }]);
-    expect(tracked.get("Elvis")).toEqual(person("peer-1", "Elvis"));
+    const tracked = trackIdentities(new Map(), [{ identity: null, key: "Elvis" }]);
+    expect(tracked.get("Elvis")).toBe("Elvis");
   });
 
   it("waits for a real identity before tracking an anonymous peer", () => {
-    const tracked = trackIdentities(new Map(), [{ identity: null, peerId: "peer-1", key: `${ANON_KEY_PREFIX}peer-1` }]);
+    const tracked = trackIdentities(new Map(), [{ identity: null, key: `${ANON_KEY_PREFIX}peer-1` }]);
     expect(tracked.size).toBe(0);
   });
 
   it("keeps identities that dropped off the roster, since their track can outlive the socket", () => {
-    const first = trackIdentities(new Map(), [{ identity: "elvis-1", peerId: "peer-1", key: "Elvis" }]);
-    const second = trackIdentities(first, [{ identity: "nova-2", peerId: "peer-2", key: "Nova" }]);
-    expect(second.get("elvis-1")).toEqual(person("peer-1", "Elvis"));
-    expect(second.get("nova-2")).toEqual(person("peer-2", "Nova"));
+    const first = trackIdentities(new Map(), [{ identity: "elvis-1", key: "Elvis" }]);
+    const second = trackIdentities(first, [{ identity: "nova-2", key: "Nova" }]);
+    expect(second.get("elvis-1")).toBe("Elvis");
+    expect(second.get("nova-2")).toBe("Nova");
   });
 
-  it("re-seeing an identity moves it to the newest slot and takes the newest peer", () => {
+  it("re-seeing an identity moves it to the newest slot and takes the newest key", () => {
     let tracked = trackIdentities(new Map(), [
-      { identity: "a", peerId: "peer-a", key: "A" },
-      { identity: "b", peerId: "peer-b", key: "B" },
+      { identity: "a", key: "A" },
+      { identity: "b", key: "B" },
     ]);
-    tracked = trackIdentities(tracked, [{ identity: "a", peerId: "peer-a2", key: "A" }]);
+    tracked = trackIdentities(tracked, [{ identity: "a", key: "A renamed" }]);
     expect([...tracked.keys()]).toEqual(["b", "a"]);
-    expect(tracked.get("a")).toEqual(person("peer-a2", "A"));
+    expect(tracked.get("a")).toBe("A renamed");
   });
 
   it("evicts the oldest identities past the cap", () => {
-    let tracked = new Map<string, TrackedPerson>();
+    let tracked = new Map<string, string>();
     for (let i = 0; i < MAX_TRACKED_IDENTITIES + 5; i++) {
-      tracked = trackIdentities(tracked, [{ identity: `id-${i}`, peerId: `peer-${i}`, key: `Name ${i}` }]);
+      tracked = trackIdentities(tracked, [{ identity: `id-${i}`, key: `Name ${i}` }]);
     }
     expect(tracked.size).toBe(MAX_TRACKED_IDENTITIES);
     expect(tracked.has("id-0")).toBe(false);
@@ -213,8 +188,8 @@ describe("trackIdentities", () => {
   });
 
   it("does not mutate the map it was given", () => {
-    const previous = new Map<string, TrackedPerson>();
-    trackIdentities(previous, [{ identity: "elvis-1", peerId: "peer-1", key: "Elvis" }]);
+    const previous = new Map<string, string>();
+    trackIdentities(previous, [{ identity: "elvis-1", key: "Elvis" }]);
     expect(previous.size).toBe(0);
   });
 });
@@ -232,21 +207,41 @@ describe("parseStoredVolumes", () => {
     expect(parseStoredVolumes({
       master: 1.2,
       music: 0.3,
-      people: { Elvis: { talk: 0.5, stage: 1.4, muted: true } },
+      people: { Elvis: { volume: 0.5, muted: true } },
     })).toEqual({
       master: 1.2,
       music: 0.3,
-      people: { Elvis: { talk: 0.5, stage: 1.4, muted: true } },
+      people: { Elvis: { volume: 0.5, muted: true } },
     });
+  });
+
+  it("migrates a two-slot blob by keeping talk and dropping stage", () => {
+    const parsed = parseStoredVolumes({
+      people: { Elvis: { talk: 0.4, stage: 1.6, muted: false }, Nova: { talk: 0.2, stage: 2, muted: true } },
+    });
+    expect(parsed.people).toEqual({
+      Elvis: { volume: 0.4, muted: false },
+      Nova: { volume: 0.2, muted: true },
+    });
+  });
+
+  it("prefers the new volume field when a blob carries both", () => {
+    const parsed = parseStoredVolumes({ people: { Elvis: { volume: 0.9, talk: 0.4, stage: 1.6 } } });
+    expect(parsed.people.Elvis).toEqual({ volume: 0.9, muted: false });
+  });
+
+  it("keeps a migrated talk of zero rather than reading it as missing", () => {
+    const parsed = parseStoredVolumes({ people: { Elvis: { talk: 0, stage: 1.6 } } });
+    expect(parsed.people.Elvis).toEqual({ volume: 0, muted: false });
   });
 
   it("drops legacy shared-name anonymous entries", () => {
     const parsed = parseStoredVolumes({
       people: {
         Anonymous: { talk: 0.1, stage: 0.1, muted: true },
-        anonymous: { talk: 0.2, stage: 0.2, muted: false },
-        [`${ANON_KEY_PREFIX}peer-1`]: { talk: 0.3, stage: 0.3, muted: false },
-        Elvis: { talk: 0.4, stage: 0.4, muted: false },
+        anonymous: { volume: 0.2, muted: false },
+        [`${ANON_KEY_PREFIX}peer-1`]: { volume: 0.3, muted: false },
+        Elvis: { volume: 0.4, muted: false },
       },
     });
     expect(Object.keys(parsed.people)).toEqual(["Elvis"]);
@@ -255,18 +250,20 @@ describe("parseStoredVolumes", () => {
   it("clamps and repairs corrupt person values", () => {
     const parsed = parseStoredVolumes({
       people: {
-        Loud: { talk: 99, stage: -4, muted: "yes" },
-        Broken: { talk: "abc" },
+        Loud: { volume: 99, muted: "yes" },
+        Quiet: { talk: -4 },
+        Broken: { volume: "abc" },
         Missing: {},
       },
     });
-    expect(parsed.people.Loud).toEqual({ talk: PERSON_MAX, stage: 0, muted: false });
-    expect(parsed.people.Broken).toEqual({ talk: 1, stage: 1, muted: false });
-    expect(parsed.people.Missing).toEqual({ talk: 1, stage: 1, muted: false });
+    expect(parsed.people.Loud).toEqual({ volume: PERSON_MAX, muted: false });
+    expect(parsed.people.Quiet).toEqual({ volume: 0, muted: false });
+    expect(parsed.people.Broken).toEqual({ volume: 1, muted: false });
+    expect(parsed.people.Missing).toEqual({ volume: 1, muted: false });
   });
 
   it("skips non-object person entries", () => {
-    const parsed = parseStoredVolumes({ people: { Elvis: null, Nova: 3, Real: { talk: 0.5 } } });
+    const parsed = parseStoredVolumes({ people: { Elvis: null, Nova: 3, Real: { volume: 0.5 } } });
     expect(Object.keys(parsed.people)).toEqual(["Real"]);
   });
 
@@ -284,14 +281,19 @@ describe("serializeStoredVolumes", () => {
     const stored = serializeStoredVolumes({
       master: 1,
       music: 0.7,
-      people: { Elvis: mix(), [`${ANON_KEY_PREFIX}peer-1`]: mix({ talk: 0.2 }) },
+      people: { Elvis: mix(), [`${ANON_KEY_PREFIX}peer-1`]: mix({ volume: 0.2 }) },
     });
     expect(Object.keys(stored.people)).toEqual(["Elvis"]);
   });
 
+  it("writes only volume and muted per person", () => {
+    const stored = serializeStoredVolumes({ master: 1, music: 0.7, people: { Elvis: mix({ volume: 0.5 }) } });
+    expect(Object.keys(stored.people.Elvis ?? {})).toEqual(["volume", "muted"]);
+  });
+
   it("keeps only the most recent MAX_STORED_PEOPLE", () => {
     const people: Record<string, PersonMix> = {};
-    for (let i = 0; i < MAX_STORED_PEOPLE + 10; i++) people[`Person ${i}`] = mix({ talk: i / 100 });
+    for (let i = 0; i < MAX_STORED_PEOPLE + 10; i++) people[`Person ${i}`] = mix({ volume: i / 100 });
     const stored = serializeStoredVolumes({ master: 1, music: 0.7, people });
     expect(Object.keys(stored.people)).toHaveLength(MAX_STORED_PEOPLE);
     expect(stored.people["Person 0"]).toBeUndefined();
@@ -299,7 +301,12 @@ describe("serializeStoredVolumes", () => {
   });
 
   it("round trips through parse", () => {
-    const value = { master: 1.2, music: 0.4, people: { Elvis: mix({ talk: 0.5, muted: true }) } };
+    const value = { master: 1.2, music: 0.4, people: { Elvis: mix({ volume: 0.5, muted: true }) } };
     expect(parseStoredVolumes(serializeStoredVolumes(value))).toEqual(value);
+  });
+
+  it("a migrated blob survives the next write unchanged", () => {
+    const migrated = parseStoredVolumes({ master: 1, music: 0.7, people: { Elvis: { talk: 0.4, stage: 1.6 } } });
+    expect(parseStoredVolumes(serializeStoredVolumes(migrated))).toEqual(migrated);
   });
 });

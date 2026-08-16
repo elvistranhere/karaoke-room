@@ -13,9 +13,7 @@ import {
   serializeStoredVolumes,
   trackIdentities,
   type PersonMix,
-  type PersonMixKey,
   type StoredVolumes,
-  type TrackedPerson,
 } from "~/lib/volumeModel";
 import type { YouTubePlayerHandle } from "./useYouTubePlayer";
 
@@ -45,7 +43,6 @@ interface UseVolumeMixParams {
   player: YouTubePlayerHandle;
   participants: Participant[];
   participantStatus: Record<string, ParticipantStatus>;
-  currentSingerId: string | null;
   micChecking: boolean;
 }
 
@@ -56,7 +53,7 @@ interface UseVolumeMixReturn {
   deafened: boolean;
   setMaster: (value: number) => void;
   setMusic: (value: number) => void;
-  setPersonVolume: (name: string, key: PersonMixKey, value: number) => void;
+  setPersonVolume: (name: string, value: number) => void;
   togglePersonMute: (name: string) => void;
   setDeafened: (value: boolean) => void;
   resetPeople: () => void;
@@ -68,7 +65,6 @@ export function useVolumeMix({
   player,
   participants,
   participantStatus,
-  currentSingerId,
   micChecking,
 }: UseVolumeMixParams): UseVolumeMixReturn {
   const [stored] = useState(() => readStoredVolumes());
@@ -77,7 +73,7 @@ export function useVolumeMix({
   const [people, setPeople] = useState<Record<string, PersonMix>>(stored.people);
   const [deafened, setDeafenedState] = useState(false);
 
-  const trackedRef = useRef<ReadonlyMap<string, TrackedPerson>>(new Map());
+  const trackedRef = useRef<ReadonlyMap<string, string>>(new Map());
 
   // Keyed by LiveKit identity so the mixer can find the chain; the stored mix is
   // keyed by name, which survives reconnects where the identity does not.
@@ -86,7 +82,6 @@ export function useVolumeMix({
       trackedRef.current,
       participants.map((participant) => ({
         identity: participantStatus[participant.id]?.lkIdentity ?? null,
-        peerId: participant.id,
         key: personMixKey(participant),
       })),
     );
@@ -95,11 +90,10 @@ export function useVolumeMix({
       tracked: trackedRef.current,
       master,
       music,
-      currentSingerId,
       micChecking,
       deafened,
     });
-  }, [participants, participantStatus, people, currentSingerId, master, music, micChecking, deafened]);
+  }, [participants, participantStatus, people, master, music, micChecking, deafened]);
 
   useEffect(() => { mixer.setPersonGains(gains.people); }, [mixer, gains.people]);
   useEffect(() => { mixer.setMaster(gains.master); }, [mixer, gains.master]);
@@ -117,10 +111,10 @@ export function useVolumeMix({
     setMusicState(clampGain(value, 1));
   }, []);
 
-  const setPersonVolume = useCallback((name: string, key: PersonMixKey, value: number) => {
+  const setPersonVolume = useCallback((name: string, value: number) => {
     setPeople((prev) => {
       const current = prev[name] ?? DEFAULT_PERSON_MIX;
-      return { ...prev, [name]: { ...current, [key]: clampGain(value, PERSON_MAX) } };
+      return { ...prev, [name]: { ...current, volume: clampGain(value, PERSON_MAX) } };
     });
   }, []);
 

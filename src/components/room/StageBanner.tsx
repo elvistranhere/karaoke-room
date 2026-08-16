@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAudioLevel } from "~/hooks/useAudioLevel";
 import type { RoomState } from "~/types/room";
-import { Crown, Mic, MicOff, Music, Pencil, SkipForward, VolumeX, Plus } from "lucide-react";
+import { Crown, Mic, Music, Pencil, SkipForward, Volume2, VolumeX, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
@@ -32,8 +32,8 @@ interface StageBannerProps {
   // Singer-local: own player volume; never broadcast
   onMixMusicGain?: (val: number) => void;
   mixMusicValue?: number;
-  // Listener-local mix: voice is the singer's stage volume on this device only,
-  // the same number the People panel row edits
+  // Listener-local mix: the singer's own volume on this device only, the same number
+  // the People panel row edits
   listenerVoiceValue?: number;
   onListenerVoiceChange?: (val: number) => void;
   listenerVoiceMuted?: boolean;
@@ -181,9 +181,9 @@ export function StageBanner({
           <div className="mt-4 space-y-2.5">
             <VolumeSlider
               label="Voice"
-              icon={voicePercent === 0 ? <VolumeX size={14} style={{ color: "var(--color-text-muted)" }} /> : <Mic size={14} style={{ color: "var(--color-primary)" }} />}
+              icon={<Volume2 size={14} style={{ color: "var(--color-primary)" }} />}
               value={listenerVoiceValue}
-              ariaLabel={`Stage volume for ${currentSinger?.name ?? "the singer"}`}
+              ariaLabel={`Volume for ${currentSinger?.name ?? "the singer"}`}
               onChange={onListenerVoiceChange}
               trailing={onToggleListenerVoiceMute ? (
                 <button
@@ -193,10 +193,10 @@ export function StageBanner({
                     background: listenerVoiceMuted ? "var(--color-danger-dim)" : "transparent",
                     color: listenerVoiceMuted ? "var(--color-danger)" : "var(--color-text-muted)",
                   }}
-                  title={listenerVoiceMuted ? "Unmute this singer for yourself" : "Mute this singer for yourself"}
-                  aria-label={listenerVoiceMuted ? "Unmute this singer for yourself" : "Mute this singer for yourself"}
+                  title={`${listenerVoiceMuted ? "Unmute" : "Mute"} ${currentSinger?.name ?? "the singer"} for yourself`}
+                  aria-label={`${listenerVoiceMuted ? "Unmute" : "Mute"} ${currentSinger?.name ?? "the singer"} for yourself`}
                 >
-                  {listenerVoiceMuted ? <MicOff size={13} /> : <Mic size={13} />}
+                  {listenerVoiceMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                 </button>
               ) : undefined}
             />

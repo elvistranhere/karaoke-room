@@ -4,14 +4,11 @@ import { MASTER_MAX, PERSON_MAX } from "./voiceMixer";
 // mixer and the player; every decision about what a gain should be is made here.
 
 export interface PersonMix {
-  talk: number;
-  stage: number;
+  volume: number;
   muted: boolean;
 }
 
-export type PersonMixKey = "talk" | "stage";
-
-export const DEFAULT_PERSON_MIX: PersonMix = { talk: 1, stage: 1, muted: false };
+export const DEFAULT_PERSON_MIX: PersonMix = { volume: 1, muted: false };
 
 export const ANON_KEY_PREFIX = "peer:";
 export const DEFAULT_MASTER = 1;
@@ -25,18 +22,12 @@ export interface StoredVolumes {
   people: Record<string, PersonMix>;
 }
 
-export interface TrackedPerson {
-  peerId: string;
-  key: string;
-}
-
 export interface ResolveGainsInput {
   people: Record<string, PersonMix>;
-  // LiveKit identity -> tracked person, in least-recently-seen order
-  tracked: ReadonlyMap<string, TrackedPerson>;
+  // LiveKit identity -> person mix key, in least-recently-seen order
+  tracked: ReadonlyMap<string, string>;
   master: number;
   music: number;
-  currentSingerId: string | null;
   micChecking: boolean;
   deafened: boolean;
 }
@@ -66,16 +57,18 @@ export function parseStoredVolumes(parsed: unknown): StoredVolumes {
   const fallback: StoredVolumes = { master: DEFAULT_MASTER, music: DEFAULT_MUSIC, people: {} };
   if (!parsed || typeof parsed !== "object") return fallback;
 
-  const blob = parsed as Partial<StoredVolumes>;
+  const blob = parsed as { master?: unknown; music?: unknown; people?: unknown };
   const people: Record<string, PersonMix> = {};
   if (blob.people && typeof blob.people === "object") {
-    for (const [name, mix] of Object.entries(blob.people)) {
-      if (!mix || typeof mix !== "object") continue;
+    for (const [name, value] of Object.entries(blob.people)) {
+      if (!value || typeof value !== "object") continue;
       // Shared-name keys written before per-peer anonymous keys existed
       if (name.trim().toLowerCase() === "anonymous" || name.startsWith(ANON_KEY_PREFIX)) continue;
+      // Blobs from the two-slot model carry talk and stage; talk is the relationship the
+      // user curated, so it becomes the one volume and stage is dropped.
+      const mix = value as { volume?: unknown; talk?: unknown; muted?: unknown };
       people[name] = {
-        talk: clampGain(Number(mix.talk ?? 1), PERSON_MAX),
-        stage: clampGain(Number(mix.stage ?? 1), PERSON_MAX),
+        volume: clampGain(Number(mix.volume ?? mix.talk ?? 1), PERSON_MAX),
         muted: mix.muted === true,
       };
     }
@@ -89,26 +82,28 @@ export function parseStoredVolumes(parsed: unknown): StoredVolumes {
 }
 
 export function serializeStoredVolumes(value: StoredVolumes): StoredVolumes {
-  const entries = Object.entries(value.people).filter(([name]) => !name.startsWith(ANON_KEY_PREFIX));
+  const entries = Object.entries(value.people)
+    .filter(([name]) => !name.startsWith(ANON_KEY_PREFIX))
+    .map(([name, mix]): [string, PersonMix] => [name, { volume: mix.volume, muted: mix.muted }]);
   const people = Object.fromEntries(
     entries.length > MAX_STORED_PEOPLE ? entries.slice(entries.length - MAX_STORED_PEOPLE) : entries,
   );
-  return { ...value, people };
+  return { master: value.master, music: value.music, people };
 }
 
 // Identities stay in the map after their owner drops off the PartyKit roster: their
 // LiveKit track can outlive the WebSocket, and an unmatched chain resets to full gain.
 export function trackIdentities(
-  previous: ReadonlyMap<string, TrackedPerson>,
-  roster: { identity: string | null; peerId: string; key: string }[],
-): Map<string, TrackedPerson> {
+  previous: ReadonlyMap<string, string>,
+  roster: { identity: string | null; key: string }[],
+): Map<string, string> {
   const tracked = new Map(previous);
-  for (const { identity, peerId, key } of roster) {
+  for (const { identity, key } of roster) {
     // The name fallback is ambiguous for duplicate "Anonymous", so those wait for a real identity
     if (!identity && key.startsWith(ANON_KEY_PREFIX)) continue;
     const resolved = identity ?? key;
     tracked.delete(resolved);
-    tracked.set(resolved, { peerId, key });
+    tracked.set(resolved, key);
   }
   while (tracked.size > MAX_TRACKED_IDENTITIES) {
     const oldest = tracked.keys().next().value;
@@ -118,12 +113,15 @@ export function trackIdentities(
   return tracked;
 }
 
+function personGain(mix: PersonMix): number {
+  return mix.muted ? 0 : clampGain(mix.volume, PERSON_MAX);
+}
+
 export function resolveGains({
   people,
   tracked,
   master,
   music,
-  currentSingerId,
   micChecking,
   deafened,
 }: ResolveGainsInput): ResolvedGains {
@@ -132,14 +130,10 @@ export function resolveGains({
   // Name keys let a stored mix apply through the mixer's "name-suffix" fallback in the
   // window between the LiveKit subscription and the first PartyKit state message.
   for (const [key, mix] of Object.entries(people)) {
-    if (!key.startsWith(ANON_KEY_PREFIX)) gains[key] = mix.muted ? 0 : clampGain(mix.talk, PERSON_MAX);
+    if (!key.startsWith(ANON_KEY_PREFIX)) gains[key] = personGain(mix);
   }
-  // Matched on peerId, not on the mix key: a retained identity from an earlier session
-  // shares the singer's key and must stay on talk gain.
-  for (const [identity, entry] of tracked) {
-    const mix = people[entry.key] ?? DEFAULT_PERSON_MIX;
-    const value = entry.peerId === currentSingerId ? mix.stage : mix.talk;
-    gains[identity] = mix.muted ? 0 : clampGain(value, PERSON_MAX);
+  for (const [identity, key] of tracked) {
+    gains[identity] = personGain(people[key] ?? DEFAULT_PERSON_MIX);
   }
 
   return {
