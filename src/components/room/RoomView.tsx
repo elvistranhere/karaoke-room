@@ -843,6 +843,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
             effectWetDry={effectWetDry}
             onEffectWetDry={setEffectWetDry}
             noiseCancellationMode={noiseCancellationMode}
+            ncActive={micMode === "raw" ? singingNC : talkingNC}
             onNoiseCancellationModeChange={setNoiseCancellationMode}
             onSoundProfileOpen={() => setSoundProfileOpen(true)}
             deafened={deafened}

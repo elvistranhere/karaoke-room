@@ -20,6 +20,7 @@ interface ToolbarProps {
   onEffectWetDry: (wet: number) => void;
   noiseCancellationMode: NoiseCancellationMode;
   onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
+  ncActive: boolean;
   onSoundProfileOpen: () => void;
   deafened: boolean;
   onToggleDeafen: () => void;
@@ -51,6 +52,7 @@ export function Toolbar({
   onEffectWetDry,
   noiseCancellationMode,
   onNoiseCancellationModeChange,
+  ncActive,
   onSoundProfileOpen,
 }: ToolbarProps) {
   const [micLevel, setMicLevel] = useState(0);
@@ -154,17 +156,25 @@ export function Toolbar({
         <Tooltip>
           <TooltipTrigger
             render={
-              <SelectTrigger aria-label="Noise cancellation" className="h-10 w-[124px] shrink-0 cursor-pointer rounded-xl bg-[var(--color-dark-card)] text-xs">
+              <SelectTrigger aria-label="Noise cancellation" className="h-10! w-[136px] shrink-0 cursor-pointer rounded-xl bg-[var(--color-dark-card)] text-xs">
                 <span className="flex items-center gap-2">
                   <Waves size={14} style={{ color: "var(--color-primary-soft)" }} />
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ background: ncActive ? "var(--color-success)" : "var(--color-text-muted)" }}
+                    aria-hidden
+                  />
                   <SelectValue>
-                    {(value: NoiseCancellationMode) => `NC · ${NC_LABELS[value] ?? NC_LABELS.auto}`}
+                    {(value: NoiseCancellationMode) =>
+                      value === "auto"
+                        ? `NC Auto · ${ncActive ? "on" : "off"}`
+                        : `NC ${NC_LABELS[value] ?? NC_LABELS.auto}`}
                   </SelectValue>
                 </span>
               </SelectTrigger>
             }
           />
-          <TooltipContent>Noise cancellation</TooltipContent>
+          <TooltipContent>{ncActive ? "Noise cancellation is on right now" : "Noise cancellation is off right now"}</TooltipContent>
         </Tooltip>
         <SelectContent>
           <SelectItem value="auto">Auto</SelectItem>
