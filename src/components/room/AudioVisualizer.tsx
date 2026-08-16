@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Room } from "livekit-client";
-import { Track } from "livekit-client";
-import { VOICE_TRACK_NAME } from "~/hooks/useLiveKit";
 
 interface AudioVisualizerProps {
-  room: Room | null;
+  // Narrow source: the singer's live audio track, or null while there is nothing to draw
+  getSingerTrack: (() => MediaStreamTrack | null) | null;
   isActive: boolean;
   children: React.ReactNode;
-  singerIdentity?: string | null;
   ambientId?: string;
   ambientColor?: "violet" | "amber";
   framed?: boolean;
@@ -18,31 +15,6 @@ interface AudioVisualizerProps {
 
 // Per-instance state is now inside the component via refs (not module-level)
 // to avoid cross-instance cache contamination.
-
-function findSingerVoiceTrack(room: Room, singerIdentity: string | null): MediaStreamTrack | null {
-  if (!singerIdentity) return null;
-
-  // Priority 1: the singer's published voice track
-  for (const [, participant] of room.remoteParticipants) {
-    if (participant.identity !== singerIdentity) continue;
-    let unnamed: MediaStreamTrack | null = null;
-    for (const [, pub] of participant.trackPublications) {
-      if (!pub.track || !pub.isSubscribed || pub.track.kind !== Track.Kind.Audio) continue;
-      if (pub.trackName === VOICE_TRACK_NAME) return pub.track.mediaStreamTrack;
-      if (!pub.isMuted && !unnamed) unnamed = pub.track.mediaStreamTrack;
-    }
-    if (unnamed) return unnamed;
-  }
-
-  // Priority 2: the local voice track (the singer's own view)
-  if (room.localParticipant.identity === singerIdentity) {
-    for (const [, pub] of room.localParticipant.trackPublications) {
-      if (pub.trackName === VOICE_TRACK_NAME && pub.track) return pub.track.mediaStreamTrack;
-    }
-  }
-
-  return null;
-}
 
 function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | null): { bass: number; mid: number; high: number; overall: number } {
   if (!analyser || !dataBuffer) return { bass: 0, mid: 0, high: 0, overall: 0 };
@@ -65,10 +37,12 @@ function getAudioEnergy(analyser: AnalyserNode | null, dataBuffer: Uint8Array | 
   return { bass, mid, high, overall };
 }
 
-export function AudioVisualizer({ room, isActive, children, singerIdentity = null, ambientId, ambientColor = "violet", framed = true, className = "" }: AudioVisualizerProps) {
+export function AudioVisualizer({ getSingerTrack, isActive, children, ambientId, ambientColor = "violet", framed = true, className = "" }: AudioVisualizerProps) {
   const rafRef = useRef<number>(0);
-  const singerIdentityRef = useRef(singerIdentity);
-  singerIdentityRef.current = singerIdentity;
+  // Held in a ref so a singer change swaps the source without restarting the loop
+  const getSingerTrackRef = useRef(getSingerTrack);
+  getSingerTrackRef.current = getSingerTrack;
+  const hasSource = getSingerTrack !== null;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const trackCheckCounter = useRef(0);
 
@@ -111,7 +85,7 @@ export function AudioVisualizer({ room, isActive, children, singerIdentity = nul
   };
 
   useEffect(() => {
-    if (!isActive || !room) {
+    if (!isActive || !hasSource) {
       cancelAnimationFrame(rafRef.current);
       cleanupViz();
       // Reset glow + ambient background
@@ -135,7 +109,7 @@ export function AudioVisualizer({ room, isActive, children, singerIdentity = nul
       // Check for track every 10 frames (~170ms) instead of 30 (~500ms)
       if (trackCheckCounter.current >= 10 || !vizAnalyserRef.current) {
         trackCheckCounter.current = 0;
-        const track = findSingerVoiceTrack(room, singerIdentityRef.current);
+        const track = getSingerTrackRef.current?.() ?? null;
         if (track && track.readyState === "live") {
           setupAnalyser(track);
         } else if (vizAnalyserRef.current) {
@@ -200,7 +174,7 @@ export function AudioVisualizer({ room, isActive, children, singerIdentity = nul
         if (ambientEl) ambientEl.style.background = "";
       }
     };
-  }, [isActive, room, ambientId, ambientColor]);
+  }, [isActive, hasSource, ambientId, ambientColor]);
 
   return (
     <div

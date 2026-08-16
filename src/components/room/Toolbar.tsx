@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Mic, MicOff, SlidersHorizontal, Waves, Headphones, HeadphoneOff } from "lucide-react";
-import type { Room } from "livekit-client";
+import { useAudioLevel } from "~/hooks/useAudioLevel";
 import type { VoiceEffect } from "~/lib/voiceEffects";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -11,7 +10,9 @@ import { VoiceFxPopover } from "./VoiceFxPopover";
 export type NoiseCancellationMode = "auto" | "on" | "off";
 
 interface ToolbarProps {
-  room: Room | null;
+  // Narrow audio surface: a raw 0..1 level source, smoothed and metered in here so the
+  // meter's state stays out of RoomView
+  getMicLevel: (() => number) | null;
   isMicEnabled: boolean;
   toggleMic: () => Promise<void>;
   voiceEffect: VoiceEffect;
@@ -41,7 +42,7 @@ const PILL_CLASS =
   "flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.97]";
 
 export function Toolbar({
-  room,
+  getMicLevel,
   isMicEnabled,
   toggleMic,
   deafened,
@@ -55,22 +56,7 @@ export function Toolbar({
   ncActive,
   onSoundProfileOpen,
 }: ToolbarProps) {
-  const [micLevel, setMicLevel] = useState(0);
-
-  useEffect(() => {
-    if (!room || !isMicEnabled) {
-      setMicLevel(0);
-      return;
-    }
-    const updateLevel = () => {
-      const liveLevel = Math.min(1, Math.max(0, room.localParticipant.audioLevel || 0));
-      setMicLevel((previous) => previous * 0.55 + liveLevel * 0.45);
-    };
-    updateLevel();
-    const interval = window.setInterval(updateLevel, 75);
-    return () => window.clearInterval(interval);
-  }, [room, isMicEnabled]);
-
+  const micLevel = useAudioLevel(getMicLevel, isMicEnabled);
   const micLabel = deafened
     ? "Turn sound back on to use your mic"
     : isMicEnabled

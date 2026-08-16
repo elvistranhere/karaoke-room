@@ -22,7 +22,9 @@ import { VideoStage } from "./VideoStage";
 import { VideoProgress } from "./VideoProgress";
 import { SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor, storeSyncOffsetFor } from "./SyncOffsetControl";
 import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
-import { useVolumeMix, DEFAULT_PERSON_MIX, personMixKey } from "~/hooks/useVolumeMix";
+import { useSingerAudio } from "~/hooks/useSingerAudio";
+import { useVolumeMix } from "~/hooks/useVolumeMix";
+import { DEFAULT_PERSON_MIX, personMixKey } from "~/lib/volumeModel";
 import { playReactionSound } from "./ReactionBar";
 import { chatNameColor } from "~/lib/chatColors";
 import { readPref, writePref } from "~/lib/prefs";
@@ -184,7 +186,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     if (singerName) setSyncOffsetMs(readStoredSyncOffsetFor(singerName));
   }, [singerName]);
 
-  const autoOffsetMs = useAutoSyncOffset(room, singerIdentity, !isMyTurn && roomState.video !== null);
+  const { getTrack: getSingerTrack, getStats: getSingerStats } = useSingerAudio(room, singerIdentity);
+  const autoOffsetMs = useAutoSyncOffset(getSingerStats, !isMyTurn && roomState.video !== null);
   useEffect(() => {
     syncOffsetMsRef.current = syncOffsetAuto ? autoOffsetMs : syncOffsetMs;
   }, [syncOffsetAuto, autoOffsetMs, syncOffsetMs]);
@@ -254,6 +257,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   });
 
   const singerMix = singerMixKey ? people[singerMixKey] ?? DEFAULT_PERSON_MIX : DEFAULT_PERSON_MIX;
+
+  // Level sources, not levels: the meters smooth these at ~13Hz inside the leaf that
+  // draws them, so a tick never re-renders the room
+  const getMicLevel = useCallback(() => room?.localParticipant.audioLevel ?? 0, [room]);
+  const getStageLevel = useCallback(
+    () => (room ? Math.max(0, ...Array.from(room.remoteParticipants.values(), (participant) => participant.audioLevel || 0)) : 0),
+    [room],
+  );
 
   const handleSyncOffsetChange = useCallback((ms: number) => {
     const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
@@ -759,7 +770,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 overflow above the scrollable area. */}
             <div className="my-auto w-full">
             <StageBanner
-              room={room}
+              getSingerLevel={room ? getStageLevel : null}
+              getSingerTrack={getSingerTrack}
               roomState={roomState}
               isMyTurn={isMyTurn}
               onFinishSinging={finishSinging}
@@ -769,7 +781,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                   ? participantStatus[roomState.currentSingerId]?.currentSong ?? null
                   : null
               }
-              singerIdentity={singerIdentity}
               onAddToQueue={
                 roomState.queue.length === 0 && !isMyTurn
                   ? joinQueue
@@ -881,7 +892,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           </div>
 
           <Toolbar
-            room={room}
+            getMicLevel={room ? getMicLevel : null}
             isMicEnabled={isMicEnabled}
             toggleMic={toggleMic}
             voiceEffect={voiceEffect}

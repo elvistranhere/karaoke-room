@@ -12,6 +12,7 @@
     "deploy:party": "npx partykit deploy",
     "preview": "next build && next start",
     "start": "next start",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -48,7 +49,8 @@
     "partykit": "^0.0.115",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.15",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
   },
   "ct3aMetadata": {
     "initVersion": "7.40.0"

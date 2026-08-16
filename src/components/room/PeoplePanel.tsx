@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Mic, MicOff, Music, Crown, Plus, HeadphoneOff, Volume2, VolumeX } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
-import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/hooks/useVolumeMix";
+import { DEFAULT_PERSON_MIX, personMixKey, type PersonMix, type PersonMixKey } from "~/lib/volumeModel";
 import { VolumeSlider } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
 import {

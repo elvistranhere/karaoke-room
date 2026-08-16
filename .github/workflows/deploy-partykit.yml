@@ -6,6 +6,8 @@ on:
     paths:
       - 'party/**'
       - 'partykit.json'
+      # The server bundles the wire protocol, so a schema-only change still ships a worker
+      - 'src/shared/**'
 
 # Two merges in quick succession must not deploy out of order, and an in-flight
 # worker deploy must never be cancelled halfway.
@@ -25,6 +27,12 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # clientMessageSchema gates every inbound message, and a tightening edit keeps the
+      # inferred types identical, so the suite is the only thing that catches it
+      - run: npm run typecheck
+
+      - run: npm run test
 
       - name: Deploy to PartyKit
         run: npx partykit deploy

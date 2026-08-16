@@ -1,27 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { computeSyncAction, computeTarget, isRateApplied } from "~/lib/syncMath";
 import type { VideoState } from "~/types/room";
 import type { YouTubePlayerHandle } from "./useYouTubePlayer";
 
 const TICK_MS = 300;
 const SINGER_BROADCAST_MS = 2000;
-const DEAD_ZONE_S = 0.05;
-const SEEK_THRESHOLD_S = 1.5;
 const SEEK_COOLDOWN_MS = 2000;
 const PLAY_RETRY_MS = 1000;
-const NUDGE_UP = 1.05;
-const NUDGE_DOWN = 0.95;
-const RATE_TOLERANCE = 0.01;
-const PERSIST_DRIFT_S = 0.35;
-const PERSIST_TICKS = 8;
 
 const UNSTARTED = -1;
 const PLAYING = 1;
 const PAUSED = 2;
 const BUFFERING = 3;
 const CUED = 5;
-const PERSIST_DRIFT_NO_RATE_S = 0.15;
 
 interface UseVideoSyncParams {
   player: YouTubePlayerHandle;
@@ -169,51 +162,47 @@ export function useVideoSync({
       const requested = requestedRateRef.current;
       if (requested !== null) {
         requestedRateRef.current = null;
-        if (Math.abs(player.getPlaybackRate() - requested) > RATE_TOLERANCE) {
+        if (!isRateApplied(requested, player.getPlaybackRate())) {
           rateSupportedRef.current = false;
           player.setPlaybackRate(1);
         }
       }
 
       const serverNow = Date.now() + serverOffsetRef.current;
-      const rawTarget = current.videoTime
-        + (serverNow - current.wallTime) / 1000
-        - syncOffsetMsRef.current / 1000;
-      if (!Number.isFinite(rawTarget)) return;
-      // Negative means the delayed timeline has not reached 0 yet; correcting
-      // toward 0 beats abandoning correction for the first offset-worth of song
-      const target = Math.max(0, rawTarget);
+      const target = computeTarget(
+        current.videoTime,
+        current.wallTime,
+        serverNow,
+        syncOffsetMsRef.current,
+      );
+      if (target === null) return;
 
-      const drift = target - player.getTime();
-      if (Math.abs(drift) >= SEEK_THRESHOLD_S) {
-        persistTicksRef.current = 0;
-        seekTo(target);
-        return;
-      }
-      if (Math.abs(drift) < DEAD_ZONE_S) {
-        persistTicksRef.current = 0;
-        if (player.getPlaybackRate() !== 1) player.setPlaybackRate(1);
-        return;
-      }
+      const decision = computeSyncAction(
+        target,
+        player.getTime(),
+        rateSupportedRef.current,
+        persistTicksRef.current,
+      );
+      persistTicksRef.current = decision.persistTicks;
 
-      // Nudging moves ~15ms per tick, so drift that stays large for seconds means it
-      // is not working (no rate control, or a big post-ad gap): one cooled-down seek.
-      // Without rate control the seek is the only tool, so it engages sooner.
-      const persistThreshold = rateSupportedRef.current ? PERSIST_DRIFT_S : PERSIST_DRIFT_NO_RATE_S;
-      persistTicksRef.current = Math.abs(drift) >= persistThreshold ? persistTicksRef.current + 1 : 0;
-      if (persistTicksRef.current >= PERSIST_TICKS) {
-        persistTicksRef.current = 0;
-        seekTo(target);
-        return;
-      }
-      if (!rateSupportedRef.current) return;
-
-      // YouTube quantizes rates to 0.05 steps, so only ever ask for the two endpoints:
-      // a fractional request like 1.012 snaps to 1.0 and reads back as unsupported.
-      const rate = drift > 0 ? NUDGE_UP : NUDGE_DOWN;
-      if (player.getPlaybackRate() !== rate) {
-        player.setPlaybackRate(rate);
-        requestedRateRef.current = rate;
+      switch (decision.action.kind) {
+        case "seek":
+          // The cooldown lives in seekTo, so a suppressed seek still clears the persist count
+          seekTo(decision.action.target);
+          return;
+        case "reset-rate":
+          if (player.getPlaybackRate() !== 1) player.setPlaybackRate(1);
+          return;
+        case "nudge": {
+          const rate = decision.action.rate;
+          if (player.getPlaybackRate() !== rate) {
+            player.setPlaybackRate(rate);
+            requestedRateRef.current = rate;
+          }
+          return;
+        }
+        case "none":
+          return;
       }
     };
 

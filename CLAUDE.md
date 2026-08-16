@@ -10,11 +10,12 @@ npm run dev              # Next.js only
 npm run dev:party        # PartyKit only
 npm run lint             # biome lint . (linter only, formatter disabled)
 npm run typecheck        # tsc --noEmit
+npm run test             # vitest run (pure-function tests under src/**/*.test.ts)
 npm run build            # Production build
 npm run deploy:party     # Deploy PartyKit server to Cloudflare
 ```
 
-No test framework is configured. Verify changes with `npm run lint` and `npm run typecheck`, plus `npm run build` when routing, config, or the service worker changed.
+Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`); there is no component or browser test layer. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
 
 ## Git
 
@@ -65,17 +66,21 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - The player is created inside the AudioUnlockOverlay click, the only guaranteed user gesture per client, and is never unmounted afterwards.
 - No user may touch the YouTube surface: `VideoStage` stacks a transparent blocker above the iframe, marks the player container `inert` (plus `tabindex=-1` on the frame for Safari), and the embed runs with `controls: 0, disablekb: 1`.
 
-### Type Synchronization
+### Protocol Single Source
 
-`party/types.ts` and `src/types/room.ts` **must be kept in sync manually**. Every message type, field addition, or RoomState change needs updating in both files. The PartyKit server imports from `party/types.ts`; the client imports from `src/types/room.ts`.
+`src/shared/protocol.ts` is the only place the wire protocol is declared: every `ClientMessage`/`ServerMessage` variant and `RoomState`/`VideoState`/`ParticipantStatus`/`ChatMessage` is a Zod schema with the TypeScript type inferred from it. `party/types.ts` and `src/types/room.ts` are thin re-exports and **must never declare a type of their own**. The server imports the schemas by relative path (`../src/shared/protocol`), which partykit's bundler resolves; the client goes through `~/shared/protocol`.
+
+`onMessage` runs every inbound message through `clientMessageSchema.safeParse` and answers a failure with the `Unknown message type` error reply, so handlers only ever see well-shaped payloads. The schemas stay structural: length caps, the emoji allowlist and the YouTube id check stay in the handlers, where each has its own error reply.
 
 ## Key Hooks
 
 - **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions, mute-all. Returns `send()` for raw messages.
 - **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook (~1000 lines).
 - **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable handle.
-- **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast.
-- **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples).
+- **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast. The policy itself is `computeSyncAction`/`computeTarget` in `src/lib/syncMath.ts`; the hook only owns the interval, the refs and the seek cooldown.
+- **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples, computed by `estimateClockOffset`).
+- **`useSingerAudio`** - The one place that reaches into the LiveKit `Room` for the singer: returns a `getTrack()` and a `getStats()` callback, both null while there is no room or no singer.
+- **`useAudioLevel`** - Smoothed 0..1 meter level from any `() => number` source, used for the toolbar mic meter and the stage meter.
 - **`useAudioDevices`** — Device enumeration, mic mode (`"voice"` = NC on, `"raw"` = NC off).
 - **`useWakeLock`** - Screen wake lock while in a room, feature-detected, re-requested on `visibilitychange`, released on unmount.
 - **`useFlag`** - Reads a room-scoped feature flag out of `RoomState.flags`.
@@ -96,11 +101,12 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 - **Admin succession never deadlocks**: a vacant seat with a known `adminClientId` belongs to the departed admin for `ADMIN_GRACE_MS`, but only the timer hands it on. `armAdminGrace()` is therefore called from `claimAdminOnJoin` as well as `startAdminGrace`, arming whatever is left of the window (`adminVacatedAt` is persisted for exactly this), because a room that emptied never armed a timer and a DO restart loses both the timer and `adminVacatedAt`.
 - **Clock-authority stall detection**: the singer's `video-sync` stream is the room's playback heartbeat. `resetVideoStallTimer()` re-arms a 10s timer on every sync while `videoState.playing`; if it fires, the server pauses the room, broadcasts `video-state` and posts a system chat line. A rebuffering singer sends `video-sync` with `stalled: true`, which re-arms the timer without re-stamping a frozen position, so an ordinary rebuffer is not read as a dead device. The singer's page also broadcasts a pause on `visibilitychange` so a backgrounded phone hands the clock back immediately, and resumes when the page is visible again.
 - **Feature flags are room-scoped**: `RoomState.flags` is seeded from the PartyKit `FEATURE_FLAGS` env var (comma-separated names, each set to `true`) and read on the client with `useFlag(roomState, name)`. Room-scoped rather than user-scoped, because one participant on a different sync path is a correctness bug, not an experiment.
-- **Per-person volume**: `useVolumeMix` is the single source of truth (master, music, per-person `{talk, stage, muted}` keyed by `personMixKey`: the name, or `peer:<peerId>` for the duplicate-friendly "Anonymous"). It pushes gains into `src/lib/voiceMixer.ts`, which runs every remote voice through `source -> personGain -> masterBus -> duck -> limiter -> output`. Names resolve to `lkIdentity` from PartyKit status updates only at apply time, so volumes survive reconnects, and identities stay in the gain map after a participant drops off the roster because their LiveKit track can outlive the WebSocket. The mixer also owns each `<audio>` element's volume: 0 while the graph is audible, the full local mix when the AudioContext is suspended or Web Audio failed. All of it is local: no volume value is ever broadcast.
+- **Narrow props below RoomView**: no component under `RoomView` takes the LiveKit `Room`. `Toolbar` takes a `getMicLevel` callback, `StageBanner` takes a `getSingerLevel` callback, `AudioVisualizer` takes a `getSingerTrack` callback, and `useAutoSyncOffset` takes a stats provider. `RoomView` is where the transport is turned into those callbacks. The meters call `useAudioLevel` on the getter themselves, so a 75ms level tick re-renders one leaf instead of the whole room.
+- **Per-person volume**: `useVolumeMix` is the single source of truth (master, music, per-person `{talk, stage, muted}` keyed by `personMixKey`: the name, or `peer:<peerId>` for the duplicate-friendly "Anonymous"). It pushes gains into `src/lib/voiceMixer.ts`, which runs every remote voice through `source -> personGain -> masterBus -> duck -> limiter -> output`. Names resolve to `lkIdentity` from PartyKit status updates only at apply time, so volumes survive reconnects, and identities stay in the gain map after a participant drops off the roster because their LiveKit track can outlive the WebSocket. The mixer also owns each `<audio>` element's volume: 0 while the graph is audible, the full local mix when the AudioContext is suspended or Web Audio failed. All of it is local: no volume value is ever broadcast. Every gain decision (talk vs stage, mute, clamping, master composition, the music bus) is `resolveGains` in `src/lib/volumeModel.ts`, which also owns `personMixKey`, the stored-blob parse/serialize and the tracked-identity LRU; the hook holds the React state and pushes the result.
 
 ## Adding a New PartyKit Message
 
-1. Add to `ClientMessage` / `ServerMessage` in **both** `party/types.ts` and `src/types/room.ts`
+1. Add the variant to `clientMessageSchema` / `serverMessageSchema` in `src/shared/protocol.ts` (nothing else declares it)
 2. Handle in `party/index.ts` `onMessage` switch + add handler method
 3. Handle in `src/hooks/useRoomState.ts` `onMessage` switch
 4. Wire up in `RoomView.tsx`
@@ -177,7 +183,7 @@ Use these skills when working on this project:
 For major changes, run parallel review agents:
 1. Bug scan (focus on logic errors, race conditions)
 2. Regression check (compare with recent git history)
-3. Protocol consistency (types in sync, handlers complete)
+3. Protocol consistency (schema variant added in `src/shared/protocol.ts`, server handler and client `onMessage` case both present, `npm run test` green)
 4. Audio path impact (verify startSinging/stopSinging untouched)
 5. State/cleanup review (AudioContext closed, MediaStream stopped, timers cleared)
 

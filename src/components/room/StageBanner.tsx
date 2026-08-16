@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Room } from "livekit-client";
+import { useAudioLevel } from "~/hooks/useAudioLevel";
 import type { RoomState } from "~/types/room";
 import { Mic, MicOff, Music, Pencil, VolumeX, Volume2, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
@@ -11,13 +11,15 @@ import { VideoUrlInput } from "./VideoUrlInput";
 import { VolumeSlider, MUSIC_MAX } from "./VolumeSlider";
 
 interface StageBannerProps {
-  room: Room | null;
+  // Narrow audio surface: a raw 0..1 level source for the meter, a track getter for the
+  // glow. The level is smoothed in here so the meter's state stays out of RoomView.
+  getSingerLevel: (() => number) | null;
+  getSingerTrack: (() => MediaStreamTrack | null) | null;
   roomState: RoomState;
   isMyTurn: boolean;
   onFinishSinging: () => void;
   audioError: string | null;
   singerSongName: string | null;
-  singerIdentity: string | null;
   onAddToQueue?: () => void;
   onSetSongName?: (name: string) => void;
   // Playback (singer only)
@@ -50,13 +52,13 @@ interface StageBannerProps {
 }
 
 export function StageBanner({
-  room,
+  getSingerLevel,
+  getSingerTrack,
   roomState,
   isMyTurn,
   onFinishSinging,
   audioError,
   singerSongName,
-  singerIdentity,
   onAddToQueue,
   onSetSongName,
   onLoadVideo,
@@ -82,7 +84,6 @@ export function StageBanner({
   onSyncOffsetChange,
   syncSingerName = null,
 }: StageBannerProps) {
-  const [liveRoomLevel, setLiveRoomLevel] = useState(0);
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
   );
@@ -93,21 +94,7 @@ export function StageBanner({
   const isPlaying = video?.playing ?? false;
   const voicePercent = listenerVoiceMuted ? 0 : Math.round(listenerVoiceValue);
   const meterBars = [0.35, 0.55, 0.78, 1, 0.78, 0.55, 0.35];
-
-  useEffect(() => {
-    if (!room || !isSomeoneSinging || isMyTurn || voicePercent === 0) {
-      setLiveRoomLevel(0);
-      return;
-    }
-
-    const updateLevel = () => {
-      const remoteLevel = Math.max(0, ...Array.from(room.remoteParticipants.values(), (participant) => participant.audioLevel || 0));
-      setLiveRoomLevel((previous) => previous * 0.55 + Math.min(1, remoteLevel) * 0.45);
-    };
-    updateLevel();
-    const interval = window.setInterval(updateLevel, 75);
-    return () => window.clearInterval(interval);
-  }, [room, isSomeoneSinging, isMyTurn, voicePercent]);
+  const singerLevel = useAudioLevel(getSingerLevel, isSomeoneSinging && !isMyTurn && voicePercent !== 0);
 
   // No one singing - compact idle state
   if (!isSomeoneSinging) {
@@ -150,7 +137,7 @@ export function StageBanner({
   // Someone else singing - informational banner with volume
   if (!isMyTurn) {
     return (
-      <AudioVisualizer room={room} isActive={isSomeoneSinging} singerIdentity={singerIdentity} ambientId={ambientId} ambientColor={ambientColor} className="h-full w-full">
+      <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} ambientId={ambientId} ambientColor={ambientColor} className="h-full w-full">
       <div
         className="relative flex h-full flex-col justify-center overflow-hidden rounded-2xl p-5 sm:p-8"
         style={{ background: "var(--color-dark-surface)" }}
@@ -179,17 +166,17 @@ export function StageBanner({
             aria-label="Live room audio level"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.min(100, Math.round(liveRoomLevel * voicePercent))}
-            title={voicePercent === 0 ? "Voice muted" : `Live voice level ${Math.round(liveRoomLevel * 100)}%`}
+            aria-valuenow={Math.min(100, Math.round(singerLevel * voicePercent))}
+            title={voicePercent === 0 ? "Voice muted" : `Live voice level ${Math.round(singerLevel * 100)}%`}
           >
             {meterBars.map((shape, index) => (
               <span
                 key={`${shape}-${index}`}
                 className="w-0.5 rounded-full"
                 style={{
-                  height: `${Math.max(5, Math.min(38, 5 + liveRoomLevel * 40 * shape))}px`,
+                  height: `${Math.max(5, Math.min(38, 5 + singerLevel * 40 * shape))}px`,
                   background: voicePercent === 0 ? "var(--color-text-muted)" : "var(--color-primary-level)",
-                  opacity: voicePercent === 0 ? 0.25 : 0.55 + liveRoomLevel * 0.45,
+                  opacity: voicePercent === 0 ? 0.25 : 0.55 + singerLevel * 0.45,
                   transition: "height 90ms ease-out, opacity 120ms ease-out",
                 }}
               />
@@ -256,7 +243,7 @@ export function StageBanner({
 
   // My turn - expanded with controls
   return (
-    <AudioVisualizer room={room} isActive={hasVideo} singerIdentity={singerIdentity} ambientId={ambientId} ambientColor={ambientColor} framed={hasVideo} className="h-full w-full">
+    <AudioVisualizer getSingerTrack={getSingerTrack} isActive={hasVideo} ambientId={ambientId} ambientColor={ambientColor} framed={hasVideo} className="h-full w-full">
     <div
       className={`relative flex h-full flex-col overflow-hidden rounded-2xl border ${hasVideo ? "p-4" : "justify-center p-6 sm:p-8"}`}
       style={{ background: "var(--color-dark-surface)", borderColor: "var(--color-dark-border)" }}

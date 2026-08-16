@@ -1,4 +1,5 @@
 import type * as Party from "partykit/server";
+import { clientMessageSchema } from "./types";
 import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "./types";
 
 interface ParticipantEntry {
@@ -270,13 +271,20 @@ export default class KaraokeRoom implements Party.Server {
   }
 
   onMessage(message: string | ArrayBuffer | ArrayBufferView, sender: Party.Connection) {
-    let msg: ClientMessage;
+    let raw: unknown;
     try {
-      msg = JSON.parse(message as string) as ClientMessage;
+      raw = JSON.parse(message as string);
     } catch {
       this.send(sender, { type: "error", message: "Invalid JSON" });
       return;
     }
+
+    const parsed = clientMessageSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.send(sender, { type: "error", message: "Unknown message type" });
+      return;
+    }
+    const msg: ClientMessage = parsed.data;
 
     switch (msg.type) {
       case "pong":
@@ -352,8 +360,6 @@ export default class KaraokeRoom implements Party.Server {
       case "skip-singer":
         this.handleSkipSinger(sender);
         break;
-      default:
-        this.send(sender, { type: "error", message: "Unknown message type" });
     }
   }
 
