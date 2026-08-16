@@ -5,6 +5,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 const EMBED_BLOCKED_CODES = new Set([101, 150]);
 
+function disableCaptions(instance: YT.Player) {
+  const anyPlayer = instance as unknown as { unloadModule?: (module: string) => void };
+  try {
+    anyPlayer.unloadModule?.("captions");
+    anyPlayer.unloadModule?.("cc");
+  } catch {
+    // caption module API is undocumented; failing to unload is harmless
+  }
+}
+
 let apiPromise: Promise<typeof YT> | null = null;
 
 function loadIframeApi(): Promise<typeof YT> {
@@ -84,6 +94,9 @@ export function useYouTubePlayer({ onStateChange }: UseYouTubePlayerParams = {})
     } else {
       instance.cueVideoById(videoId, startSeconds);
     }
+    // Auto captions garble over karaoke videos' own lyric overlays; there is no
+    // playerVar to disable them, only unloading the module after each load
+    disableCaptions(instance);
     if (pendingVolumeRef.current !== null) {
       instance.setVolume(pendingVolumeRef.current);
     }
@@ -118,6 +131,7 @@ export function useYouTubePlayer({ onStateChange }: UseYouTubePlayerParams = {})
           setReady(true);
           // Safari has no inert support, so drop the frame from the tab order directly
           playerRef.current?.getIframe()?.setAttribute("tabindex", "-1");
+          if (playerRef.current) disableCaptions(playerRef.current);
           const pending = pendingLoadRef.current;
           pendingLoadRef.current = null;
           if (pending) applyLoad(pending.videoId, pending.startSeconds, pending.autoplay);
