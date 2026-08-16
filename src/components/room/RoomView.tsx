@@ -772,7 +772,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               </div>
             )}
             <div
-              className={`relative flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl ${roomState.currentSingerId ? "p-2 sm:p-3" : "p-3 sm:p-5"}`}
+              className={`relative flex min-h-0 flex-1 flex-col rounded-2xl ${roomState.currentSingerId ? "p-2 sm:p-3" : "overflow-y-auto p-3 sm:p-5"}`}
               style={{
                 background: roomState.currentSingerId
                   ? "transparent"
@@ -780,9 +780,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 boxShadow: roomState.currentSingerId ? undefined : "var(--shadow-elevation-1)",
               }}
             >
-              {/* Auto margins center only when content fits; justify-center would clip
-                  overflow above the scrollable area. */}
-              <div className="my-auto w-full">
+              {/* While singing the banner scrolls inside its own rounded card, so this
+                  container must not clip: overflow here would shear the atmo glow square.
+                  Auto margins center only when content fits. */}
+              <div className={roomState.currentSingerId ? "my-auto flex max-h-full min-h-0 w-full flex-col" : "my-auto w-full"}>
               <StageBanner
                 getSingerLevel={room ? getStageLevel : null}
                 getSingerTrack={getSingerTrack}
@@ -1053,6 +1054,10 @@ function AudioUnlockOverlay({
       className={`fixed inset-0 z-50 flex items-center justify-center px-6 ${ready ? "cursor-pointer" : "cursor-progress"}`}
       style={{ background: "rgba(9, 9, 11, 0.92)" }}
       onClick={ready ? () => { onUnlock(); setVisible(false); } : undefined}
+      data-testid="room-entry"
+      data-party-connected={partyConnected}
+      data-livekit-connected={livekitConnected}
+      data-player-api-ready={apiReady}
     >
       <div className="w-full max-w-xs text-center" style={{ animation: "fade-in 0.3s ease-out" }}>
         <img src="/icon-192.png" alt="" className="mx-auto mb-4 size-16 rounded-2xl" style={{ animation: ready ? undefined : "pulse-ring 1.6s ease-in-out infinite" }} />

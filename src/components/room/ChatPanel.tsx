@@ -5,7 +5,6 @@ import { Crown, Mic, Wrench } from "lucide-react";
 import type { ChatMessage } from "~/types/room";
 import { REACTION_EMOJIS } from "~/lib/reactions";
 import { chatNameColor } from "~/lib/chatColors";
-import { DIVIDER } from "~/lib/surfaces";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -117,8 +116,7 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="flex shrink-0 items-center gap-2 border-t px-4 py-3"
-        style={{ borderColor: DIVIDER }}
+        className="flex shrink-0 items-center gap-2 px-3 pb-2 pt-1"
       >
         <input
           type="text"
@@ -152,8 +150,8 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
 
       {onReact ? (
         <div
-          className="flex shrink-0 items-center justify-around border-t px-4 py-2.5"
-          style={{ borderColor: DIVIDER, background: "color-mix(in srgb, var(--color-dark-card) 45%, transparent)" }}
+          className="mx-3 mb-3 flex shrink-0 items-center justify-around rounded-xl px-2 py-1.5 shadow-[var(--shadow-elevation-0)]"
+          style={{ background: "color-mix(in srgb, var(--color-dark-card) 55%, transparent)" }}
           aria-label="Room reactions"
         >
           {REACTION_EMOJIS.map((emoji) => (

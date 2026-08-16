@@ -2,7 +2,6 @@
 
 import { ListMusic, Music, Plus } from "lucide-react";
 import type { ParticipantStatus, RoomState } from "~/types/room";
-import { DIVIDER } from "~/lib/surfaces";
 
 interface QueuePanelProps {
   roomState: RoomState;
@@ -89,7 +88,7 @@ export function QueuePanel({
         </div>
       )}
 
-      <div className="shrink-0 border-t px-3 py-3" style={{ borderColor: DIVIDER }}>
+      <div className="shrink-0 px-3 pb-3 pt-1">
         {!isInQueueOrSinging ? (
           <button
             onClick={onRequestJoinQueue}

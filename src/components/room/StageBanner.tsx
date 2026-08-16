@@ -8,7 +8,6 @@ import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
 import { SyncOffsetControl } from "./SyncOffsetControl";
 import { VideoUrlInput } from "./VideoUrlInput";
-import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider, MUSIC_MAX } from "./VolumeSlider";
 
 interface StageBannerProps {
@@ -134,12 +133,10 @@ export function StageBanner({
   // Someone else singing - informational banner with volume
   if (!isMyTurn) {
     return (
-      <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} className="h-full w-full">
-      <div
-        className="relative flex h-full flex-col justify-center overflow-hidden rounded-2xl p-5 sm:p-8"
-        style={{ background: "var(--color-dark-surface)" }}
-      >
-        <div className="absolute left-0 top-0 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
+      <AudioVisualizer getSingerTrack={getSingerTrack} isActive={isSomeoneSinging} className="flex min-h-0 w-full flex-col">
+      <div className="atmo-glass relative flex min-h-0 flex-col overflow-hidden rounded-2xl">
+        <div className="absolute left-0 top-0 z-10 h-0.5 w-full" style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }} />
+        <div className="my-auto min-h-0 w-full overflow-y-auto p-5 sm:p-8">
         <div className="flex items-center gap-4">
           <div className="flex size-14 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--color-primary-dim)", color: "var(--color-primary-soft)" }}>
             <Mic size={23} />
@@ -232,6 +229,7 @@ export function StageBanner({
           </div>
         )}
 
+        </div>
       </div>
       </AudioVisualizer>
     );
@@ -239,16 +237,17 @@ export function StageBanner({
 
   // My turn - expanded with controls
   return (
-    <AudioVisualizer getSingerTrack={getSingerTrack} isActive={hasVideo} framed={hasVideo} className="h-full w-full">
+    <AudioVisualizer getSingerTrack={getSingerTrack} isActive={hasVideo} framed={hasVideo} className="flex min-h-0 w-full flex-col">
     <div
-      className={`relative flex h-full flex-col overflow-hidden rounded-2xl ${hasVideo ? "p-4" : "justify-center p-6 sm:p-8"}`}
-      style={{ background: "var(--color-dark-surface)", boxShadow: "var(--shadow-elevation-1)" }}
+      className="atmo-glass relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
+      style={{ boxShadow: "var(--shadow-elevation-1)" }}
     >
       <div
-        className="absolute left-0 top-0 h-0.5 w-full"
+        className="absolute left-0 top-0 z-10 h-0.5 w-full"
         style={{ background: "linear-gradient(90deg, var(--color-primary), var(--color-tertiary, #ff5c9d))" }}
       />
 
+      <div className={`min-h-0 w-full overflow-y-auto ${hasVideo ? "p-4" : "my-auto p-6 sm:p-8"}`}>
       {audioError && (
         <div className="mb-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}>
           {audioError}
@@ -305,24 +304,27 @@ export function StageBanner({
             <SongNameInput initial={singerSongName ?? ""} onSet={onSetSongName} />
           )}
 
-          {onPlay && onPause && onRestart && (
-            <PlaybackControls playing={isPlaying} onPlay={onPlay} onPause={onPause} onRestart={onRestart} disabled={!playbackReady} />
-          )}
+          {/* Transport and music live on one row: both act on playback, and the
+              slider fills the space the centered island used to waste */}
+          <div className="flex items-center gap-4">
+            {onPlay && onPause && onRestart && (
+              <PlaybackControls playing={isPlaying} onPlay={onPlay} onPause={onPause} onRestart={onRestart} disabled={!playbackReady} />
+            )}
+            {onMixMusicGain && (
+              <div className="min-w-0 flex-1">
+                <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />} value={mixMusicValue} max={MUSIC_MAX} onChange={(v) => onMixMusicGain(v / 100)} />
+              </div>
+            )}
+          </div>
 
           {onLoadVideo && <VideoUrlInput onLoad={onLoadVideo} label="Change" />}
 
-          {/* Music volume only: the singer never gets a gain stage on their own voice */}
-          {onMixMusicGain && (
-            <VolumeSlider label="Music" icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />} value={mixMusicValue} max={MUSIC_MAX} onChange={(v) => onMixMusicGain(v / 100)} />
-          )}
-
-          {/* Stage controls: everything below the separator acts on the room, not on
-              this device's volume */}
-          {onMuteAll && onUnmuteAll && (
-            <div className="border-t pt-3" style={{ borderColor: DIVIDER }}>
+          {/* Room actions: these act on everyone, not on this device's volume */}
+          <div className={`grid gap-2 pt-1 ${onMuteAll && onUnmuteAll ? "grid-cols-2" : "grid-cols-1"}`}>
+            {onMuteAll && onUnmuteAll && (
               <button
                 onClick={isMutedAll ? onUnmuteAll : onMuteAll}
-                className="flex min-h-10 w-full cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium shadow-[var(--shadow-elevation-0)] transition-[background-color,border-color,filter] duration-150 hover:brightness-110"
+                className="flex min-h-10 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium shadow-[var(--shadow-control)] transition-[background-color,border-color,filter] duration-150 hover:brightness-110"
                 style={{
                   borderColor: isMutedAll ? "var(--color-accent)" : "transparent",
                   background: isMutedAll ? "var(--color-accent-dim)" : "var(--color-dark-card)",
@@ -333,18 +335,18 @@ export function StageBanner({
                 {isMutedAll ? <VolumeX size={12} /> : <Volume2 size={12} />}
                 {isMutedAll ? "Unmute all mics" : "Mute all mics"}
               </button>
-            </div>
-          )}
-
-          <button
-            onClick={onFinishSinging}
-            className="min-h-10 w-full cursor-pointer rounded-xl py-2 text-xs font-semibold shadow-[var(--shadow-control)] transition-[background-color,filter] duration-150 hover:brightness-125"
-            style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
-          >
-            Finish Turn
-          </button>
+            )}
+            <button
+              onClick={onFinishSinging}
+              className="min-h-10 cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold shadow-[var(--shadow-control)] transition-[background-color,filter] duration-150 hover:brightness-125"
+              style={{ background: "var(--color-danger-dim)", color: "var(--color-danger)" }}
+            >
+              Finish Turn
+            </button>
+          </div>
         </div>
       )}
+      </div>
 
     </div>
     </AudioVisualizer>

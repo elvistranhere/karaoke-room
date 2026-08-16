@@ -12,21 +12,21 @@ interface PlaybackControlsProps {
 
 export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled = false }: PlaybackControlsProps) {
   return (
-    <div className="flex items-center justify-center gap-3">
+    <div className="flex shrink-0 items-center gap-2.5">
       <button
         onClick={onRestart}
         disabled={disabled}
-        className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full shadow-[var(--shadow-control)] transition-[transform,filter] duration-150 hover:brightness-125 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full shadow-[var(--shadow-control)] transition-[transform,filter] duration-150 hover:brightness-125 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: "var(--color-dark-raised)", color: "var(--color-text-secondary)" }}
         title="Restart from the beginning for everyone"
         aria-label="Restart from the beginning for everyone"
       >
-        <RotateCcw size={16} />
+        <RotateCcw size={15} />
       </button>
       <button
         onClick={playing ? onPause : onPlay}
         disabled={disabled}
-        className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           background: "linear-gradient(135deg, #9d5cff 0%, #7c3aed 100%)",
           color: "#fff",
@@ -36,9 +36,8 @@ export function PlaybackControls({ playing, onPlay, onPause, onRestart, disabled
         aria-label={playing ? "Pause for everyone" : "Play for everyone"}
       >
         {/* Play glyphs sit optically left of center; nudge to balance */}
-        {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="translate-x-[1.5px]" />}
+        {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="translate-x-[1.5px]" />}
       </button>
-      <span className="w-11" aria-hidden />
     </div>
   );
 }

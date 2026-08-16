@@ -1,7 +1,7 @@
 "use client";
 
 import type { PanelId, RoomPanel } from "./panels";
-import { DIVIDER, SURFACE_PANEL } from "~/lib/surfaces";
+import { SURFACE_PANEL } from "~/lib/surfaces";
 
 interface PanelHostProps {
   panels: RoomPanel[];
@@ -20,8 +20,7 @@ export function PanelHost({ panels, activeId, onSelect, label }: PanelHostProps)
         role="tablist"
         aria-label={label}
         aria-orientation="horizontal"
-        className="hidden shrink-0 items-center gap-1 border-b p-2 lg:flex"
-        style={{ borderColor: DIVIDER }}
+        className="hidden shrink-0 items-center gap-1 p-2 lg:flex"
       >
         {panels.map((panel) => {
           const isActive = panel.id === active.id;
