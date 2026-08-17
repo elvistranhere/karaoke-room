@@ -46,6 +46,15 @@ export function endAudioCapture(owner: CaptureOwner): void {
   if (owners.size === 0) setSessionType("playback");
 }
 
+/**
+ * True while any capture is open anywhere in the app. The owner set is already the
+ * one thing that knows, so a path that must not open a second capture (the device
+ * label probe) asks here instead of growing its own flag.
+ */
+export function hasAudioCaptureOwner(): boolean {
+  return owners.size > 0;
+}
+
 export function resetAudioSession(): void {
   owners.clear();
   setSessionType("playback");

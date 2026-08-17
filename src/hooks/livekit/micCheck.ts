@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { Track } from "livekit-client";
 
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
 import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
+import {
+  applyNoiseCancellationInPlace,
+  capturesAreExclusive,
+  isStreamLive,
+  stopStream,
+} from "~/lib/micCapture";
 import type { LiveKitCtx, MicCheckState } from "./context";
 
 const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
@@ -65,6 +72,9 @@ export function useMicCheck(
   talkingNC: boolean,
   singingNC: boolean,
   voiceEffect: VoiceEffect,
+  // The singing mix's capture, which a check taken during a turn borrows where two
+  // captures cannot overlap. Every replacement and teardown of it lands in this value.
+  mixMicStream: MediaStream | null,
   syncNCToRoom: () => void,
 ): MicCheckApi {
   const {
@@ -81,7 +91,9 @@ export function useMicCheck(
     micCheckPrevMixGainRef,
     micCheckGenRef,
     micCheckInFlightRef,
+    micCheckSharedStreamRef,
     mixMicGainRef,
+    mixMicStreamRef,
     mixOwnsMicRef,
     isMicEnabledRef,
     selectedOutputRef,
@@ -111,6 +123,8 @@ export function useMicCheck(
     }
     micCheckAbortRef.current?.();
     micCheckAbortRef.current = null;
+    // A check cancelled before it armed never ran the abort that clears this
+    micCheckSharedStreamRef.current = false;
     // After the abort: it stops the loopback capture this release answers for
     endAudioCapture("mic-check");
     restoreRemoteAudio();
@@ -131,22 +145,58 @@ export function useMicCheck(
     setMicCheckState("idle");
   }, [restoreRemoteAudio, syncNCToRoom]);
 
-  // A private check must not reach the room: silence the published paths and
-  // remember what to restore. Runs after the loopback capture succeeds.
+  // A private check must not reach the room: silence the published mix. Runs after the
+  // loopback capture succeeds. While singing this zeroed gain is the whole isolation,
+  // because the managed mic is already released.
   const isolateMicCheckFromRoom = useCallback(() => {
     if (mixMicGainRef.current) {
       micCheckPrevMixGainRef.current = mixMicGainRef.current.gain.value;
       mixMicGainRef.current.gain.value = 0;
     }
-    // While singing, the zeroed mix gain is the isolation: the managed mic is
-    // already muted and must stay that way.
-    if (mixOwnsMicRef.current) return;
-    const room = roomRef.current;
-    if (room && isMicEnabledRef.current && !micCheckRestoreMicRef.current) {
-      micCheckRestoreMicRef.current = true;
-      void room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
-    }
   }, []);
+
+  // The managed mic is the other capture that can be open when a check starts, and the
+  // check is about to silence it anyway, so it is released before the loopback opens
+  // rather than after: on iOS two open captures cost the older one permanently.
+  const releaseManagedMicForCheck = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room || mixOwnsMicRef.current || !isMicEnabledRef.current || micCheckRestoreMicRef.current) return;
+    micCheckRestoreMicRef.current = true;
+    const managed = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+    await room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+    // LiveKit's mute leaves the track live; only an ended one is re-acquired on unmute
+    managed?.mediaStreamTrack.stop();
+  }, []);
+
+  // Where two captures cannot overlap, the check never opens a second one while the
+  // singing mix holds one: it monitors the mix's own stream, the same microphone the
+  // room is already hearing. Everywhere else it keeps its own, because the borrowed one
+  // carries the singing constraints rather than the ones the check asked for, and the
+  // profile segments and the NC toggle would both be describing a capture they cannot
+  // move: the shared-stream guard in each hot-swap effect bails on it.
+  const acquireCheckStream = useCallback(async (
+    constraints: MediaStreamConstraints,
+  ): Promise<{ stream: MediaStream; shared: boolean }> => {
+    const shared = mixOwnsMicRef.current && capturesAreExclusive() ? mixMicStreamRef.current : null;
+    if (shared && isStreamLive(shared)) {
+      micCheckSharedStreamRef.current = true;
+      return { stream: shared, shared: true };
+    }
+    micCheckSharedStreamRef.current = false;
+    await releaseManagedMicForCheck();
+    return { stream: await getMicStreamWithTimeout(constraints), shared: false };
+  }, [releaseManagedMicForCheck]);
+
+  // The release above happens before the capture, so a check that never starts has to
+  // put the managed mic back itself; the normal path hands that to stopMicCheck.
+  const restoreManagedMicAfterFailure = useCallback(() => {
+    if (!micCheckRestoreMicRef.current) return;
+    micCheckRestoreMicRef.current = false;
+    const room = roomRef.current;
+    if (!room || !isMicEnabledRef.current || mixOwnsMicRef.current) return;
+    syncNCToRoom();
+    void room.localParticipant.setMicrophoneEnabled(true).catch(() => {});
+  }, [syncNCToRoom]);
 
   const scheduleMicCheckErrorReset = useCallback(() => {
     if (micCheckErrorTimerRef.current) clearTimeout(micCheckErrorTimerRef.current);
@@ -174,7 +224,7 @@ export function useMicCheck(
 
     beginAudioCapture("mic-check");
     try {
-      const stream = await getMicStreamWithTimeout({
+      const { stream, shared } = await acquireCheckStream({
         audio: {
           deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
           echoCancellation: noiseCancellation,
@@ -186,7 +236,7 @@ export function useMicCheck(
       // Cancelled while the permission prompt was up: arming now would duck the
       // room and hold the mic with no UI left to stop it.
       if (gen !== micCheckGenRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
+        if (!shared) stopStream(stream);
         return;
       }
       const track = stream.getAudioTracks()[0];
@@ -201,12 +251,12 @@ export function useMicCheck(
       gain.connect(ctx.destination);
       if (ctx.state !== "running") await resumeWithTimeout(ctx);
       if (gen !== micCheckGenRef.current) {
-        track.stop();
+        if (!shared) track.stop();
         void ctx.close();
         return;
       }
       if (ctx.state !== "running") {
-        track.stop();
+        if (!shared) track.stop();
         void ctx.close();
         throw new Error("Audio output is blocked by the browser");
       }
@@ -232,7 +282,9 @@ export function useMicCheck(
       micCheckAbortRef.current = () => {
         micCheckSourceRef.current?.disconnect();
         micCheckGainRef.current?.disconnect();
-        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
+        // A shared stream belongs to the singing mix and outlives the check
+        if (!micCheckSharedStreamRef.current) stopStream(micCheckStreamRef.current);
+        micCheckSharedStreamRef.current = false;
         if (ctx.state !== "closed") void ctx.close();
         micCheckCtxRef.current = null;
         micCheckSourceRef.current = null;
@@ -244,11 +296,13 @@ export function useMicCheck(
     } catch (err) {
       console.error("[LiveKit] Talking mic check error:", err);
       micCheckInFlightRef.current = false;
+      micCheckSharedStreamRef.current = false;
       endAudioCapture("mic-check");
+      restoreManagedMicAfterFailure();
       setMicCheckState("error");
       scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
+  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, acquireCheckStream, restoreManagedMicAfterFailure, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // Singing Mic Check: live loopback through voice effect chain
   const startSingingMicCheck = useCallback(async (noiseCancellation: boolean) => {
@@ -268,7 +322,7 @@ export function useMicCheck(
 
     beginAudioCapture("mic-check");
     try {
-      const stream = await getMicStreamWithTimeout({
+      const { stream, shared } = await acquireCheckStream({
         audio: {
           deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
           echoCancellation: noiseCancellation,
@@ -281,7 +335,7 @@ export function useMicCheck(
       // Cancelled while the permission prompt was up: arming now would silence the
       // singing mix and duck the room with no UI left to stop it.
       if (gen !== micCheckGenRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
+        if (!shared) stopStream(stream);
         return;
       }
       const rawTrack = stream.getAudioTracks()[0];
@@ -299,13 +353,13 @@ export function useMicCheck(
       gain.connect(ctx.destination);
       if (ctx.state !== "running") await resumeWithTimeout(ctx);
       if (gen !== micCheckGenRef.current) {
-        rawTrack.stop();
+        if (!shared) rawTrack.stop();
         chain.cleanup();
         void ctx.close();
         return;
       }
       if (ctx.state !== "running") {
-        rawTrack.stop();
+        if (!shared) rawTrack.stop();
         chain.cleanup();
         void ctx.close();
         throw new Error("Audio output is blocked by the browser");
@@ -336,7 +390,9 @@ export function useMicCheck(
         micCheckSourceRef.current?.disconnect();
         micCheckEffectChainRef.current?.cleanup();
         micCheckGainRef.current?.disconnect();
-        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
+        // A shared stream belongs to the singing mix and outlives the check
+        if (!micCheckSharedStreamRef.current) stopStream(micCheckStreamRef.current);
+        micCheckSharedStreamRef.current = false;
         if (ctx.state !== "closed") void ctx.close();
         micCheckCtxRef.current = null;
         micCheckSourceRef.current = null;
@@ -348,11 +404,13 @@ export function useMicCheck(
     } catch (err) {
       console.error("[LiveKit] Singing mic check error:", err);
       micCheckInFlightRef.current = false;
+      micCheckSharedStreamRef.current = false;
       endAudioCapture("mic-check");
+      restoreManagedMicAfterFailure();
       setMicCheckState("error");
       scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
+  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, acquireCheckStream, restoreManagedMicAfterFailure, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // --- Hot-swap NC during talking mic check ---
   // When talkingNC changes while monitoring-talk, re-capture mic with new constraints
@@ -365,8 +423,15 @@ export function useMicCheck(
 
     console.log("[LiveKit] Hot-swapping talking NC during mic check:", talkingNC ? "ON" : "OFF");
     void (async () => {
+      const nc = talkingNC;
+      // The singing hot-swap owns the capture whenever the check is only borrowing it
+      if (micCheckSharedStreamRef.current) return;
+      // The free swap: the open capture takes the new constraints, no second one opens
+      if (await applyNoiseCancellationInPlace(micCheckStreamRef.current, nc)) return;
+      const releaseFirst = capturesAreExclusive();
+      const oldStream = micCheckStreamRef.current;
+      if (releaseFirst) stopStream(oldStream);
       try {
-        const nc = talkingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
@@ -380,12 +445,11 @@ export function useMicCheck(
         // The check can be stopped mid-capture: the old refs are already null, so
         // parking the new stream there would leave the mic open with no owner.
         if (micCheckCtxRef.current !== ctx) {
-          newStream.getTracks().forEach((t) => t.stop());
+          stopStream(newStream);
           return;
         }
 
-        // Stop old mic stream
-        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
+        if (!releaseFirst) stopStream(oldStream);
         micCheckStreamRef.current = newStream;
 
         // Reconnect in the Web Audio graph
@@ -397,6 +461,9 @@ export function useMicCheck(
         console.log("[LiveKit] Talking mic check re-captured with NC:", nc ? "ON" : "OFF");
       } catch (err) {
         console.error("[LiveKit] Error hot-swapping talking NC:", err);
+        // Nothing is left to monitor once the old capture was released, and a dead
+        // loopback would keep the room ducked and the mic held.
+        if (releaseFirst) stopMicCheck();
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,8 +480,15 @@ export function useMicCheck(
 
     console.log("[LiveKit] Hot-swapping singing NC during mic check:", singingNC ? "ON" : "OFF");
     void (async () => {
+      const nc = singingNC;
+      // The singing hot-swap owns the capture whenever the check is only borrowing it
+      if (micCheckSharedStreamRef.current) return;
+      // The free swap: the open capture takes the new constraints, no second one opens
+      if (await applyNoiseCancellationInPlace(micCheckStreamRef.current, nc)) return;
+      const releaseFirst = capturesAreExclusive();
+      const oldStream = micCheckStreamRef.current;
+      if (releaseFirst) stopStream(oldStream);
       try {
-        const nc = singingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
@@ -429,12 +503,11 @@ export function useMicCheck(
         // The check can be stopped mid-capture: the old refs are already null, so
         // parking the new stream there would leave the mic open with no owner.
         if (micCheckCtxRef.current !== ctx) {
-          newStream.getTracks().forEach((t) => t.stop());
+          stopStream(newStream);
           return;
         }
 
-        // Stop old mic stream
-        micCheckStreamRef.current?.getTracks().forEach((t) => t.stop());
+        if (!releaseFirst) stopStream(oldStream);
         micCheckStreamRef.current = newStream;
 
         // Reconnect in the Web Audio graph
@@ -446,6 +519,9 @@ export function useMicCheck(
         console.log("[LiveKit] Singing mic check re-captured with NC:", nc ? "ON" : "OFF");
       } catch (err) {
         console.error("[LiveKit] Error hot-swapping singing NC:", err);
+        // Nothing is left to monitor once the old capture was released, and a dead
+        // loopback would keep the room ducked and the mic held.
+        if (releaseFirst) stopMicCheck();
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,6 +550,27 @@ export function useMicCheck(
     console.log("[LiveKit] Singing mic check effect swapped to:", voiceEffect);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceEffect]);
+
+  // --- Follow the capture a shared check is borrowing ---
+  // The mix replaces its stream on an NC or device swap and drops it when the turn or
+  // the singer's own mute ends it. A stopped track raises no event, so a check left
+  // pointed at the old one would monitor silence with no way to tell.
+  useEffect(() => {
+    if (!micCheckSharedStreamRef.current) return;
+    if (!mixMicStream || !isStreamLive(mixMicStream)) {
+      stopMicCheck();
+      return;
+    }
+    const ctx = micCheckCtxRef.current;
+    if (!ctx) return; // still arming, and it sources the current stream itself
+    micCheckSourceRef.current?.disconnect();
+    micCheckStreamRef.current = mixMicStream;
+    const source = ctx.createMediaStreamSource(mixMicStream);
+    const chain = micCheckEffectChainRef.current;
+    if (chain) source.connect(chain.input);
+    else if (micCheckGainRef.current) source.connect(micCheckGainRef.current);
+    micCheckSourceRef.current = source;
+  }, [mixMicStream, stopMicCheck]);
 
   // Backgrounding the tab interrupts the mic check AudioContext and it cannot be
   // resumed off a gesture on iOS, so stop the check instead of leaving the room

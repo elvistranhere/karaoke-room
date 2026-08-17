@@ -18,10 +18,16 @@ const LIMITER_RATIO = 20;
 const LIMITER_ATTACK_SEC = 0.003;
 const LIMITER_RELEASE_SEC = 0.25;
 const SINK_ELEMENT_ID = "karaoke-mix-sink";
+// WebKit parks resume() instead of rejecting while the session is interrupted, so the
+// context state decides the outcome rather than the promise. Same idiom as the mic check.
+const CTX_RESUME_TIMEOUT_MS = 400;
 
 interface MixChain {
   identity: string;
   element: HTMLAudioElement | null;
+  // Kept so a rebuilt graph can re-source the same remote track without LiveKit
+  // re-attaching it: a context that iOS interrupted can only be replaced, not resumed.
+  track: MediaStreamTrack;
   stream: MediaStream | null;
   source: MediaStreamAudioSourceNode | null;
   gain: GainNode | null;
@@ -38,7 +44,9 @@ export interface VoiceMixer {
   setMaster: (value: number) => void;
   setDuck: (value: number) => void;
   setSinkId: (deviceId: string) => void;
-  resume: () => void;
+  // Resolves once the graph is audible again or the rebuild has been tried, so the
+  // caller's gesture can finish the recovery (element sweep, startAudio) after it
+  resume: () => Promise<void>;
   // Re-assert element mute/volume after something outside the mixer touched them
   syncElements: () => void;
   destroy: () => void;
@@ -63,6 +71,14 @@ export function createVoiceMixer(): VoiceMixer {
   let masterValue = 1;
   let duckValue = 1;
   let sinkId = "";
+  // A context that has never run is waiting for a gesture, which is the autoplay
+  // policy rather than a fault: only one that has been audible before is worth rebuilding.
+  let everRunning = false;
+  let resumeInFlight: Promise<void> | null = null;
+  // Bumped by destroy, so a resume still waiting on its timeout cannot rebuild a graph
+  // for a room that is already gone. The mixer outlives one connection, so a permanent
+  // flag would be wrong: a later attach has to be able to build again.
+  let generation = 0;
 
   const ramp = (param: AudioParam, value: number) => {
     if (!ctx) return;
@@ -139,6 +155,11 @@ export function createVoiceMixer(): VoiceMixer {
     }
   };
 
+  const onStateChange = () => {
+    if (ctx?.state === "running") everRunning = true;
+    syncElements();
+  };
+
   const ensureGraph = (): AudioContext | null => {
     if (ctx && ctx.state !== "closed") return ctx;
     if (typeof window === "undefined") return null;
@@ -149,7 +170,8 @@ export function createVoiceMixer(): VoiceMixer {
       ctx = null;
       return null;
     }
-    ctx.addEventListener("statechange", syncElements);
+    if (ctx.state === "running") everRunning = true;
+    ctx.addEventListener("statechange", onStateChange);
 
     masterNode = ctx.createGain();
     masterNode.gain.value = masterValue;
@@ -169,12 +191,110 @@ export function createVoiceMixer(): VoiceMixer {
     return ctx;
   };
 
-  // Called from every user gesture, so the context is built inside one where iOS demands it
-  const resume = () => {
-    const audioCtx = ensureGraph();
-    if (audioCtx && audioCtx.state !== "running") void audioCtx.resume().catch(() => {});
+  const connectChain = (chain: MixChain) => {
+    if (!ctx || !masterNode) return;
+    try {
+      const stream = chain.stream ?? new MediaStream([chain.track]);
+      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.value = resolveGain(chain.identity);
+      source.connect(gain);
+      gain.connect(masterNode);
+      chain.stream = stream;
+      chain.source = source;
+      chain.gain = gain;
+    } catch {
+      // graph unavailable for this track, the element keeps carrying it
+      chain.source = null;
+      chain.gain = null;
+    }
+  };
+
+  // Drops the context and every node but keeps the chains, so the elements the mixer
+  // owns stay attached and carry the full local mix for the length of the rebuild.
+  const teardownGraph = () => {
+    for (const chain of chains.values()) {
+      chain.source?.disconnect();
+      chain.gain?.disconnect();
+      chain.source = null;
+      chain.gain = null;
+    }
+    ctx?.removeEventListener("statechange", onStateChange);
+    masterNode?.disconnect();
+    duckNode?.disconnect();
+    limiterNode?.disconnect();
+    removeSinkElement();
+    const dead = ctx;
+    ctx = null;
+    masterNode = null;
+    duckNode = null;
+    limiterNode = null;
+    streamSink = null;
+    // After the refs are cleared: syncElements reads them, and every element has to be
+    // carrying the mix before the old context stops feeding the graph
+    syncElements();
+    if (dead && dead.state !== "closed") void dead.close().catch(() => {});
+  };
+
+  const rebuildGraph = (): AudioContext | null => {
+    teardownGraph();
+    const fresh = ensureGraph();
+    if (!fresh) return null;
+    for (const chain of chains.values()) connectChain(chain);
+    syncElements();
+    return fresh;
+  };
+
+  // resume() rejects on some iOS builds and simply never settles while the session is
+  // interrupted, so the state after a bounded wait is the only trustworthy answer.
+  const tryResume = async (audioCtx: AudioContext): Promise<{ running: boolean; rejected: boolean }> => {
+    let rejected = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      audioCtx.resume().catch(() => { rejected = true; }),
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, CTX_RESUME_TIMEOUT_MS); }),
+    ]);
+    clearTimeout(timer);
+    const running = audioCtx.state === "running";
+    if (running) everRunning = true;
+    return { running, rejected };
+  };
+
+  const runResume = async () => {
+    const gen = generation;
+    let audioCtx = ensureGraph();
+    if (!audioCtx) return;
+    if (audioCtx.state !== "running") {
+      // Read before the await, while the answer is still about this call: WebKit rejects
+      // resume() with no user activation, so a rejection is only evidence of a broken
+      // context when there was an activation to spend.
+      const hadActivation = navigator.userActivation?.isActive === true;
+      const { running, rejected } = await tryResume(audioCtx);
+      if (gen !== generation) return;
+      // A context iOS moved to interrupted and back cannot be resumed at all: the only
+      // recovery is a new one. A context that has never been audible is waiting for a
+      // gesture instead, and rebuilding that would churn a graph on every attach.
+      if (!running && (everRunning || (rejected && hadActivation))) {
+        audioCtx = rebuildGraph();
+        if (audioCtx && audioCtx.state !== "running") await tryResume(audioCtx);
+      }
+    }
     if (sinkElement?.paused) void sinkElement.play().catch(() => {});
     syncElements();
+  };
+
+  // Called from every user gesture, so the context is built inside one where iOS demands it.
+  // One run at a time: two overlapping recoveries would each rebuild the other's graph.
+  const resume = (): Promise<void> => {
+    // The cheap half runs on every call, in flight or not. A caller that arrives with a
+    // user activation has to spend it on ctx.resume() itself: the run it would otherwise
+    // be handed already made its one attempt, off-gesture, and cannot make another.
+    const live = ensureGraph();
+    if (live && live.state !== "running") void live.resume().catch(() => {});
+    if (resumeInFlight) return resumeInFlight;
+    const run = runResume().finally(() => { resumeInFlight = null; });
+    resumeInFlight = run;
+    return run;
   };
 
   const detach = (trackSid: string) => {
@@ -194,26 +314,12 @@ export function createVoiceMixer(): VoiceMixer {
   const attach = (identity: string, track: MediaStreamTrack, trackSid: string, element: HTMLAudioElement | null): boolean => {
     detach(trackSid);
     if (element) element.muted = true;
-    const audioCtx = ensureGraph();
-    const master = masterNode;
-    let chain: MixChain = { identity, element, stream: null, source: null, gain: null };
-
-    if (audioCtx && master) {
-      try {
-        const stream = new MediaStream([track]);
-        const source = audioCtx.createMediaStreamSource(stream);
-        const gain = audioCtx.createGain();
-        gain.gain.value = resolveGain(identity);
-        source.connect(gain);
-        gain.connect(master);
-        chain = { identity, element, stream, source, gain };
-      } catch {
-        // graph unavailable for this track, the element keeps carrying it
-      }
-    }
+    const chain: MixChain = { identity, element, track, stream: null, source: null, gain: null };
+    ensureGraph();
+    connectChain(chain);
 
     chains.set(trackSid, chain);
-    resume();
+    void resume();
     return chain.gain !== null;
   };
 
@@ -250,17 +356,10 @@ export function createVoiceMixer(): VoiceMixer {
       el.muted = false;
       el.volume = 1;
     }
-    ctx?.removeEventListener("statechange", syncElements);
-    masterNode?.disconnect();
-    duckNode?.disconnect();
-    limiterNode?.disconnect();
-    removeSinkElement();
-    if (ctx && ctx.state !== "closed") void ctx.close().catch(() => {});
-    ctx = null;
-    masterNode = null;
-    duckNode = null;
-    limiterNode = null;
-    streamSink = null;
+    teardownGraph();
+    everRunning = false;
+    generation += 1;
+    resumeInFlight = null;
   };
 
   return { attach, detach, setPersonGains, setMaster, setDuck, setSinkId, resume, syncElements, destroy };

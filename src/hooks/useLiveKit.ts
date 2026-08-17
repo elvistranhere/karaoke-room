@@ -17,6 +17,7 @@ import {
 } from "./livekit/connection";
 import { useLiveKitCtx, type MicCheckState, type UseLiveKitParams } from "./livekit/context";
 import { useMicCheck } from "./livekit/micCheck";
+import { useMicWatchdog } from "./livekit/micWatch";
 
 export { VOICE_TRACK_NAME, MIC_ON_PREF_KEY } from "./livekit/capture";
 export type { MicCheckState } from "./livekit/context";
@@ -28,6 +29,10 @@ interface UseLiveKitReturn {
   isMicEnabled: boolean;
   toggleMic: (target?: boolean) => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
+  // The capture behind the mic the user believes is live is muted or ended, and did
+  // not come back on its own. Only a gesture re-acquires it: restartMic.
+  micStopped: boolean;
+  restartMic: () => Promise<void>;
   micCheckState: MicCheckState;
   // LiveKit's own verdict: the browser refused to play remote voices on this device
   voicePlaybackBlocked: boolean;
@@ -94,18 +99,23 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
     talkingNC,
     singingNC,
     state.voiceEffect,
+    state.mixMicStream,
     syncNCToRoom,
   );
 
   const {
     toggleMic,
     setMicMuted,
+    restartMic,
     setMixMicGain,
     setVoiceEffect,
     setEffectWetDry,
     startSinging,
     stopSinging,
   } = useCapture(ctx, captureDeviceId, state.isSinging, isMyTurn, syncNCToRoom, stopMicCheck);
+
+  // Last, so it watches whichever capture the paths above ended up owning
+  useMicWatchdog(ctx, state.isMicEnabled, state.isConnected, captureDeviceId, state.mixMicStream, state.micCheckState, restartMic);
 
   return {
     room: ctx.roomRef.current,
@@ -114,6 +124,8 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
     isMicEnabled: state.isMicEnabled,
     toggleMic,
     setMicMuted,
+    micStopped: state.micStopped,
+    restartMic,
     micCheckState: state.micCheckState,
     voicePlaybackBlocked: !state.canPlaybackAudio,
     resumeVoicePlayback,

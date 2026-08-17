@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { AudioPresets, Track } from "livekit-client";
+import { AudioPresets, Track, type Room } from "livekit-client";
 
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
 import { writePref } from "~/lib/prefs";
 import { beginAudioCapture, endAudioCapture, resetAudioSession } from "~/lib/audioSession";
+import { applyNoiseCancellationInPlace, capturesAreExclusive, stopStream } from "~/lib/micCapture";
 import type { LiveKitCtx } from "./context";
 
 // The singer publishes this alongside LiveKit's muted managed mic, so both carry
@@ -14,8 +15,48 @@ export const VOICE_TRACK_NAME = "karaoke-voice";
 
 export const MIC_ON_PREF_KEY = "karaoke-mic-on";
 
+// The one copy of the wording, so the watchdog can tell its own message apart from a
+// permission error when it clears the singer's error surface.
+export const MIC_STOPPED_MESSAGE = "Mic stopped, tap to restart";
+
+/**
+ * Release the LiveKit managed capture, rather than only muting it.
+ *
+ * LiveKit leaves the media track live on mute by default (stopMicTrackOnMute is off so
+ * a Bluetooth link does not flip on every mute), which means a mute alone still holds
+ * the device's one capture unit. Its unmute path re-acquires any track whose readyState
+ * is "ended", so stopping it here is exactly what LiveKit does for itself and it comes
+ * back on the next setMicrophoneEnabled(true).
+ */
+async function releaseManagedMic(room: Room): Promise<void> {
+  const managed = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+  await room.localParticipant.setMicrophoneEnabled(false);
+  managed?.mediaStreamTrack.stop();
+}
+
+/**
+ * Drop what is left of a singing capture that is already stopped.
+ *
+ * A release-first swap that then fails to re-acquire has no capture left, and a stopped
+ * MediaStreamTrack raises no event, so nothing downstream would ever notice on its own.
+ * Every other teardown lands in mixMicStreamState, which is where a borrowing mic check,
+ * the watchdog and the add-to-mix branch all read the mix capture from, so a death has
+ * to land there too rather than leaving a dead stream published as the live one.
+ */
+export function dropMixCapture(lk: LiveKitCtx): void {
+  lk.effectChainRef.current?.cleanup();
+  lk.effectChainRef.current = null;
+  lk.mixMicSourceRef.current?.disconnect();
+  lk.mixMicSourceRef.current = null;
+  lk.mixMicGainRef.current?.disconnect();
+  lk.mixMicGainRef.current = null;
+  lk.mixMicStreamRef.current = null;
+  lk.setMixMicStreamState(null);
+}
+
 // --- Hot-swap NC while singing ---
-// When NC toggle changes while singing, re-capture mic with new constraints
+// The turn owns one capture: NC moves on the open track, and only a device that
+// refuses that gets a re-capture, released before it is re-acquired on iOS.
 
 export function useSingingNCHotSwap(
   lk: LiveKitCtx,
@@ -29,7 +70,9 @@ export function useSingingNCHotSwap(
     mixMicStreamRef,
     mixPubRef,
     effectChainRef,
+    setMicStopped,
     setMixMicStreamState,
+    setSingingError,
   } = lk;
 
   useEffect(() => {
@@ -42,8 +85,18 @@ export function useSingingNCHotSwap(
     console.log("[LiveKit] Hot-swapping NC while singing:", singingNC ? "ON" : "OFF");
     const ctx = mixCtxRef.current;
     void (async () => {
+      const nc = singingNC;
+      // The free swap: no second capture, no gap, and no Bluetooth route flip
+      if (await applyNoiseCancellationInPlace(mixMicStreamRef.current, nc)) {
+        console.log("[LiveKit] Mix mic NC applied in place:", nc ? "ON" : "OFF");
+        return;
+      }
+      // iOS holds one capture unit per device, and a second getUserMedia mutes the
+      // track the room is listening to for good. A gap is the cheaper failure.
+      const releaseFirst = capturesAreExclusive();
+      const oldStream = mixMicStreamRef.current;
+      if (releaseFirst) stopStream(oldStream);
       try {
-        const nc = singingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
@@ -58,25 +111,34 @@ export function useSingingNCHotSwap(
         // The turn can end while getUserMedia is pending; the fresh capture would
         // otherwise stay open with nothing left holding a reference to it.
         if (mixCtxRef.current !== ctx || !mixPubRef.current) {
-          newStream.getTracks().forEach((t) => t.stop());
+          stopStream(newStream);
           return;
         }
 
-        // Stop old mic stream
-        mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
+        if (!releaseFirst) stopStream(oldStream);
         mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
         // Reconnect in the Web Audio graph
         mixMicSourceRef.current?.disconnect();
         const chain = effectChainRef.current;
-        if (ctx && chain) {
+        if (chain) {
           const newSource = ctx.createMediaStreamSource(newStream);
           newSource.connect(chain.input);
           mixMicSourceRef.current = newSource;
           console.log("[LiveKit] Mix mic re-captured with NC:", nc ? "ON" : "OFF");
         }
+        // A mic check borrowing this capture follows the new stream off the state
+        // write above, which is the one place every mix-capture change lands.
       } catch (err) {
         console.error("[LiveKit] Error hot-swapping NC:", err);
+        // The old capture is already gone on the release-first path and a stopped track
+        // raises no event, so nothing downstream would ever notice the mic is dead.
+        // The turn can also have ended while getUserMedia was pending, and its teardown
+        // already released everything: nothing died that the user has to restart.
+        if (!releaseFirst || mixCtxRef.current !== ctx || !mixPubRef.current) return;
+        dropMixCapture(lk);
+        setMicStopped(true);
+        setSingingError(MIC_STOPPED_MESSAGE);
       }
     })();
   }, [singingNC, captureDeviceId]);
@@ -85,6 +147,7 @@ export function useSingingNCHotSwap(
 export interface CaptureApi {
   toggleMic: (target?: boolean) => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
+  restartMic: () => Promise<void>;
   setMixMicGain: (val: number) => void;
   setVoiceEffect: (effect: VoiceEffect) => void;
   setEffectWetDry: (wet: number) => void;
@@ -122,6 +185,7 @@ export function useCapture(
     effectChainRef,
     isSingingInFlightRef,
     isTogglingMicRef,
+    micIntentGenRef,
     micErrorTimerRef,
     isMicEnabledRef,
     singingNCRef,
@@ -260,12 +324,41 @@ export function useCapture(
   // Explicit target, not a toggle: the caller passes the state its label promised,
   // so a click landing mid-flight cannot invert the user's intent off a stale ref.
   const toggleMic = useCallback(async (target?: boolean) => {
+    micIntentGenRef.current++;
     await applyMicState(target ?? !isMicEnabledRef.current, true);
+  }, [applyMicState]);
+
+  // The one recovery for a mic the OS stopped, run from the user's tap or from the
+  // watchdog's single automatic attempt. It re-uses the acquisition paths that already
+  // exist instead of adding a third: applyMicState(false) releases whichever capture is
+  // live, applyMicState(true) re-acquires it, the singing one through the add-to-mix
+  // branch and the managed one through LiveKit's own restart of an ended track.
+  const restartMic = useCallback(async () => {
+    if (!isMicEnabledRef.current) {
+      await applyMicState(true, false);
+      return;
+    }
+    const intent = micIntentGenRef.current;
+    if (!mixOwnsMicRef.current) {
+      // LiveKit only re-acquires on unmute when the media track has ended. A track the
+      // OS merely muted would come back still muted, so the release has to be explicit.
+      roomRef.current?.localParticipant
+        .getTrackPublication(Track.Source.Microphone)?.audioTrack?.mediaStreamTrack.stop();
+    }
+    await applyMicState(false, false);
+    // The release above is the one window where a mute the user asks for looks exactly
+    // like the one this recovery made, so the re-enable answers to their intent rather
+    // than to the state it left behind: never auto-unmute someone who muted themselves.
+    if (micIntentGenRef.current !== intent) return;
+    await applyMicState(true, false);
   }, [applyMicState]);
 
   // Force mute/unmute - used by deafen and the join gesture, and handles both the
   // singing and idle paths. Unlike toggleMic, it sets a specific state.
   const setMicMuted = useCallback(async (muted: boolean) => {
+    // Before the already-in-state check: a restart in flight has the mic off either way,
+    // so the bump is what tells the two apart, not the state it happens to read.
+    micIntentGenRef.current++;
     const currentlyEnabled = isMicEnabledRef.current;
     if ((muted && !currentlyEnabled) || (!muted && currentlyEnabled)) return; // already in desired state
     await applyMicState(!muted, false);
@@ -350,6 +443,11 @@ export function useCapture(
     mixOwnsMicRef.current = true;
     beginAudioCapture("singing");
     try {
+      // One capture per turn: the managed mic is released before the singing capture
+      // opens, never alongside it. Muting it after would leave both open across the
+      // whole acquisition, which is the window iOS answers by muting the older one.
+      await releaseManagedMic(room);
+
       // Taking the stage never overrides an explicit mute: the pipeline is built
       // either way, and the detach after publish keeps a muted singer silent.
       const singNC = singingNCRef.current;
@@ -384,9 +482,6 @@ export function useCapture(
       mixMicGainRef.current = micGain;
       mixMicStreamRef.current = micStream; setMixMicStreamState(micStream);
       effectChainRef.current = chain;
-
-      // Mute LiveKit's managed mic to avoid duplicate voice
-      await room.localParticipant.setMicrophoneEnabled(false);
 
       const voiceTrack = dest.stream.getAudioTracks()[0];
       if (!voiceTrack) throw new Error("No voice track");
@@ -483,5 +578,5 @@ export function useCapture(
     }
   }, [isMyTurn, isSinging, startSinging, stopSinging, stopMicCheck]);
 
-  return { toggleMic, setMicMuted, setMixMicGain, setVoiceEffect, setEffectWetDry, startSinging, stopSinging };
+  return { toggleMic, setMicMuted, restartMic, setMixMicGain, setVoiceEffect, setEffectWetDry, startSinging, stopSinging };
 }

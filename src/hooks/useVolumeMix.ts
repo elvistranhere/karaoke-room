@@ -133,8 +133,10 @@ export function useVolumeMix({
     setDeafenedState(value);
   }, []);
 
+  // The rebuild the mixer may run has nothing to report back to the UI: the element
+  // fallback carries the room either way, so the gesture does not wait on it.
   const resume = useCallback(() => {
-    mixer.resume();
+    void mixer.resume();
   }, [mixer]);
 
   return {

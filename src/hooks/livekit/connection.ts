@@ -15,6 +15,8 @@ import {
 
 import type { MicMode } from "../useAudioDevices";
 import type { VoiceMixer } from "~/lib/voiceMixer";
+import { capturesAreExclusive, stopStream } from "~/lib/micCapture";
+import { dropMixCapture, MIC_STOPPED_MESSAGE } from "./capture";
 import type { LiveKitCtx } from "./context";
 
 const playPausedRemoteElements = () => {
@@ -31,20 +33,24 @@ let resumeInFlight: { room: Room | null; promise: Promise<void> } | null = null;
 export function resumeRoomAudio(room: Room | null, mixer: VoiceMixer): Promise<void> {
   if (resumeInFlight && resumeInFlight.room === room) return resumeInFlight.promise;
   const run = async (): Promise<void> => {
-    mixer.resume();
+    // A gesture only survives the synchronous head of this task, so everything that needs
+    // the user activation runs there: mixer.resume() spends it on ctx.resume() before it
+    // returns, and its rebuild tail is awaited afterwards, for the element sweep only.
+    const settled = mixer.resume();
     playPausedRemoteElements();
     // startAudio unmutes every attached element, so it only runs when LiveKit itself
     // reports blocked playback. Calling it under a live graph plays each remote voice
     // twice, element and graph, until syncElements lands.
-    if (!room || room.canPlaybackAudio) return;
-    try {
-      await room.startAudio();
-      playPausedRemoteElements();
-    } catch (err) {
-      console.warn("[LiveKit] startAudio failed from the audio recovery control:", err);
-    } finally {
-      mixer.syncElements();
+    if (room && !room.canPlaybackAudio) {
+      try {
+        await room.startAudio();
+        playPausedRemoteElements();
+      } catch (err) {
+        console.warn("[LiveKit] startAudio failed from the audio recovery control:", err);
+      }
     }
+    await settled;
+    mixer.syncElements();
   };
   const entry: { room: Room | null; promise: Promise<void> } = {
     room,
@@ -420,7 +426,9 @@ export function useInputDeviceSwitch(
     mixMicStreamRef,
     mixPubRef,
     effectChainRef,
+    setMicStopped,
     setMixMicStreamState,
+    setSingingError,
   } = lk;
 
   // isConnected flips on every LiveKit reconnect, and re-running the branch below
@@ -439,6 +447,12 @@ export function useInputDeviceSwitch(
     if (mixPubRef.current && mixMicStreamRef.current) {
       const ctx = mixCtxRef.current;
       void (async () => {
+        // A device change is the one swap with no in-graph form: the constraint that
+        // moves is the device itself. iOS holds a single capture unit, so the old one
+        // is released before the new device opens rather than alongside it.
+        const releaseFirst = capturesAreExclusive();
+        const oldStream = mixMicStreamRef.current;
+        if (releaseFirst) stopStream(oldStream);
         try {
           const nc = singingNCRef.current;
           const newStream = await navigator.mediaDevices.getUserMedia({
@@ -455,11 +469,11 @@ export function useInputDeviceSwitch(
           // The mix can be torn down while getUserMedia is pending: without this the
           // fresh capture is parked in a ref nobody stops and the mic stays open.
           if (mixCtxRef.current !== ctx || !mixPubRef.current) {
-            newStream.getTracks().forEach((t) => t.stop());
+            stopStream(newStream);
             return;
           }
 
-          mixMicStreamRef.current?.getTracks().forEach((t) => t.stop());
+          if (!releaseFirst) stopStream(oldStream);
           mixMicStreamRef.current = newStream; setMixMicStreamState(newStream);
 
           mixMicSourceRef.current?.disconnect();
@@ -478,6 +492,14 @@ export function useInputDeviceSwitch(
           }
         } catch (err) {
           console.error("[LiveKit] Error switching mix input device:", err);
+          // The old capture is already gone on the release-first path, and stop() raises
+          // no event, so the watchdog is told rather than left waiting for one. The mix
+          // can also have been torn down while getUserMedia was pending, and that
+          // teardown already released everything.
+          if (!releaseFirst || mixCtxRef.current !== ctx || !mixPubRef.current) return;
+          dropMixCapture(lk);
+          setMicStopped(true);
+          setSingingError(MIC_STOPPED_MESSAGE);
         }
       })();
     } else {

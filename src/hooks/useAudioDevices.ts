@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { findBuiltInInputId, isActiveRouteBluetooth, isAndroidDevice } from "~/lib/audioRoutes";
-import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
+import { beginAudioCapture, endAudioCapture, hasAudioCaptureOwner } from "~/lib/audioSession";
 import { readPref, writePref } from "~/lib/prefs";
 
 const INPUT_PREF_KEY = "karaoke-input-device";
@@ -39,16 +39,26 @@ export function useAudioDevices(): UseAudioDevicesReturn {
   // is the app picking for the user and may be overridden on a Bluetooth route.
   const [inputIsExplicit, setInputIsExplicit] = useState(false);
 
+  // Labels survive the probe for the life of the document, so a second one buys
+  // nothing and a devicechange fires exactly when a capture is most likely to be live.
+  const labelsGrantedRef = useRef(false);
+
   const refreshDevices = useCallback(async () => {
     try {
-      // Labels need permission, and this probe is a capture like any other: it has
-      // to own the audio session or a "playback" write lands under a live mic.
-      beginAudioCapture("probe");
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        for (const track of stream.getTracks()) track.stop();
-      } finally {
-        endAudioCapture("probe");
+      // A headset connecting mid-song is a devicechange, and a bare getUserMedia there
+      // would be the second capture that permanently mutes the singer's on iOS. The
+      // owner set is the app's one record of a live capture, so it decides.
+      if (!labelsGrantedRef.current && !hasAudioCaptureOwner()) {
+        // Labels need permission, and this probe is a capture like any other: it has
+        // to own the audio session or a "playback" write lands under a live mic.
+        beginAudioCapture("probe");
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          for (const track of stream.getTracks()) track.stop();
+          labelsGrantedRef.current = true;
+        } finally {
+          endAudioCapture("probe");
+        }
       }
 
       const devices = await navigator.mediaDevices.enumerateDevices();

@@ -8,7 +8,7 @@ import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { useWakeLock } from "~/hooks/useWakeLock";
-import { Bluetooth, Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, Volume2, WifiOff, X } from "lucide-react";
+import { Bluetooth, Check, LoaderCircle, LogOut, MicOff, Pencil, Settings as SettingsIcon, Volume2, WifiOff, X } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -161,6 +161,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     toggleMic,
     setMicMuted,
     micCheckState,
+    micStopped,
+    restartMic,
     voicePlaybackBlocked,
     resumeVoicePlayback,
     startTalkingMicCheck,
@@ -757,6 +759,28 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           <Volume2 size={14} style={{ flexShrink: 0 }} />
           <span className="min-w-0 flex-1">
             Tap to bring the sound back. This device paused the music and everyone&apos;s voices.
+          </span>
+        </button>
+      )}
+
+      {/* The mic the OS took away. Same CTA idiom as the tap-to-hear banner because it
+          is the same kind of surface: a state only a gesture can leave. The singer also
+          sees it on the stage banner through singingError, which reports rather than
+          acts, so the one tap target stays here. */}
+      {audioUnlocked && micStopped && (
+        <button
+          type="button"
+          onClick={() => { void restartMic(); }}
+          className="relative z-10 mx-4 mt-2 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold shadow-[var(--shadow-control)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.99] lg:mx-6"
+          style={{
+            background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
+            color: "#fff",
+          }}
+          data-testid="restart-mic"
+        >
+          <MicOff size={14} style={{ flexShrink: 0 }} />
+          <span className="min-w-0 flex-1">
+            Mic stopped, tap to restart. Your device took the microphone back, so the room cannot hear you.
           </span>
         </button>
       )}

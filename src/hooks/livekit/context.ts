@@ -32,6 +32,9 @@ export interface LiveKitState {
   isMicEnabled: boolean;
   isSinging: boolean;
   singingError: string | null;
+  // The mic the user believes is live is muted or ended and did not come back on its
+  // own. Only a gesture may re-acquire it, so this is a UI state, never a retry loop.
+  micStopped: boolean;
   micCheckState: MicCheckState;
   canPlaybackAudio: boolean;
   activeSpeakers: Set<string>;
@@ -48,6 +51,7 @@ export interface LiveKitCtx {
   setIsMicEnabled: Dispatch<SetStateAction<boolean>>;
   setIsSinging: Dispatch<SetStateAction<boolean>>;
   setSingingError: Dispatch<SetStateAction<string | null>>;
+  setMicStopped: Dispatch<SetStateAction<boolean>>;
   setMicCheckState: Dispatch<SetStateAction<MicCheckState>>;
   setCanPlaybackAudio: Dispatch<SetStateAction<boolean>>;
   setActiveSpeakers: Dispatch<SetStateAction<Set<string>>>;
@@ -71,6 +75,11 @@ export interface LiveKitCtx {
   micCheckPrevMixGainRef: RefObject<number | null>;
   micCheckGenRef: RefObject<number>;
   micCheckInFlightRef: RefObject<boolean>;
+  // The check is monitoring the singing mix's own capture rather than one of its own,
+  // so nothing on the check's teardown path may stop that stream.
+  micCheckSharedStreamRef: RefObject<boolean>;
+
+  micStoppedRef: RefObject<boolean>;
 
   mixCtxRef: RefObject<AudioContext | null>;
   mixMicSourceRef: RefObject<MediaStreamAudioSourceNode | null>;
@@ -84,6 +93,10 @@ export interface LiveKitCtx {
   isSingingInFlightRef: RefObject<boolean>;
 
   isTogglingMicRef: RefObject<boolean>;
+  // Bumped by every deliberate mic on/off the user asks for. An automatic recovery
+  // reads it before and after its release, so it can never re-open a capture the user
+  // turned off while it was in flight.
+  micIntentGenRef: RefObject<number>;
   micErrorTimerRef: RefObject<ReturnType<typeof setTimeout> | null>;
 
   micModeRef: RefObject<MicMode>;
@@ -115,6 +128,9 @@ export function useLiveKitCtx({
   const [isMicEnabled, setIsMicEnabled] = useState(false);
   const [isSinging, setIsSinging] = useState(false);
   const [singingError, setSingingError] = useState<string | null>(null);
+  const [micStopped, setMicStopped] = useState(false);
+  const micStoppedRef = useRef(micStopped);
+  micStoppedRef.current = micStopped;
 
   const [micCheckState, setMicCheckState] = useState<MicCheckState>("idle");
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
@@ -185,7 +201,9 @@ export function useLiveKitCtx({
   const micCheckGenRef = useRef(0);
   const mixOwnsMicRef = useRef(false);
   const micCheckInFlightRef = useRef(false);
+  const micCheckSharedStreamRef = useRef(false);
   const isTogglingMicRef = useRef(false);
+  const micIntentGenRef = useRef(0);
   const micErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const prevMicModeRef = useRef<MicMode>(micMode);
@@ -201,6 +219,7 @@ export function useLiveKitCtx({
       setIsMicEnabled,
       setIsSinging,
       setSingingError,
+      setMicStopped,
       setMicCheckState,
       setCanPlaybackAudio,
       setActiveSpeakers,
@@ -222,6 +241,8 @@ export function useLiveKitCtx({
       micCheckPrevMixGainRef,
       micCheckGenRef,
       micCheckInFlightRef,
+      micCheckSharedStreamRef,
+      micStoppedRef,
       mixCtxRef,
       mixMicSourceRef,
       mixMicGainRef,
@@ -233,6 +254,7 @@ export function useLiveKitCtx({
       effectChainRef,
       isSingingInFlightRef,
       isTogglingMicRef,
+      micIntentGenRef,
       micErrorTimerRef,
       micModeRef,
       playerNameRef,
@@ -258,6 +280,7 @@ export function useLiveKitCtx({
       isMicEnabled,
       isSinging,
       singingError,
+      micStopped,
       micCheckState,
       canPlaybackAudio,
       activeSpeakers,
