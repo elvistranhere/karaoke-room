@@ -16,6 +16,7 @@ import {
 import type { MicMode } from "../useAudioDevices";
 import type { VoiceMixer } from "~/lib/voiceMixer";
 import { capturesAreExclusive, stopStream } from "~/lib/micCapture";
+import { resumeSilentUnlock } from "~/lib/silentUnlock";
 import { dropMixCapture, MIC_STOPPED_MESSAGE } from "./capture";
 import type { LiveKitCtx } from "./context";
 
@@ -38,6 +39,9 @@ export function resumeRoomAudio(room: Room | null, mixer: VoiceMixer): Promise<v
     // returns, and its rebuild tail is awaited afterwards, for the element sweep only.
     const settled = mixer.resume();
     playPausedRemoteElements();
+    // The silent unlock element carries the ringer-switch fix on pre-16.4 WebKit and is
+    // outside the lk-audio sweep on purpose, so it needs the gesture named directly.
+    resumeSilentUnlock();
     // startAudio unmutes every attached element, so it only runs when LiveKit itself
     // reports blocked playback. Calling it under a live graph plays each remote voice
     // twice, element and graph, until syncElements lands.
@@ -208,7 +212,16 @@ export function useRoomConnection(
     // control rather than a silent retry. Readings before the join gesture are the
     // autoplay policy answering a blind startAudio(), never a state the user is in.
     room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-      if (cancelled || !audioUnlockedRef.current) return;
+      if (cancelled) return;
+      // The elements are what feeds the mixer graph, and one created while the tab was
+      // backgrounded had its play() refused with no gesture anywhere near it. Playback
+      // going allowed is the signal that the refusal is over, and it arrives without a
+      // DOM event, so the sweep hangs off it rather than off click and touchstart alone.
+      if (room.canPlaybackAudio) {
+        playPausedRemoteElements();
+        mixer.syncElements();
+      }
+      if (!audioUnlockedRef.current) return;
       setCanPlaybackAudio(room.canPlaybackAudio);
     });
 

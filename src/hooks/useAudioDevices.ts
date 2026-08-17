@@ -29,7 +29,14 @@ interface UseAudioDevicesReturn {
   builtInInputDeviceId: string | null;
 }
 
-export function useAudioDevices(): UseAudioDevicesReturn {
+interface UseAudioDevicesParams {
+  // The join gesture. Enumeration runs from mount either way; only the permission
+  // probe waits, because a bare getUserMedia on mount puts the system mic prompt
+  // behind the join overlay, before the app has explained why it wants the mic.
+  armed: boolean;
+}
+
+export function useAudioDevices({ armed }: UseAudioDevicesParams): UseAudioDevicesReturn {
   const [inputDevices, setInputDevices] = useState<AudioDevice[]>([]);
   const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
   const [selectedInputId, setSelectedInputId] = useState<string>("");
@@ -43,21 +50,44 @@ export function useAudioDevices(): UseAudioDevicesReturn {
   // nothing and a devicechange fires exactly when a capture is most likely to be live.
   const labelsGrantedRef = useRef(false);
 
+  // The selections are read inside refreshDevices only to decide whether they are still
+  // unset, and holding them as refs is what keeps the callback stable: a caller outside
+  // the hook has to be able to re-run it without the identity churning under its effect.
+  const selectedInputRef = useRef("");
+  const selectedOutputRef = useRef("");
+
+  const applyInput = useCallback((id: string, explicit: boolean) => {
+    selectedInputRef.current = id;
+    setSelectedInputId(id);
+    if (explicit) setInputIsExplicit(true);
+  }, []);
+
+  const applyOutput = useCallback((id: string) => {
+    selectedOutputRef.current = id;
+    setSelectedOutputId(id);
+  }, []);
+
   const refreshDevices = useCallback(async () => {
     try {
       // A headset connecting mid-song is a devicechange, and a bare getUserMedia there
       // would be the second capture that permanently mutes the singer's on iOS. The
       // owner set is the app's one record of a live capture, so it decides.
-      if (!labelsGrantedRef.current && !hasAudioCaptureOwner()) {
-        // Labels need permission, and this probe is a capture like any other: it has
-        // to own the audio session or a "playback" write lands under a live mic.
-        beginAudioCapture("probe");
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          for (const track of stream.getTracks()) track.stop();
+      if (armed && !labelsGrantedRef.current) {
+        if (hasAudioCaptureOwner()) {
+          // A live capture is a granted permission, so the labels this pass reads are
+          // real ones and the hook no longer owes a probe for the life of the document.
           labelsGrantedRef.current = true;
-        } finally {
-          endAudioCapture("probe");
+        } else {
+          // Labels need permission, and this probe is a capture like any other: it has
+          // to own the audio session or a "playback" write lands under a live mic.
+          beginAudioCapture("probe");
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            for (const track of stream.getTracks()) track.stop();
+            labelsGrantedRef.current = true;
+          } finally {
+            endAudioCapture("probe");
+          }
         }
       }
 
@@ -82,21 +112,22 @@ export function useAudioDevices(): UseAudioDevicesReturn {
 
       // Restore the remembered device only when it is actually plugged in;
       // a stale exact deviceId constraint would make getUserMedia throw
-      if (!selectedInputId && inputs.length > 0) {
+      if (!selectedInputRef.current && inputs.length > 0) {
         const saved = readPref(INPUT_PREF_KEY);
         const match = saved ? inputs.find((d) => d.deviceId === saved) : undefined;
-        setSelectedInputId((match ?? inputs[0]!).deviceId);
-        if (match) setInputIsExplicit(true);
+        applyInput((match ?? inputs[0]!).deviceId, match !== undefined);
       }
-      if (!selectedOutputId && outputs.length > 0) {
+      if (!selectedOutputRef.current && outputs.length > 0) {
         const saved = readPref(OUTPUT_PREF_KEY);
         const match = saved ? outputs.find((d) => d.deviceId === saved) : undefined;
-        setSelectedOutputId((match ?? outputs[0]!).deviceId);
+        applyOutput((match ?? outputs[0]!).deviceId);
       }
     } catch (err) {
       console.error("[AudioDevices] Error:", err);
     }
-  }, [selectedInputId, selectedOutputId]);
+    // armed is a dependency so the effect below re-runs the moment the gesture lands:
+    // that pass is the one that finally has permission and can read real labels.
+  }, [armed, applyInput, applyOutput]);
 
   useEffect(() => {
     void refreshDevices();
@@ -108,15 +139,14 @@ export function useAudioDevices(): UseAudioDevicesReturn {
   }, [refreshDevices]);
 
   const rememberInput = useCallback((id: string) => {
-    setSelectedInputId(id);
-    setInputIsExplicit(true);
+    applyInput(id, true);
     writePref(INPUT_PREF_KEY, id);
-  }, []);
+  }, [applyInput]);
 
   const rememberOutput = useCallback((id: string) => {
-    setSelectedOutputId(id);
+    applyOutput(id);
     writePref(OUTPUT_PREF_KEY, id);
-  }, []);
+  }, [applyOutput]);
 
   // The route in use, not the inventory: a headset that is merely paired while the
   // user is already on speakers must not be told to stop using Bluetooth.

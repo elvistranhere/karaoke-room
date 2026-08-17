@@ -15,6 +15,17 @@ import type { LiveKitCtx, MicCheckState } from "./context";
 
 const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
 const CTX_RESUME_TIMEOUT_MS = 400;
+const LOOPBACK_SAMPLE_RATE = 48000;
+
+// Pinned like the mixer graph, so a 16 kHz Bluetooth route cannot decide what the
+// loopback sounds like, with the same bare fallback for an engine that cannot open it.
+function createLoopbackContext(): AudioContext {
+  try {
+    return new AudioContext({ sampleRate: LOOPBACK_SAMPLE_RATE });
+  } catch {
+    return new AudioContext();
+  }
+}
 
 // WebKit parks resume() forever while the audio session is interrupted, so the
 // context state decides the outcome rather than the promise.
@@ -223,6 +234,10 @@ export function useMicCheck(
     }
 
     beginAudioCapture("mic-check");
+    // Held outside the try so a throw between the capture opening and the ref assignment
+    // below cannot leave a live mic with no handle left to stop it.
+    let acquired: MediaStream | null = null;
+    let acquiredShared = false;
     try {
       const { stream, shared } = await acquireCheckStream({
         audio: {
@@ -233,6 +248,8 @@ export function useMicCheck(
           channelCount: 1,
         },
       });
+      acquired = stream;
+      acquiredShared = shared;
       // Cancelled while the permission prompt was up: arming now would duck the
       // room and hold the mic with no UI left to stop it.
       if (gen !== micCheckGenRef.current) {
@@ -243,7 +260,7 @@ export function useMicCheck(
       if (!track) { micCheckInFlightRef.current = false; endAudioCapture("mic-check"); return; }
 
       // Route mic -> speakers via AudioContext
-      const ctx = new AudioContext();
+      const ctx = createLoopbackContext();
       const source = ctx.createMediaStreamSource(stream);
       const gain = ctx.createGain();
       gain.gain.value = 1.0;
@@ -295,6 +312,7 @@ export function useMicCheck(
       micCheckInFlightRef.current = false;
     } catch (err) {
       console.error("[LiveKit] Talking mic check error:", err);
+      if (acquired && !acquiredShared && micCheckStreamRef.current !== acquired) stopStream(acquired);
       micCheckInFlightRef.current = false;
       micCheckSharedStreamRef.current = false;
       endAudioCapture("mic-check");
@@ -321,6 +339,10 @@ export function useMicCheck(
     }
 
     beginAudioCapture("mic-check");
+    // Held outside the try so a throw between the capture opening and the ref assignment
+    // below cannot leave a live mic with no handle left to stop it.
+    let acquired: MediaStream | null = null;
+    let acquiredShared = false;
     try {
       const { stream, shared } = await acquireCheckStream({
         audio: {
@@ -332,6 +354,8 @@ export function useMicCheck(
           sampleRate: 48000,
         },
       });
+      acquired = stream;
+      acquiredShared = shared;
       // Cancelled while the permission prompt was up: arming now would silence the
       // singing mix and duck the room with no UI left to stop it.
       if (gen !== micCheckGenRef.current) {
@@ -342,7 +366,7 @@ export function useMicCheck(
       if (!rawTrack) { micCheckInFlightRef.current = false; endAudioCapture("mic-check"); return; }
 
       // Route mic -> effect chain -> speakers
-      const ctx = new AudioContext({ sampleRate: 48000 });
+      const ctx = createLoopbackContext();
       const source = ctx.createMediaStreamSource(stream);
       const chain = createEffectChain(ctx, voiceEffectRef.current);
       const gain = ctx.createGain();
@@ -403,6 +427,7 @@ export function useMicCheck(
       micCheckInFlightRef.current = false;
     } catch (err) {
       console.error("[LiveKit] Singing mic check error:", err);
+      if (acquired && !acquiredShared && micCheckStreamRef.current !== acquired) stopStream(acquired);
       micCheckInFlightRef.current = false;
       micCheckSharedStreamRef.current = false;
       endAudioCapture("mic-check");

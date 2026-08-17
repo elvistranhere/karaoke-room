@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic } from "lucide-react";
 import { playStageChime } from "~/lib/chime";
+import type { SfxTarget } from "~/lib/voiceMixer";
 
 const DISMISS_MS = 3000;
 
@@ -13,9 +14,11 @@ interface StageAnnouncementProps {
   /** True once the join gesture has run, so the chime is autoplay-safe */
   armed: boolean;
   deafened: boolean;
+  /** The mixer's sound-effect bus, read at play time because the graph can be rebuilt */
+  getSfxTarget: () => SfxTarget | null;
 }
 
-export function StageAnnouncement({ singerId, singerName, isMyTurn, armed, deafened }: StageAnnouncementProps) {
+export function StageAnnouncement({ singerId, singerName, isMyTurn, armed, deafened, getSfxTarget }: StageAnnouncementProps) {
   const [seenSingerId, setSeenSingerId] = useState(singerId);
   const [announcedId, setAnnouncedId] = useState<string | null>(null);
 
@@ -36,6 +39,7 @@ export function StageAnnouncement({ singerId, singerName, isMyTurn, armed, deafe
       name={singerName}
       isMyTurn={isMyTurn}
       chime={isMyTurn && armed && !deafened}
+      getSfxTarget={getSfxTarget}
       onDismiss={dismiss}
     />
   );
@@ -45,18 +49,22 @@ function StageSweep({
   name,
   isMyTurn,
   chime,
+  getSfxTarget,
   onDismiss,
 }: {
   name: string;
   isMyTurn: boolean;
   chime: boolean;
+  getSfxTarget: () => SfxTarget | null;
   onDismiss: () => void;
 }) {
   const chimeRef = useRef(chime);
   chimeRef.current = chime;
+  const sfxRef = useRef(getSfxTarget);
+  sfxRef.current = getSfxTarget;
 
   useEffect(() => {
-    if (chimeRef.current) playStageChime();
+    if (chimeRef.current) playStageChime(sfxRef.current());
     const timer = setTimeout(onDismiss, DISMISS_MS);
     return () => clearTimeout(timer);
   }, [onDismiss]);

@@ -6,7 +6,13 @@
  *
  * INVARIANT: every value in this module is local to this device. Nothing here is
  * ever broadcast over PartyKit or LiveKit, so one listener's mix cannot move another's.
+ *
+ * The page's short UI sounds (stage chime, reaction pops) render into this context too,
+ * on their own bus: they were two module-level contexts that were never closed, and a
+ * phone pays for every render thread.
  */
+
+import { isIOSDevice } from "./audioRoutes";
 
 export const MASTER_MAX = 2;
 export const PERSON_MAX = 2;
@@ -21,6 +27,9 @@ const SINK_ELEMENT_ID = "karaoke-mix-sink";
 // WebKit parks resume() instead of rejecting while the session is interrupted, so the
 // context state decides the outcome rather than the promise. Same idiom as the mic check.
 const CTX_RESUME_TIMEOUT_MS = 400;
+// Every context in the app is pinned, so a graph first built while a 16 kHz Bluetooth
+// mic owns the route still mixes at the rate the singer path publishes.
+const GRAPH_SAMPLE_RATE = 48000;
 
 interface MixChain {
   identity: string;
@@ -34,6 +43,12 @@ interface MixChain {
 }
 
 type SinkCapableContext = AudioContext & { setSinkId?: (deviceId: string) => Promise<void> };
+
+/** Where a one-shot UI sound renders: the mixer's context and its own bus. */
+export interface SfxTarget {
+  ctx: AudioContext;
+  destination: AudioNode;
+}
 
 export interface VoiceMixer {
   // The element is the fallback sink: the mixer keeps it silent while the graph is
@@ -49,7 +64,22 @@ export interface VoiceMixer {
   resume: () => Promise<void>;
   // Re-assert element mute/volume after something outside the mixer touched them
   syncElements: () => void;
+  // The chime and the reaction sounds render here. Null while there is no context to
+  // render into; the bus sits beside the master bus, so no voice control moves it.
+  sfxTarget: () => SfxTarget | null;
+  // True while a live remote voice is riding its <audio> element on an engine that
+  // ignores element.volume, which is exactly when the volume sliders are inert.
+  volumeControlLost: () => boolean;
+  subscribe: (listener: () => void) => () => void;
   destroy: () => void;
+}
+
+// iOS/iPadOS WebKit ignores every write to HTMLMediaElement.volume. Read once: the
+// answer cannot change for the life of the document and useSyncExternalStore polls it.
+let elementVolumeIgnored: boolean | null = null;
+function ignoresElementVolume(): boolean {
+  if (elementVolumeIgnored === null) elementVolumeIgnored = isIOSDevice();
+  return elementVolumeIgnored;
 }
 
 function clampGain(value: number, max: number): number {
@@ -64,6 +94,7 @@ export function createVoiceMixer(): VoiceMixer {
   let masterNode: GainNode | null = null;
   let duckNode: GainNode | null = null;
   let limiterNode: DynamicsCompressorNode | null = null;
+  let sfxNode: GainNode | null = null;
   let streamSink: MediaStreamAudioDestinationNode | null = null;
   let sinkElement: HTMLAudioElement | null = null;
 
@@ -79,6 +110,8 @@ export function createVoiceMixer(): VoiceMixer {
   // for a room that is already gone. The mixer outlives one connection, so a permanent
   // flag would be wrong: a later attach has to be able to build again.
   let generation = 0;
+  let volumeLost = false;
+  const listeners = new Set<() => void>();
 
   const ramp = (param: AudioParam, value: number) => {
     if (!ctx) return;
@@ -104,13 +137,24 @@ export function createVoiceMixer(): VoiceMixer {
   // WebKit ignores volume writes, so a volume-only mute doubles every remote voice.
   const syncElements = () => {
     const audible = graphAudible();
+    let onElement = false;
     for (const chain of chains.values()) {
       const el = chain.element;
       if (!el) continue;
       const useGraph = audible && chain.gain !== null;
-      el.muted = useGraph;
-      el.volume = useGraph ? 0 : Math.min(1, resolveGain(chain.identity) * masterValue * duckValue);
+      if (!useGraph) onElement = true;
+      const level = useGraph ? 0 : Math.min(1, resolveGain(chain.identity) * masterValue * duckValue);
+      // A zero on the fallback path goes through `muted`, the one lever iOS honours:
+      // per-person mute, deafen and the mic-check duck all resolve to level 0 here.
+      el.muted = useGraph || level === 0;
+      el.volume = level;
     }
+    // The fallback carries the mix in element.volume, so where that write is a no-op
+    // every slider is inert and only `muted` still does anything. The UI has to say so.
+    const lost = onElement && ignoresElementVolume();
+    if (lost === volumeLost) return;
+    volumeLost = lost;
+    for (const listener of listeners) listener();
   };
 
   const contextSupportsSink = (candidate: AudioContext): boolean =>
@@ -165,10 +209,16 @@ export function createVoiceMixer(): VoiceMixer {
     if (typeof window === "undefined") return null;
 
     try {
-      ctx = new AudioContext();
+      ctx = new AudioContext({ sampleRate: GRAPH_SAMPLE_RATE });
     } catch {
-      ctx = null;
-      return null;
+      // An engine that cannot open 48 kHz at all: a resampled graph still mixes, and
+      // the hardware rate beats handing the whole room back to the element fallback.
+      try {
+        ctx = new AudioContext();
+      } catch {
+        ctx = null;
+        return null;
+      }
     }
     if (ctx.state === "running") everRunning = true;
     ctx.addEventListener("statechange", onStateChange);
@@ -186,6 +236,11 @@ export function createVoiceMixer(): VoiceMixer {
 
     masterNode.connect(duckNode);
     duckNode.connect(limiterNode);
+    // UI sounds join after the duck, so a mic check that ducks the room and a muted
+    // person both leave the chime where it was. The limiter is shared on purpose:
+    // it is the one node that exists to keep the summed output from clipping.
+    sfxNode = ctx.createGain();
+    sfxNode.connect(limiterNode);
     streamSink = null;
     routeOutput();
     return ctx;
@@ -223,12 +278,14 @@ export function createVoiceMixer(): VoiceMixer {
     masterNode?.disconnect();
     duckNode?.disconnect();
     limiterNode?.disconnect();
+    sfxNode?.disconnect();
     removeSinkElement();
     const dead = ctx;
     ctx = null;
     masterNode = null;
     duckNode = null;
     limiterNode = null;
+    sfxNode = null;
     streamSink = null;
     // After the refs are cleared: syncElements reads them, and every element has to be
     // carrying the mix before the old context stops feeding the graph
@@ -309,6 +366,10 @@ export function createVoiceMixer(): VoiceMixer {
       chain.element.volume = 0;
     }
     chains.delete(trackSid);
+    // The chain set decides volumeControlLost, and this is the one mutation of it that
+    // does not already re-run the pass: without it the last voice leaving keeps the UI
+    // in mute-only with no remote voice left to explain it.
+    syncElements();
   };
 
   const attach = (identity: string, track: MediaStreamTrack, trackSid: string, element: HTMLAudioElement | null): boolean => {
@@ -343,6 +404,28 @@ export function createVoiceMixer(): VoiceMixer {
     syncElements();
   };
 
+  // Built on demand rather than resumed through the recovery path: a chime is not worth
+  // a graph rebuild, and the join gesture has already spent its activation on the mixer.
+  const sfxTarget = (): SfxTarget | null => {
+    const live = ensureGraph();
+    if (!live || !sfxNode) return null;
+    // currentTime does not advance while the context is not running, so a sound scheduled
+    // now would be queued rather than played, and every queued one would fire together on
+    // the next resume. A one-shot cue is worth dropping instead.
+    if (live.state !== "running") {
+      void live.resume().catch(() => {});
+      return null;
+    }
+    return { ctx: live, destination: sfxNode };
+  };
+
+  const volumeControlLost = () => volumeLost;
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+  };
+
   const setSinkId = (deviceId: string) => {
     sinkId = deviceId;
     if (ctx && ctx.state !== "closed") routeOutput();
@@ -362,5 +445,5 @@ export function createVoiceMixer(): VoiceMixer {
     resumeInFlight = null;
   };
 
-  return { attach, detach, setPersonGains, setMaster, setDuck, setSinkId, resume, syncElements, destroy };
+  return { attach, detach, setPersonGains, setMaster, setDuck, setSinkId, resume, syncElements, sfxTarget, volumeControlLost, subscribe, destroy };
 }

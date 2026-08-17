@@ -38,6 +38,9 @@ interface StageBannerProps {
   onListenerVoiceChange?: (val: number) => void;
   listenerVoiceMuted?: boolean;
   onToggleListenerVoiceMute?: () => void;
+  // The mixer is on its <audio> element fallback and this engine ignores element.volume,
+  // so the voice slider is inert and only the mute toggle still carries
+  volumeControlLost?: boolean;
   // Listener-local sync offset (auto-estimated, manual override remembered per singer)
   syncAuto?: boolean;
   onSyncAutoChange?: (auto: boolean) => void;
@@ -69,6 +72,7 @@ export function StageBanner({
   onListenerVoiceChange,
   listenerVoiceMuted = false,
   onToggleListenerVoiceMute,
+  volumeControlLost = false,
   syncAuto = true,
   onSyncAutoChange,
   autoOffsetMs = 150,
@@ -179,6 +183,19 @@ export function StageBanner({
         {/* Local mix - only changes what this listener hears */}
         {onListenerVoiceChange && onMixMusicGain && (
           <div className="mt-4 space-y-2.5">
+            {volumeControlLost ? (
+              onToggleListenerVoiceMute ? (
+                <button
+                  onClick={onToggleListenerVoiceMute}
+                  className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-white/5"
+                  style={{ color: listenerVoiceMuted ? "var(--color-danger)" : "var(--color-text-secondary)" }}
+                  aria-label={`${listenerVoiceMuted ? "Unmute" : "Mute"} ${currentSinger?.name ?? "the singer"} for yourself`}
+                >
+                  {listenerVoiceMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                  {listenerVoiceMuted ? "Unmute" : "Mute"} {currentSinger?.name ?? "the singer"}
+                </button>
+              ) : null
+            ) : (
             <VolumeSlider
               label="Voice"
               icon={<Volume2 size={14} style={{ color: "var(--color-primary)" }} />}
@@ -200,6 +217,7 @@ export function StageBanner({
                 </button>
               ) : undefined}
             />
+            )}
             <VolumeSlider
               label="Music"
               icon={<Music size={14} style={{ color: "var(--color-primary-soft, #c9a7ff)" }} />}
@@ -208,9 +226,11 @@ export function StageBanner({
               onChange={(v) => onMixMusicGain(v / 100)}
             />
             <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-              {listenerVoiceMuted
-                ? "Muted for you. Unmuting restores this level. YouTube caps music at 100%."
-                : "Only changes what you hear. YouTube caps music at 100%."}
+              {volumeControlLost
+                ? "This device is playing voices directly, so only mute works. Tap to bring the sound back to restore the voice slider."
+                : listenerVoiceMuted
+                  ? "Muted for you. Unmuting restores this level. YouTube caps music at 100%."
+                  : "Only changes what you hear. YouTube caps music at 100%."}
             </p>
           </div>
         )}

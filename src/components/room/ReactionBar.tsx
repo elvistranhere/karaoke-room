@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from "react";
 import type { Reaction } from "~/hooks/useRoomState";
+import type { SfxTarget } from "~/lib/voiceMixer";
 
 const REACTIONS = [
   { emoji: "🔥", label: "Fire" },
@@ -13,7 +14,7 @@ const REACTIONS = [
 
 // --- Web Audio API synthesized sounds (zero dependencies) ---
 
-function playPop(ctx: AudioContext, freq: number) {
+function playPop(ctx: AudioContext, out: AudioNode, freq: number) {
   const osc = ctx.createOscillator();
   osc.type = "sine";
   osc.frequency.setValueAtTime(freq, ctx.currentTime);
@@ -21,13 +22,13 @@ function playPop(ctx: AudioContext, freq: number) {
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0.08, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(out);
   osc.start();
   osc.stop(ctx.currentTime + 0.18);
   return osc;
 }
 
-function playChime(ctx: AudioContext, notes: number[]) {
+function playChime(ctx: AudioContext, out: AudioNode, notes: number[]) {
   notes.forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.type = "triangle";
@@ -37,13 +38,13 @@ function playChime(ctx: AudioContext, notes: number[]) {
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.05, t + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(out);
     osc.start(t);
     osc.stop(t + 0.3);
   });
 }
 
-function playShimmer(ctx: AudioContext) {
+function playShimmer(ctx: AudioContext, out: AudioNode) {
   [880, 1100, 1320].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.type = "sine";
@@ -52,47 +53,37 @@ function playShimmer(ctx: AudioContext) {
     const t = ctx.currentTime + i * 0.03;
     gain.gain.setValueAtTime(0.04, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(out);
     osc.start(t);
     osc.stop(t + 0.38);
   });
 }
 
-// Shared AudioContext for all reaction sounds — avoids Chrome's context limit
-let reactionCtx: AudioContext | null = null;
-function getReactionCtx(): AudioContext {
-  if (!reactionCtx || reactionCtx.state === "closed") {
-    reactionCtx = new AudioContext();
-  }
-  if (reactionCtx.state === "suspended") {
-    void reactionCtx.resume();
-  }
-  return reactionCtx;
-}
-
-export function playReactionSound(emoji: string) {
+// Renders into the voice mixer's context on its own bus: this was a module-level
+// context that was never closed, and it outlived every room the tab ever joined.
+export function playReactionSound(emoji: string, target: SfxTarget | null) {
+  if (!target) return;
+  const { ctx, destination: out } = target;
   try {
-    const ctx = getReactionCtx();
     switch (emoji) {
       case "🔥":
-        playChime(ctx, [440, 554, 659, 880]);
+        playChime(ctx, out, [440, 554, 659, 880]);
         break;
       case "🎵":
-        playChime(ctx, [523, 659, 784]);
+        playChime(ctx, out, [523, 659, 784]);
         break;
       case "💯":
-        playPop(ctx, 1200);
+        playPop(ctx, out, 1200);
         break;
       case "😢":
-        playChime(ctx, [440, 330, 220]);
+        playChime(ctx, out, [440, 330, 220]);
         break;
       case "❤️":
-        playShimmer(ctx);
+        playShimmer(ctx, out);
         break;
       default:
-        playPop(ctx, 880);
+        playPop(ctx, out, 880);
     }
-    // Shared context stays open — no close needed
   } catch {
     // AudioContext may not be available
   }

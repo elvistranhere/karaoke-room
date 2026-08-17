@@ -25,6 +25,9 @@ interface PeoplePanelProps {
   activeSpeakers: Set<string>;
   people: Record<string, PersonMix>;
   master: number;
+  // The mixer fell back to its <audio> elements on an engine that ignores their
+  // volume, so the row is mute-only until the graph is back
+  volumeControlLost: boolean;
   onPersonVolumeChange: (name: string, value: number) => void;
   onTogglePersonMute: (name: string) => void;
   onKick?: (peerId: string) => void;
@@ -39,6 +42,7 @@ export function PeoplePanel({
   activeSpeakers,
   people,
   master,
+  volumeControlLost,
   onPersonVolumeChange,
   onTogglePersonMute,
   onKick,
@@ -177,32 +181,46 @@ export function PeoplePanel({
                 style={{ background: "var(--color-dark-card)", boxShadow: "var(--shadow-elevation-3)" }}
               >
                 <div className="space-y-1.5 px-2 pb-2 pt-1.5">
-                  <VolumeSlider
-                    label="Volume"
-                    compact
-                    value={personPercent}
-                    ariaLabel={`Volume for ${p.name}`}
-                    onChange={(v) => onPersonVolumeChange(mixKeyId, v / 100)}
-                    trailing={
-                      <button
-                        onClick={() => onTogglePersonMute(mixKeyId)}
-                        className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all hover:brightness-125"
-                        style={{
-                          background: mix.muted ? "var(--color-danger-dim)" : "transparent",
-                          color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)",
-                        }}
-                        title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                        aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
-                      >
-                        {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                      </button>
-                    }
-                  />
+                  {volumeControlLost ? (
+                    <button
+                      onClick={() => onTogglePersonMute(mixKeyId)}
+                      className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-white/5"
+                      style={{ color: mix.muted ? "var(--color-danger)" : "var(--color-text-secondary)" }}
+                      aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                    >
+                      {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                      {mix.muted ? `Unmute ${p.name}` : `Mute ${p.name}`}
+                    </button>
+                  ) : (
+                    <VolumeSlider
+                      label="Volume"
+                      compact
+                      value={personPercent}
+                      ariaLabel={`Volume for ${p.name}`}
+                      onChange={(v) => onPersonVolumeChange(mixKeyId, v / 100)}
+                      trailing={
+                        <button
+                          onClick={() => onTogglePersonMute(mixKeyId)}
+                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all hover:brightness-125"
+                          style={{
+                            background: mix.muted ? "var(--color-danger-dim)" : "transparent",
+                            color: mix.muted ? "var(--color-danger)" : "var(--color-text-muted)",
+                          }}
+                          title={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                          aria-label={mix.muted ? `Unmute ${p.name} for yourself` : `Mute ${p.name} for yourself`}
+                        >
+                          {mix.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                        </button>
+                      }
+                    />
+                  )}
                   <p className="text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-                    {mix.muted
-                      ? "Muted for you. Unmuting restores this level."
-                      : "Only changes what you hear."}
-                    {!mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
+                    {volumeControlLost
+                      ? "This device is playing voices directly, so only mute works. Tap to bring the sound back to restore the sliders."
+                      : mix.muted
+                        ? "Muted for you. Unmuting restores this level."
+                        : "Only changes what you hear."}
+                    {!volumeControlLost && !mix.muted && master !== 1 ? ` ${personPercent}% -> ${outPercent}% out` : ""}
                   </p>
                 </div>
                 {isAdmin && (

@@ -29,6 +29,7 @@ import { useSingerAudio } from "~/hooks/useSingerAudio";
 import { useVolumeMix } from "~/hooks/useVolumeMix";
 import { DEFAULT_PERSON_MIX, personMixKey } from "~/lib/volumeModel";
 import { playReactionSound } from "./ReactionBar";
+import { startSilentUnlock, stopSilentUnlock } from "~/lib/silentUnlock";
 import { chatNameColor } from "~/lib/chatColors";
 import { readPref, writePref } from "~/lib/prefs";
 import { useAtmosphere } from "~/hooks/useAtmosphere";
@@ -134,7 +135,12 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     setMicMode,
     bluetoothDetected,
     builtInInputDeviceId,
-  } = useAudioDevices();
+    refreshDevices,
+    // The label probe is a capture, so it waits for the join gesture and for the join's
+    // own mic decision: a room joined mic-on opens a capture in the same commit, and on
+    // iOS a second getUserMedia for the same media type mutes the first track. Once that
+    // mic is open the probe is redundant anyway, and enumerateDevices reads real labels.
+  } = useAudioDevices({ armed: audioUnlocked && !micOnJoinPending });
 
   const [btNoticeDismissed, setBtNoticeDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -276,6 +282,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     music,
     people,
     deafened,
+    volumeControlLost,
     setMaster,
     setMusic,
     setPersonVolume,
@@ -336,10 +343,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   useEffect(() => {
     if (reactions.length > prevReactionCountRef.current && reactions.length > 0 && !deafened) {
       const latest = reactions[reactions.length - 1]!;
-      playReactionSound(latest.emoji);
+      playReactionSound(latest.emoji, mixer.sfxTarget());
     }
     prevReactionCountRef.current = reactions.length;
-  }, [reactions, deafened]);
+  }, [reactions, deafened, mixer]);
 
   // Deafen force-mutes the mic; the snapshot means undeafening only unmutes
   // people who were unmuted before
@@ -456,6 +463,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     void setMicMuted(false);
   }, [micOnJoinPending, isLiveKitConnected, deafened, setMicMuted]);
 
+  // A room joined mic-on opens its capture before the probe is ever armed, so the probe
+  // stands down and the enumeration that ran alongside it read no labels: the permission
+  // was still pending. The open mic is the moment permission is real, so re-enumerate.
+  useEffect(() => {
+    if (!isMicEnabled) return;
+    void refreshDevices();
+  }, [isMicEnabled, refreshDevices]);
+
   useEffect(() => {
     document.title = `${roomState.roomName || `Room ${roomCode}`} | Karaoke Now`;
     return () => { document.title = DEFAULT_TITLE; };
@@ -463,6 +478,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   // Held from the join gesture onward and released when the room view unmounts
   useWakeLock(audioUnlocked);
+
+  // The silent loop is started by the join gesture, not here: only the gesture may
+  // play it. This owns the other end, so leaving the room stops holding the session.
+  useEffect(() => stopSilentUnlock, []);
 
   useAtmosphere({
     videoId: roomState.video?.videoId ?? null,
@@ -553,6 +572,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           activeSpeakers={activeSpeakers}
           people={people}
           master={master}
+          volumeControlLost={volumeControlLost}
           onPersonVolumeChange={setPersonVolume}
           onTogglePersonMute={togglePersonMute}
           onKick={isAdmin ? sendKick : undefined}
@@ -600,6 +620,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         onUnlock={() => {
           createPlayer();
           resumeMixer();
+          startSilentUnlock();
           setAudioUnlocked(true);
           setMicOnJoinPending(readPref(MIC_ON_PREF_KEY) !== "off");
         }}
@@ -883,6 +904,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 onToggleListenerVoiceMute={!isMyTurn && singerMixKey
                   ? () => togglePersonMute(singerMixKey)
                   : undefined}
+                volumeControlLost={volumeControlLost}
                 syncAuto={syncOffsetAuto}
                 onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
                 autoOffsetMs={autoOffsetMs}
@@ -897,6 +919,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               isMyTurn={isMyTurn}
               armed={audioUnlocked}
               deafened={deafened}
+              getSfxTarget={mixer.sfxTarget}
             />
 
             {/* Reactions and chat surface within the stage, just above the sound toolbar. */}
@@ -984,6 +1007,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         onClose={() => { setSettingsOpen(false); setSettingsFocusRoomName(false); }}
         master={master}
         onMasterChange={setMaster}
+        volumeControlLost={volumeControlLost}
         onResetPeopleVolumes={resetPeople}
         displayName={playerName}
         onRename={onRename}

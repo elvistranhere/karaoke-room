@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Participant, ParticipantStatus } from "~/types/room";
 import type { VoiceMixer } from "~/lib/voiceMixer";
 import { MASTER_MAX, PERSON_MAX } from "~/lib/voiceMixer";
@@ -51,6 +51,10 @@ interface UseVolumeMixReturn {
   music: number;
   people: Record<string, PersonMix>;
   deafened: boolean;
+  // The mixer is carrying the room on its <audio> elements and this engine ignores
+  // element.volume, so every volume slider is a no-op until the graph comes back.
+  // Mute still works, because the fallback silences through element.muted.
+  volumeControlLost: boolean;
   setMaster: (value: number) => void;
   setMusic: (value: number) => void;
   setPersonVolume: (name: string, value: number) => void;
@@ -72,6 +76,12 @@ export function useVolumeMix({
   const [music, setMusicState] = useState(stored.music);
   const [people, setPeople] = useState<Record<string, PersonMix>>(stored.people);
   const [deafened, setDeafenedState] = useState(false);
+
+  const volumeControlLost = useSyncExternalStore(
+    mixer.subscribe,
+    mixer.volumeControlLost,
+    () => false,
+  );
 
   const trackedRef = useRef<ReadonlyMap<string, string>>(new Map());
 
@@ -144,6 +154,7 @@ export function useVolumeMix({
     music,
     people,
     deafened,
+    volumeControlLost,
     setMaster,
     setMusic,
     setPersonVolume,

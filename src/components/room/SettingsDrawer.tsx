@@ -26,6 +26,9 @@ interface SettingsDrawerProps {
   onClose: () => void;
   master: number;
   onMasterChange: (value: number) => void;
+  // The graph is down and this engine ignores element.volume, so the same slider still
+  // scales the music and no longer touches a voice. The caption has to say which.
+  volumeControlLost?: boolean;
   onResetPeopleVolumes: () => void;
   displayName?: string;
   onRename?: (name: string) => void;
@@ -44,6 +47,7 @@ export function SettingsDrawer({
   onClose,
   master,
   onMasterChange,
+  volumeControlLost = false,
   onResetPeopleVolumes,
   displayName = "",
   onRename,
@@ -158,9 +162,11 @@ export function SettingsDrawer({
                 onChange={(v) => onMasterChange(v / 100)}
               />
               <p className="mt-2 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-                Scales every voice you hear. Per-person volumes multiply on top. YouTube music is capped at 100%.
+                {volumeControlLost
+                  ? "This device is playing voices directly, so this only scales the YouTube music. Tap to bring the sound back to restore voice volume."
+                  : "Scales every voice you hear. Per-person volumes multiply on top. YouTube music is capped at 100%."}
               </p>
-              {masterPercent > 100 ? (
+              {masterPercent > 100 && !volumeControlLost ? (
                 <p className="mt-1 text-[10px] leading-4" style={{ color: "var(--color-accent)" }}>
                   Boost applies to voices only, so the music sits lower against them.
                 </p>
