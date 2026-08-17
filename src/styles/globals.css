@@ -431,3 +431,12 @@ body {
     @apply font-sans;
   }
 }
+/* Sub-16px inputs make iOS Safari zoom the page on focus and never zoom back.
+   Touch screens get 16px controls so the zoom trigger cannot fire at all. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

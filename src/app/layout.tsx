@@ -37,6 +37,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#12121a",
   viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+  // maximumScale 1 stops iOS Safari's input-focus auto-zoom; pinch zoom still
+  // works through the accessibility override, so this is app-feel, not a trap.
+  maximumScale: 1,
+  userScalable: false,
   // The room is h-dvh with no scrollable ancestor, so the layout viewport has to
   // shrink for the software keyboard or the chat input ends up behind it.
   interactiveWidget: "resizes-content",
