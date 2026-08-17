@@ -14,7 +14,45 @@ import {
 } from "livekit-client";
 
 import type { MicMode } from "../useAudioDevices";
+import type { VoiceMixer } from "~/lib/voiceMixer";
 import type { LiveKitCtx } from "./context";
+
+const playPausedRemoteElements = () => {
+  document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
+    if (el.paused) el.play().catch(() => {});
+  });
+};
+
+// The single recovery path for audio the browser or the OS killed, always run from a
+// real user gesture. One in-flight run at a time: two concurrent startAudio() calls
+// each emit AudioPlaybackStatusChanged, and the loser lands last with a stale answer.
+let resumeInFlight: { room: Room | null; promise: Promise<void> } | null = null;
+
+export function resumeRoomAudio(room: Room | null, mixer: VoiceMixer): Promise<void> {
+  if (resumeInFlight && resumeInFlight.room === room) return resumeInFlight.promise;
+  const run = async (): Promise<void> => {
+    mixer.resume();
+    playPausedRemoteElements();
+    // startAudio unmutes every attached element, so it only runs when LiveKit itself
+    // reports blocked playback. Calling it under a live graph plays each remote voice
+    // twice, element and graph, until syncElements lands.
+    if (!room || room.canPlaybackAudio) return;
+    try {
+      await room.startAudio();
+      playPausedRemoteElements();
+    } catch (err) {
+      console.warn("[LiveKit] startAudio failed from the audio recovery control:", err);
+    } finally {
+      mixer.syncElements();
+    }
+  };
+  const entry: { room: Room | null; promise: Promise<void> } = {
+    room,
+    promise: run().finally(() => { if (resumeInFlight === entry) resumeInFlight = null; }),
+  };
+  resumeInFlight = entry;
+  return entry.promise;
+}
 
 // Sync Room's audioCaptureDefaults to current NC before restoring managed mic
 export function useSyncNCToRoom(lk: LiveKitCtx): () => void {
@@ -53,6 +91,7 @@ export function useRoomConnection(
     micErrorTimerRef,
     micModeRef,
     playerNameRef,
+    audioUnlockedRef,
     selectedOutputRef,
     singingNCRef,
     talkingNCRef,
@@ -64,6 +103,7 @@ export function useRoomConnection(
     mixOwnsMicRef,
     mixPubRef,
     setActiveSpeakers,
+    setCanPlaybackAudio,
     setError,
     setIsConnected,
     setIsMicEnabled,
@@ -157,6 +197,14 @@ export function useRoomConnection(
         }
       },
     );
+
+    // Blocked remote voices are only recoverable from a gesture, so the room gets a
+    // control rather than a silent retry. Readings before the join gesture are the
+    // autoplay policy answering a blind startAudio(), never a state the user is in.
+    room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (cancelled || !audioUnlockedRef.current) return;
+      setCanPlaybackAudio(room.canPlaybackAudio);
+    });
 
     // Active speakers - highlight who is talking
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
@@ -286,30 +334,20 @@ export function useRoomConnection(
 
     void connect();
 
-    // Resume audio on user interaction (autoplay policy workaround).
-    // Fires on each interaction until audio context is running, then no-ops.
-    let audioResumed = false;
+    // Resume audio on user interaction (autoplay policy workaround). Same single path
+    // as the recovery control, so a tap on the control never runs the recovery twice.
+    // A gesture is the one moment startAudio's answer is the user's own state, so it
+    // is also where the blocked-playback flag is read.
     const resumeAudio = () => {
-      mixer.resume();
-      if (audioResumed) return;
-      room.startAudio().then(() => {
-        audioResumed = true;
-        document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-          if (el.paused) el.play().catch(() => {});
-        });
-      }).catch(() => {}).finally(() => {
-        // startAudio sets muted = false on every attached element
-        mixer.syncElements();
-      });
-      // Also try immediately
-      document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
-        if (el.paused) el.play().catch(() => {});
+      void resumeRoomAudio(room, mixer).then(() => {
+        if (!cancelled) setCanPlaybackAudio(room.canPlaybackAudio);
       });
     };
     // Returning to the tab after an interruption (call, backgrounding) is the other
-    // moment a suspended context can come back without waiting for a tap
+    // moment a suspended context can come back without waiting for a tap. It carries
+    // no user activation, so it retries without ever writing a verdict to the UI.
     const resumeOnVisible = () => {
-      if (document.visibilityState === "visible") resumeAudio();
+      if (document.visibilityState === "visible") void resumeRoomAudio(room, mixer);
     };
     document.addEventListener("click", resumeAudio, { once: false });
     document.addEventListener("keydown", resumeAudio, { once: false });
@@ -355,6 +393,7 @@ export function useRoomConnection(
       room.disconnect();
       roomRef.current = null;
       setIsConnected(false);
+      setCanPlaybackAudio(true);
       setIsMicEnabled(false);
       setIsSinging(false);
     };

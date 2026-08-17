@@ -19,6 +19,9 @@ export interface UseLiveKitParams {
   micMode: MicMode;
   talkingNC: boolean;  // noise cancellation for talking mode
   singingNC: boolean;  // noise cancellation for singing mode
+  // True once the join gesture landed. Every blocked-playback reading before it is the
+  // browser's autoplay policy, not the user's state, so nothing may reach the UI yet.
+  audioUnlocked: boolean;
 }
 
 export type MicCheckState = "idle" | "monitoring-talk" | "monitoring-sing" | "error";
@@ -30,6 +33,7 @@ export interface LiveKitState {
   isSinging: boolean;
   singingError: string | null;
   micCheckState: MicCheckState;
+  canPlaybackAudio: boolean;
   activeSpeakers: Set<string>;
   mixMicStream: MediaStream | null;
   voiceEffect: VoiceEffect;
@@ -45,6 +49,7 @@ export interface LiveKitCtx {
   setIsSinging: Dispatch<SetStateAction<boolean>>;
   setSingingError: Dispatch<SetStateAction<string | null>>;
   setMicCheckState: Dispatch<SetStateAction<MicCheckState>>;
+  setCanPlaybackAudio: Dispatch<SetStateAction<boolean>>;
   setActiveSpeakers: Dispatch<SetStateAction<Set<string>>>;
   setMixMicStreamState: Dispatch<SetStateAction<MediaStream | null>>;
   setVoiceEffectState: Dispatch<SetStateAction<VoiceEffect>>;
@@ -83,6 +88,7 @@ export interface LiveKitCtx {
 
   micModeRef: RefObject<MicMode>;
   playerNameRef: RefObject<string>;
+  audioUnlockedRef: RefObject<boolean>;
   isMicEnabledRef: RefObject<boolean>;
   selectedOutputRef: RefObject<string>;
   talkingNCRef: RefObject<boolean>;
@@ -102,6 +108,7 @@ export function useLiveKitCtx({
   micMode,
   talkingNC,
   singingNC,
+  audioUnlocked,
 }: UseLiveKitParams): { ctx: LiveKitCtx; state: LiveKitState } {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +117,7 @@ export function useLiveKitCtx({
   const [singingError, setSingingError] = useState<string | null>(null);
 
   const [micCheckState, setMicCheckState] = useState<MicCheckState>("idle");
+  const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
 
   const roomRef = useRef<Room | null>(null);
@@ -132,6 +140,8 @@ export function useLiveKitCtx({
   micModeRef.current = micMode;
   const playerNameRef = useRef(playerName);
   playerNameRef.current = playerName;
+  const audioUnlockedRef = useRef(audioUnlocked);
+  audioUnlockedRef.current = audioUnlocked;
 
   // Ref mirrors - used in callbacks to avoid stale closures
   const isMicEnabledRef = useRef(isMicEnabled);
@@ -192,6 +202,7 @@ export function useLiveKitCtx({
       setIsSinging,
       setSingingError,
       setMicCheckState,
+      setCanPlaybackAudio,
       setActiveSpeakers,
       setMixMicStreamState,
       setVoiceEffectState,
@@ -225,6 +236,7 @@ export function useLiveKitCtx({
       micErrorTimerRef,
       micModeRef,
       playerNameRef,
+      audioUnlockedRef,
       isMicEnabledRef,
       selectedOutputRef,
       talkingNCRef,
@@ -247,6 +259,7 @@ export function useLiveKitCtx({
       isSinging,
       singingError,
       micCheckState,
+      canPlaybackAudio,
       activeSpeakers,
       mixMicStream: mixMicStreamState,
       voiceEffect,

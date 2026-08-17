@@ -8,7 +8,7 @@ import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { useWakeLock } from "~/hooks/useWakeLock";
-import { Bluetooth, Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, WifiOff, X } from "lucide-react";
+import { Bluetooth, Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, Volume2, WifiOff, X } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -161,6 +161,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     toggleMic,
     setMicMuted,
     micCheckState,
+    voicePlaybackBlocked,
+    resumeVoicePlayback,
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,
@@ -181,6 +183,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     micMode,
     talkingNC,
     singingNC,
+    audioUnlocked,
   });
 
   const [songName, setSongName] = useState<string | null>(null);
@@ -254,6 +257,17 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   broadcastNowRef.current = broadcastNow;
 
   const micChecking = micCheckState !== "idle" && micCheckState !== "error";
+
+  // The tap is the gesture the room's audio needs, and the only handle on an Android
+  // force-fade, which leaves no signal at all: it re-runs the mixer resume, LiveKit's
+  // startAudio and the player's own play() from inside a live user activation.
+  // play() stays gated on the room believing playback is live, because the singer's
+  // player is the room clock: an ungated play() would broadcast a resume to everyone
+  // from a control that promises only to fix this device.
+  const handleTapToHear = useCallback(() => {
+    resumeVoicePlayback();
+    if (videoRef.current?.playing) playerRef.current?.play();
+  }, [resumeVoicePlayback, videoRef]);
 
   const {
     master,
@@ -723,6 +737,30 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
+      {/* The loud half of the audio recovery: LiveKit told us this browser refused to
+          play remote voices, which is the one case with a real signal. The quiet half
+          lives in the toolbar and is always there, because the Android force-fade that
+          silences a singer mid-song raises no signal at all.
+          The CTA treatment separates it from the notices above and below: those report,
+          this one acts. Never auto-retried, the tap is the gesture the browser wants. */}
+      {audioUnlocked && voicePlaybackBlocked && (
+        <button
+          type="button"
+          onClick={handleTapToHear}
+          className="relative z-10 mx-4 mt-2 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold shadow-[var(--shadow-control)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.99] lg:mx-6"
+          style={{
+            background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
+            color: "#fff",
+          }}
+          data-testid="tap-to-hear"
+        >
+          <Volume2 size={14} style={{ flexShrink: 0 }} />
+          <span className="min-w-0 flex-1">
+            Tap to bring the sound back. This device paused the music and everyone&apos;s voices.
+          </span>
+        </button>
+      )}
+
       {/* Bluetooth route notice - informational, not an error: the page cannot keep
           A2DP alive while a mic is open, so the only fix is a different route */}
       {bluetoothDetected && !btNoticeDismissed && (
@@ -759,7 +797,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               embedBlocked={embedBlocked}
               errorCode={playerErrorCode}
               isSinger={isMyTurn}
-              showTapToPlay={playbackBlocked && !isMyTurn}
+              showTapToPlay={playbackBlocked && !isMyTurn && !voicePlaybackBlocked}
               onTapToPlay={() => { resumeMixer(); player.play(); }}
             />
             <VideoProgress player={player} active={roomState.video !== null && playerReady} />
@@ -908,6 +946,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               ncActive={micMode === "raw" ? singingNC : talkingNC}
               onNoiseCancellationModeChange={setNoiseCancellationMode}
               onSoundProfileOpen={() => setSoundProfileOpen(true)}
+              onRecoverAudio={handleTapToHear}
               deafened={deafened}
               onToggleDeafen={handleToggleDeafen}
             />

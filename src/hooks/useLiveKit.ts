@@ -1,11 +1,13 @@
 "use client";
 
+import { useCallback } from "react";
 import type { Room } from "livekit-client";
 
 import type { VoiceEffect } from "~/lib/voiceEffects";
 import type { VoiceMixer } from "~/lib/voiceMixer";
 import { useCapture, useSingingNCHotSwap } from "./livekit/capture";
 import {
+  resumeRoomAudio,
   useInputDeviceSwitch,
   useMicModeSwitch,
   useNCRepublish,
@@ -27,6 +29,10 @@ interface UseLiveKitReturn {
   toggleMic: (target?: boolean) => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
   micCheckState: MicCheckState;
+  // LiveKit's own verdict: the browser refused to play remote voices on this device
+  voicePlaybackBlocked: boolean;
+  // The room's one audio recovery, safe to call from any gesture at any time
+  resumeVoicePlayback: () => void;
   startTalkingMicCheck: (noiseCancellation: boolean) => Promise<void>;
   startSingingMicCheck: (noiseCancellation: boolean) => Promise<void>;
   stopMicCheck: () => void;
@@ -74,6 +80,13 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
   useSingingNCHotSwap(ctx, singingNC, captureDeviceId);
   useOutputDeviceSwitch(ctx, selectedOutputDeviceId, state.isConnected);
 
+  const resumeVoicePlayback = useCallback(() => {
+    const room = ctx.roomRef.current;
+    void resumeRoomAudio(room, ctx.mixer).then(() => {
+      ctx.setCanPlaybackAudio(room ? room.canPlaybackAudio : true);
+    });
+  }, [ctx]);
+
   const { startTalkingMicCheck, startSingingMicCheck, stopMicCheck } = useMicCheck(
     ctx,
     state.micCheckState,
@@ -102,6 +115,8 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
     toggleMic,
     setMicMuted,
     micCheckState: state.micCheckState,
+    voicePlaybackBlocked: !state.canPlaybackAudio,
+    resumeVoicePlayback,
     startTalkingMicCheck,
     startSingingMicCheck,
     stopMicCheck,

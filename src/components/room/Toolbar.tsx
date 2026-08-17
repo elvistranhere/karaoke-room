@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, SlidersHorizontal, Waves, Headphones, HeadphoneOff } from "lucide-react";
+import { Mic, MicOff, SlidersHorizontal, VolumeX, Waves, Headphones, HeadphoneOff } from "lucide-react";
 import { useAudioLevel } from "~/hooks/useAudioLevel";
 import { DIVIDER } from "~/lib/surfaces";
 import type { VoiceEffect } from "~/lib/voiceEffects";
@@ -24,6 +24,10 @@ interface ToolbarProps {
   onNoiseCancellationModeChange: (mode: NoiseCancellationMode) => void;
   ncActive: boolean;
   onSoundProfileOpen: () => void;
+  // Always reachable, never signal-driven: an Android force-fade or an OS-level mute
+  // silences this device with no web-visible trace, so the only fix is a control the
+  // user can find while it is happening
+  onRecoverAudio: () => void;
   deafened: boolean;
   onToggleDeafen: () => void;
 }
@@ -56,6 +60,7 @@ export function Toolbar({
   onNoiseCancellationModeChange,
   ncActive,
   onSoundProfileOpen,
+  onRecoverAudio,
 }: ToolbarProps) {
   const micLevel = useAudioLevel(getMicLevel, isMicEnabled);
   const micLabel = deafened
@@ -190,6 +195,23 @@ export function Toolbar({
           <span>Sound</span>
         </TooltipTrigger>
         <TooltipContent>Mic check, devices, and noise cancellation</TooltipContent>
+      </Tooltip>
+
+      {/* The one control that has to be here whether or not anything detected a
+          problem: a phone call, an alarm or another app taking audio focus can mute
+          this device with no event the page can see. The toolbar is the only strip
+          on screen for everyone at every moment, singer and listener alike. */}
+      <Tooltip>
+        <TooltipTrigger
+          onClick={onRecoverAudio}
+          className={PILL_CLASS}
+          style={{ background: "var(--color-dark-card)", color: "var(--color-text-secondary)" }}
+          data-testid="recover-audio"
+        >
+          <VolumeX size={14} style={{ color: "var(--color-primary-soft)" }} />
+          <span>Can&apos;t hear?</span>
+        </TooltipTrigger>
+        <TooltipContent>Bring the music and everyone&apos;s voices back on this device</TooltipContent>
       </Tooltip>
     </div>
   );

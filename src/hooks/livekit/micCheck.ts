@@ -7,6 +7,18 @@ import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
 import type { LiveKitCtx, MicCheckState } from "./context";
 
 const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
+const CTX_RESUME_TIMEOUT_MS = 400;
+
+// WebKit parks resume() forever while the audio session is interrupted, so the
+// context state decides the outcome rather than the promise.
+async function resumeWithTimeout(ctx: AudioContext): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    ctx.resume().catch(() => {}),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, CTX_RESUME_TIMEOUT_MS); }),
+  ]);
+  clearTimeout(timer);
+}
 
 // A hung permission prompt would otherwise leave the mic check unstartable forever
 function getMicStreamWithTimeout(constraints: MediaStreamConstraints): Promise<MediaStream> {
@@ -187,13 +199,13 @@ export function useMicCheck(
       gain.gain.value = 1.0;
       source.connect(gain);
       gain.connect(ctx.destination);
-      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (ctx.state !== "running") await resumeWithTimeout(ctx);
       if (gen !== micCheckGenRef.current) {
         track.stop();
         void ctx.close();
         return;
       }
-      if (ctx.state === "suspended") {
+      if (ctx.state !== "running") {
         track.stop();
         void ctx.close();
         throw new Error("Audio output is blocked by the browser");
@@ -285,14 +297,14 @@ export function useMicCheck(
       source.connect(chain.input);
       chain.output.connect(gain);
       gain.connect(ctx.destination);
-      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      if (ctx.state !== "running") await resumeWithTimeout(ctx);
       if (gen !== micCheckGenRef.current) {
         rawTrack.stop();
         chain.cleanup();
         void ctx.close();
         return;
       }
-      if (ctx.state === "suspended") {
+      if (ctx.state !== "running") {
         rawTrack.stop();
         chain.cleanup();
         void ctx.close();
