@@ -47,7 +47,7 @@ import {
 } from "~/components/ui/dialog";
 
 const API_WAIT_MS = 5000;
-const DEFAULT_TITLE = "Karaoke Now - Sing Together Online";
+const DEFAULT_TITLE = "Karaoke Now | Sing Together Online";
 
 interface RoomViewProps {
   roomCode: string;
@@ -420,7 +420,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   }, [micOnJoinPending, isLiveKitConnected, deafened, setMicMuted]);
 
   useEffect(() => {
-    document.title = `${roomState.roomName || `Room ${roomCode}`} · Karaoke Now`;
+    document.title = `${roomState.roomName || `Room ${roomCode}`} | Karaoke Now`;
     return () => { document.title = DEFAULT_TITLE; };
   }, [roomState.roomName, roomCode]);
 

@@ -20,7 +20,7 @@ const body = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "Karaoke Now - Sing Together Online",
+  title: "Karaoke Now | Sing Together Online",
   description:
     "Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, and sing with friends.",
   icons: [
