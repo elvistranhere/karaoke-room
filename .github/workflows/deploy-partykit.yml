@@ -61,6 +61,26 @@ jobs:
           echo "::error::Health check failed with HTTP $HTTP_CODE after 3 attempts"
           exit 1
 
+      # The room party needs no secrets, so the probe above proves nothing about the token
+      # endpoint, whose entire dependency on worker-side LIVEKIT_* and UPSTASH_* is new. A
+      # paramless request 400s before the credential check, so this names a real room code
+      # and demands a real token: a worker missing `partykit env add` answers 500 here and
+      # the Vercel hook below never fires against it.
+      - name: Health check the token endpoint
+        run: |
+          URL="https://karaoke-room.elvistranhere.partykit.dev/parties/token/HEALTH?room=HEALTH&name=healthcheck"
+          for ATTEMPT in 1 2 3; do
+            HTTP_CODE=$(curl -sL --max-time 15 -o /tmp/token-probe.json -w "%{http_code}" "$URL" || echo 000)
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "OK ($HTTP_CODE) - token minted"
+              exit 0
+            fi
+            echo "::warning::Token endpoint attempt $ATTEMPT returned HTTP $HTTP_CODE - $(head -c 200 /tmp/token-probe.json 2>/dev/null)"
+            sleep 10
+          done
+          echo "::error::Token endpoint failed with HTTP $HTTP_CODE. Check partykit env add for LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL."
+          exit 1
+
       - name: Trigger Vercel deploy hook
         env:
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}

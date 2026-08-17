@@ -64,5 +64,33 @@
         "useIterableCallbackReturn": "off"
       }
     }
-  }
+  },
+  // `src/shared/` is imported by the client (protocol) and by the server (token minting,
+  // Redis, the YouTube key), and `server-only` cannot guard the secret-reading half
+  // because partykit's bundler resolves its browser condition and the worker build breaks.
+  // This is that guard: a UI file naming one of these specifiers is the mistake, whether
+  // or not the import is currently type-only.
+  "overrides": [
+    {
+      "includes": ["src/components/**", "src/hooks/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "~/shared/livekitToken": "Server-only: reaches LIVEKIT_API_SECRET. Call the endpoint through ~/lib/apiBase.",
+                  "~/shared/keyRotation": "Server-only: reaches LIVEKIT_API_SECRET. Call the endpoint through ~/lib/apiBase.",
+                  "~/shared/youtubeSearch": "Server-only: reaches YOUTUBE_API_KEY. Types live in ~/lib/youtube; call the endpoint through ~/lib/apiBase.",
+                  "~/shared/redis": "Server-only: reaches UPSTASH_REDIS_REST_TOKEN.",
+                  "~/shared/env": "Server-only env plumbing. Read NEXT_PUBLIC_* directly instead."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

@@ -13,6 +13,7 @@ import {
 } from "livekit-client";
 
 import type { MicMode } from "../useAudioDevices";
+import { fetchLiveKitToken } from "~/lib/apiBase";
 import type { VoiceMixer } from "~/lib/voiceMixer";
 import {
   resolveCaptureProfile,
@@ -287,15 +288,20 @@ export function useRoomConnection(
     // Connect (with retry on transient errors + key failover)
     const connect = async (attempt = 0, useNextKey = false) => {
       try {
-        const keyHint = useNextKey ? "&keyHint=next" : "";
-        const res = await fetch(
-          `/api/livekit-token?room=${encodeURIComponent(roomCode)}&name=${encodeURIComponent(playerNameRef.current)}${keyHint}`,
-        );
+        const res = await fetchLiveKitToken({
+          room: roomCode,
+          name: playerNameRef.current,
+          ...(useNextKey ? { keyHint: "next" as const } : {}),
+        });
         if (!res.ok) {
           const body = await res.json().catch(() => null) as { error?: string; reason?: string } | null;
           if (res.status === 429) {
             const err = new Error(body?.error ?? "This room has hit its session limit. Ask people in the room to create a new one, or create your own.");
             (err as Error & { reason?: string }).reason = body?.reason;
+            const retryAfterS = Number(res.headers.get("Retry-After"));
+            if (Number.isFinite(retryAfterS) && retryAfterS > 0) {
+              (err as Error & { retryAfterMs?: number }).retryAfterMs = retryAfterS * 1000;
+            }
             throw err;
           }
           throw new Error(body?.error ?? "Failed to get token. Please try again.");
@@ -321,9 +327,10 @@ export function useRoomConnection(
         if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
         tokenRefreshRef.current = setInterval(async () => {
           try {
-            const refreshRes = await fetch(
-              `/api/livekit-token?room=${encodeURIComponent(roomCode)}&name=${encodeURIComponent(playerNameRef.current)}`,
-            );
+            const refreshRes = await fetchLiveKitToken({
+              room: roomCode,
+              name: playerNameRef.current,
+            });
             if (!refreshRes.ok) return;
             // Token refreshed on server side (Redis TTL extended). No need to reconnect.
           } catch {
@@ -347,6 +354,19 @@ export function useRoomConnection(
 
         // all-exhausted = every key is quota-hit, no point retrying
         if (reason === "all-exhausted") return;
+
+        // rate-limited = the endpoint's own burst brake, never a LiveKit capacity signal.
+        // Retrying this one with keyHint would report a healthy key as exhausted for every
+        // room using it, so this branch backs off on Retry-After and never sets the hint.
+        if (reason === "rate-limited") {
+          if (attempt < 3) {
+            const retryAfterMs = (err as Error & { retryAfterMs?: number }).retryAfterMs;
+            const delay = Math.min(retryAfterMs ?? 5000, 30_000);
+            console.log(`[LiveKit] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/3)...`);
+            setTimeout(() => { if (!cancelled) void connect(attempt + 1, false); }, delay);
+          }
+          return;
+        }
 
         // room-exhausted = server deleted stale mapping and will reassign on next request.
         // Retry once (no keyHint needed - server picks a fresh healthy key).

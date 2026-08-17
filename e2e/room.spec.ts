@@ -1,5 +1,13 @@
 import { expect, test, type Browser } from "@playwright/test";
-import { enterRoom, joinRoom, openQueuePanel, openRoom, uniqueRoomCode, type RoomClient } from "./fixtures/room";
+import {
+  enterRoom,
+  joinRoom,
+  openQueuePanel,
+  openRoom,
+  probeLiveKitToken,
+  uniqueRoomCode,
+  type RoomClient,
+} from "./fixtures/room";
 
 const clients: RoomClient[] = [];
 
@@ -66,8 +74,9 @@ test("joining the queue promotes the requester onto the stage for everyone", asy
 });
 
 test("the entry overlay reports party, LiveKit and player readiness", async ({ browser, request }) => {
-  const probe = await request.get(`/api/livekit-token?room=${uniqueRoomCode()}&name=probe`);
-  test.skip(!probe.ok(), "LiveKit credentials are not configured for this environment");
+  const probe = await probeLiveKitToken(request);
+  test.skip(probe.credentialsMissing, "LiveKit credentials are not configured for this environment");
+  expect(probe.status, probe.body.error ?? "").toBe(200);
 
   const roomCode = uniqueRoomCode();
   const alice = await openRoom(browser, roomCode, "Alice");
@@ -84,8 +93,9 @@ test("the entry overlay reports party, LiveKit and player readiness", async ({ b
 });
 
 test("an explicit mute survives taking the stage", async ({ browser, request }) => {
-  const probe = await request.get(`/api/livekit-token?room=${uniqueRoomCode()}&name=probe`);
-  test.skip(!probe.ok(), "LiveKit credentials are not configured for this environment");
+  const probe = await probeLiveKitToken(request);
+  test.skip(probe.credentialsMissing, "LiveKit credentials are not configured for this environment");
+  expect(probe.status, probe.body.error ?? "").toBe(200);
 
   const roomCode = uniqueRoomCode();
   const bob = await join(browser, roomCode, "Bob");

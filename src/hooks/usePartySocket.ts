@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PartySocket from "partysocket";
+import { partyHost } from "~/lib/apiBase";
 import type { ClientMessage, ServerMessage } from "~/types/room";
 
 interface UsePartySocketParams {
@@ -30,11 +31,8 @@ export function usePartySocket({
   }, [onMessage]);
 
   useEffect(() => {
-    const host =
-      process.env.NEXT_PUBLIC_PARTY_HOST ?? "localhost:1999";
-
     const socket = new PartySocket({
-      host,
+      host: partyHost(),
       room: roomCode,
       party: "main",
     });

@@ -1,4 +1,4 @@
-import { expect, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { YOUTUBE_IFRAME_API_STUB } from "./youtubeStub";
 
 const CODE_CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -22,16 +22,53 @@ export function uniqueRoomCode(): string {
   return code;
 }
 
+export function partyBaseUrl(): string {
+  return `http://localhost:${process.env.E2E_PARTY_PORT ?? "1999"}`;
+}
+
+export function livekitTokenProbeUrl(roomCode = uniqueRoomCode()): string {
+  return `${partyBaseUrl()}/parties/token/${roomCode}?room=${roomCode}&name=probe`;
+}
+
+export interface TokenProbe {
+  status: number;
+  ok: boolean;
+  /** The one failure a developer without LiveKit credentials is allowed to skip on. */
+  credentialsMissing: boolean;
+  body: { token?: string; url?: string; keySet?: number; error?: string; reason?: string };
+  acao: string | undefined;
+}
+
+// A blanket `skip(!ok)` turns a 403 from a misconfigured allowlist, a 429 from the rate
+// limiter and a 500 from missing worker env into the same green run, so every caller gets
+// the status and the parsed body back and skips on the credential case alone.
+export async function probeLiveKitToken(
+  request: APIRequestContext,
+  origin = "http://localhost",
+): Promise<TokenProbe> {
+  const response = await request.get(livekitTokenProbeUrl(), { headers: { Origin: origin } });
+  const body = (await response.json().catch(() => ({}))) as TokenProbe["body"];
+  return {
+    status: response.status(),
+    ok: response.ok(),
+    credentialsMissing: response.status() === 500 && body.error === "LiveKit credentials not configured",
+    body,
+    acao: response.headers()["access-control-allow-origin"],
+  };
+}
+
 // Everything the room reaches for outside localhost, answered locally. The empty
 // thumbnail and genre answers are the ones both call sites already fall back to.
+// Search is stubbed at both URLs: the worker endpoint the client calls now, and the
+// legacy Next route that shells cached before the move still use.
 export async function stubExternalServices(context: BrowserContext): Promise<void> {
+  const emptySearch = { status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) };
   await context.route("https://www.youtube.com/iframe_api", (route) =>
     route.fulfill({ status: 200, contentType: "application/javascript", body: YOUTUBE_IFRAME_API_STUB }),
   );
   await context.route("**/*.ytimg.com/**", (route) => route.abort());
-  await context.route("**/api/youtube-search**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }),
-  );
+  await context.route("**/api/youtube-search**", (route) => route.fulfill(emptySearch));
+  await context.route("**/parties/search/**", (route) => route.fulfill(emptySearch));
 }
 
 export async function openRoom(browser: Browser, roomCode: string, name: string): Promise<RoomClient> {

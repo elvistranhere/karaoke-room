@@ -2,9 +2,9 @@
 
 import { useRef, useState } from "react";
 import { LoaderCircle, Search } from "lucide-react";
-import { parseYouTubeId } from "~/lib/youtube";
+import { parseYouTubeId, type YouTubeSearchResult } from "~/lib/youtube";
 import { cacheGenre } from "~/lib/atmosphereAuto";
-import type { YouTubeSearchResult } from "~/app/api/youtube-search/route";
+import { fetchYouTubeSearch } from "~/lib/apiBase";
 
 interface VideoUrlInputProps {
   onLoad: (videoId: string) => void;
@@ -35,7 +35,7 @@ export function VideoUrlInput({ onLoad, label = "Load video", autoFocus = false 
     setSearching(true);
     setError(null);
     try {
-      const response = await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);
+      const response = await fetchYouTubeSearch({ q });
       const data = (await response.json()) as {
         results?: YouTubeSearchResult[];
         disabled?: boolean;

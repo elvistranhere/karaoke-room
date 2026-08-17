@@ -1,5 +1,18 @@
+import type { Genre } from "./atmosphereGenre";
+
 // The same id shape is enforced server-side in party/index.ts.
 export const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+// The search result shape lives here, not next to the search implementation, so no client
+// file ever has to name a `~/shared/*` specifier that reads secrets to describe a row.
+export interface YouTubeSearchResult {
+  videoId: string;
+  title: string;
+  channel: string;
+  thumbnail: string;
+  duration: string;
+  genre: Genre;
+}
 
 const PATH_PREFIXES = ["/embed/", "/shorts/", "/live/", "/v/"];
 

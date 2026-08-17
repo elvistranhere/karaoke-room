@@ -2,6 +2,7 @@ import type { AtmosphereProvider, AtmosphereSong, AtmosphereTokens } from "./atm
 import { IDLE_TOKENS } from "./atmosphere";
 import { GENRE_PRESETS, isGenre, type Genre, type GenrePreset } from "./atmosphereGenre";
 import { loadPalette, type HuePalette } from "./atmospherePalette";
+import { fetchYouTubeSearch } from "./apiBase";
 
 const IDLE_HUE = 292;
 const IDLE_CHROMA = 0.68;
@@ -180,7 +181,7 @@ async function lookupGenre(videoId: string, signal: AbortSignal): Promise<Genre>
   if (isGenre(cached)) return cached;
 
   try {
-    const response = await fetch(`/api/youtube-search?id=${encodeURIComponent(videoId)}`, { signal });
+    const response = await fetchYouTubeSearch({ id: videoId }, { signal });
     if (!response.ok) return "default";
     const data = (await response.json()) as { results?: Array<{ genre?: string }> };
     const genre = data.results?.[0]?.genre;

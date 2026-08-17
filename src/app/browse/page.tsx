@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Users, Mic, Lock, ArrowLeft, RefreshCw } from "lucide-react";
 import type { PublicRoomEntry } from "~/types/room";
 import { SURFACE_LIFT } from "~/lib/surfaces";
+import { partyOrigin } from "~/lib/apiBase";
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -25,12 +26,7 @@ export default function BrowsePage() {
 
   const fetchRooms = useCallback(async () => {
     try {
-      const host =
-        process.env.NEXT_PUBLIC_PARTY_HOST ?? "localhost:1999";
-      const protocol = host.startsWith("localhost") ? "http" : "https";
-      const res = await fetch(
-        `${protocol}://${host}/parties/registry/global`
-      );
+      const res = await fetch(`${partyOrigin()}/parties/registry/global`);
       if (!res.ok) throw new Error("Failed to fetch rooms");
       const data = (await res.json()) as PublicRoomEntry[];
       setRooms(data.filter((room) => room.participantCount > 0).sort(sortRooms));

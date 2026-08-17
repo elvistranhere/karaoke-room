@@ -3,7 +3,7 @@
 > **Note:** This is a historical conversation transcript capturing the design journey
 > for the Redis-backed key rotation system. Earlier sections discuss approaches (like
 > INCR/DECR counters) that were later replaced by SCAN-based TTL counting. For the
-> canonical current algorithm and Redis key schema, see `src/lib/keyRotation.ts`.
+> canonical current algorithm and Redis key schema, see `src/shared/keyRotation.ts`.
 
 ---
 

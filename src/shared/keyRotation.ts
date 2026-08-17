@@ -20,44 +20,43 @@
  * the room mapping and reassign to a healthy key. Otherwise, record the report and
  * return a valid token so network blips don't produce false positives.
  *
+ * `forceNext` is a report, not an assertion, and it writes state shared by every room on
+ * that key. Nothing here can tell a real report from an invented one, so the callers gate
+ * it before it arrives: the worker endpoint only forwards `keyHint=next` for a room that
+ * has live participants (`party/token.ts`).
+ *
+ * Runtime-agnostic on purpose: the env and the Redis client are passed in, so the
+ * Next route and the PartyKit worker run the same rotation rather than two copies. The
+ * two hosts read two separate env stores, so `room:<code>:keyfp` pins which key the
+ * stored index resolved to and a mismatch reassigns instead of splitting the room.
+ *
  * See docs/IDEOLOGY.md for full architecture decisions.
  */
 
-import "server-only";
-import { Redis } from "@upstash/redis";
+import type { EnvReader } from "./env";
+import type { RedisClient } from "./redis";
 
-interface LiveKitKeySet {
+export interface LiveKitKeySet {
   apiKey: string;
   apiSecret: string;
   url: string;
 }
 
-// Redis instance - lazy init, null if env vars not set
-let redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redis = new Redis({ url, token });
-  return redis;
-}
-
 // Scan env vars for key sets: LIVEKIT_API_KEY, _2, _3, ... _20
-export function getKeySets(): LiveKitKeySet[] {
+export function getKeySets(env: EnvReader): LiveKitKeySet[] {
   const sets: LiveKitKeySet[] = [];
-  const defaultUrl = process.env.LIVEKIT_URL ?? process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
+  const defaultUrl = env("LIVEKIT_URL") ?? env("NEXT_PUBLIC_LIVEKIT_URL") ?? "";
   // Primary (no suffix) + _2 through _20 = up to 20 key sets
   const suffixes = ["", ...Array.from({ length: 19 }, (_, i) => `_${i + 2}`)];
 
   for (const suffix of suffixes) {
-    const apiKey = process.env[`LIVEKIT_API_KEY${suffix}`];
-    const apiSecret = process.env[`LIVEKIT_API_SECRET${suffix}`];
+    const apiKey = env(`LIVEKIT_API_KEY${suffix}`);
+    const apiSecret = env(`LIVEKIT_API_SECRET${suffix}`);
     if (!apiKey || !apiSecret) continue;
     sets.push({
       apiKey,
       apiSecret,
-      url: process.env[`LIVEKIT_URL${suffix}`] ?? defaultUrl,
+      url: env(`LIVEKIT_URL${suffix}`) ?? defaultUrl,
     });
   }
   return sets;
@@ -72,13 +71,33 @@ function hashRoomToKey(room: string, total: number): number {
   return Math.abs(hash) % total;
 }
 
+/**
+ * The room mapping stores an *index* into `getKeySets(env)`, and that index is now
+ * resolved against two independently managed env stores (Vercel's and PartyKit's). A
+ * variant present on one host and missing on the other shifts every later index, so index
+ * 1 means a different LiveKit project per host and the two halves of one room silently
+ * cannot hear each other. The fingerprint is written beside the mapping and rechecked on
+ * every affinity hit so that divergence reassigns loudly instead of resolving quietly.
+ * It is a non-reversible hash: the api key itself never enters Redis.
+ */
+function keyFingerprint(apiKey: string): string {
+  let hash = 0;
+  for (let i = 0; i < apiKey.length; i++) {
+    hash = ((hash << 5) - hash + apiKey.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
 // Room mapping TTL: 2 hours. Kept alive by the client-side token refresh (every 30min
 // in useLiveKit.ts). With 4 refresh windows per TTL, 3 consecutive failures needed
 // to expire - resilient to transient network issues.
 const ROOM_KEY_TTL = 7200;     // 2 hours - room-to-key mapping
 const EXHAUSTED_TTL = 300;     // 5 min - key exhaustion cooldown
 const QUOTA_HIT_TTL = 3600;    // 1 hour - "this key had quota issues recently" marker
-const EXHAUST_THRESHOLD = 3;   // 3 distinct rooms to mark key globally exhausted (DoS resistance)
+// 3 distinct rooms to mark a key globally exhausted. This filters one room's network
+// blip, not an adversary: room codes are free to invent, so distinctness is only worth
+// something because the caller has to prove the room has people in it first.
+const EXHAUST_THRESHOLD = 3;
 const EXHAUST_WINDOW = 60;     // fixed window from first report
 
 /**
@@ -86,7 +105,7 @@ const EXHAUST_WINDOW = 60;     // fixed window from first report
  * Each room:X:key mapping has a TTL. We count non-expired ones per key index.
  * Self-cleaning: expired mappings don't appear in SCAN results.
  */
-async function countRoomsPerKey(r: Redis, totalKeys: number): Promise<number[]> {
+async function countRoomsPerKey(r: RedisClient, totalKeys: number): Promise<number[]> {
   const counts = new Array<number>(totalKeys).fill(0);
 
   let cursor = 0;
@@ -118,24 +137,25 @@ async function countRoomsPerKey(r: Redis, totalKeys: number): Promise<number[]> 
  * - Existing rooms: use stored mapping (room affinity)
  * - New rooms: least-loaded non-exhausted key, assigned with SET NX (atomic)
  * - Exhausted key + existing mapping: delete mapping and reassign to healthy key
- * - Redis down: fall back to deterministic hash function
+ * - Redis down or absent: fall back to deterministic hash function
  */
 export async function getKeyForRoom(
   room: string,
   keySets: LiveKitKeySet[],
   forceNext: boolean,
+  r: RedisClient | null,
 ): Promise<{ keySet: LiveKitKeySet; index: number } | { error: "room-exhausted" | "all-exhausted" } | null> {
   if (keySets.length === 0) return null;
 
-  const r = getRedis();
   if (!r) {
     const idx = hashRoomToKey(room, keySets.length);
     return { keySet: keySets[idx]!, index: idx };
   }
 
   try {
-    // Room code validation is done at the API boundary (route.ts uses validateRoomCode).
+    // Room code validation is done at the API boundary (both callers use validateRoomCode).
     const roomKey = `room:${room}:key`;
+    const fpKey = `room:${room}:keyfp`;
 
     // Read room's current key mapping once (reused by both forceNext and affinity check)
     const currentKey = await r.get<number>(roomKey);
@@ -174,7 +194,7 @@ export async function getKeyForRoom(
         // Delete room mapping so we can reassign to a healthy key below.
         // Existing users on the old key keep their connections alive; they'll
         // migrate on the next token refresh (30-min interval).
-        await r.del(roomKey);
+        await r.del(roomKey, fpKey);
         // Fall through to new-room assignment path
       }
 
@@ -192,19 +212,30 @@ export async function getKeyForRoom(
           "[KeyRotation] Redis mapping references missing key index",
           { room, currentKey: effectiveKey, configuredKeyCount: keySets.length },
         );
-        await r.del(roomKey);
+        await r.del(roomKey, fpKey);
         // Fall through to new-room assignment
       } else {
         const exhausted = await r.exists(`key:${effectiveKey}:exhausted`);
-        if (!exhausted) {
+        const fingerprint = keyFingerprint(keySets[effectiveKey]!.apiKey);
+        const storedFingerprint = exhausted ? null : await r.get<string>(fpKey);
+        if (storedFingerprint && storedFingerprint !== fingerprint) {
+          console.error(
+            "[KeyRotation] Room mapping resolves to a different LiveKit key on this host - the key variant set must be identical on every host that mints tokens",
+            { room, currentKey: effectiveKey, configuredKeyCount: keySets.length },
+          );
+          await r.del(roomKey, fpKey);
+          // Fall through to new-room assignment
+        } else if (!exhausted) {
           // Key is healthy - use it (room affinity)
+          await r.set(fpKey, fingerprint, { ex: ROOM_KEY_TTL });
           await r.expire(roomKey, ROOM_KEY_TTL);
           return { keySet: keySets[effectiveKey]!, index: effectiveKey };
+        } else {
+          // Key is exhausted - delete mapping so we reassign to a healthy key.
+          // Existing connections survive; users migrate on next token refresh.
+          await r.del(roomKey, fpKey);
+          // Fall through to new-room assignment
         }
-        // Key is exhausted - delete mapping so we reassign to a healthy key.
-        // Existing connections survive; users migrate on next token refresh.
-        await r.del(roomKey);
-        // Fall through to new-room assignment
       }
     }
 
@@ -247,16 +278,19 @@ export async function getKeyForRoom(
     if (!wasSet) {
       const assignedKey = await r.get<number>(roomKey);
       if (assignedKey !== null && keySets[assignedKey]) {
+        await r.set(fpKey, keyFingerprint(keySets[assignedKey]!.apiKey), { ex: ROOM_KEY_TTL, nx: true });
         return { keySet: keySets[assignedKey]!, index: assignedKey };
       }
       await r.set(roomKey, bestIdx, { ex: ROOM_KEY_TTL, nx: true });
       const finalKey = await r.get<number>(roomKey);
       if (finalKey !== null && keySets[finalKey]) {
+        await r.set(fpKey, keyFingerprint(keySets[finalKey]!.apiKey), { ex: ROOM_KEY_TTL, nx: true });
         return { keySet: keySets[finalKey]!, index: finalKey };
       }
       return null;
     }
 
+    await r.set(fpKey, keyFingerprint(keySets[bestIdx]!.apiKey), { ex: ROOM_KEY_TTL });
     return { keySet: keySets[bestIdx]!, index: bestIdx };
   } catch (err) {
     console.error("[KeyRotation] Redis error, falling back to hash:", err);

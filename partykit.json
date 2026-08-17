@@ -3,6 +3,8 @@
   "main": "party/index.ts",
   "compatibilityDate": "2024-09-01",
   "parties": {
-    "registry": "party/registry.ts"
+    "registry": "party/registry.ts",
+    "token": "party/token.ts",
+    "search": "party/search.ts"
   }
 }
