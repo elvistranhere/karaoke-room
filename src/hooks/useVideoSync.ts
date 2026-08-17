@@ -99,6 +99,10 @@ export function useVideoSync({
   useEffect(() => {
     if (!playerReady) return;
 
+    // A read behind a bridge can outlive the effect, so nothing this tick learned may
+    // be acted on once the loop is torn down.
+    let live = true;
+
     const seekTo = (target: number) => {
       const now = Date.now();
       // A seek costs a rebuffer, which itself creates drift: never chase it back to back
@@ -109,13 +113,14 @@ export function useVideoSync({
       player.seek(target);
     };
 
-    const tick = () => {
+    const tick = async () => {
       const current = videoRef.current;
       if (!current) return;
 
       if (isSingerRef.current) {
         if (!current.playing) return;
-        const singerState = player.getState();
+        const singerState = await player.getState();
+        if (!live) return;
         if (singerState !== PLAYING && singerState !== BUFFERING) return;
         const now = Date.now();
         if (now - lastBroadcastRef.current < SINGER_BROADCAST_MS) return;
@@ -123,10 +128,14 @@ export function useVideoSync({
         // backwards, so it beats "alive" instead: not the clock, but not dead either.
         if (singerState === BUFFERING) {
           lastBroadcastRef.current = now;
-          onBroadcastRef.current(true, player.getTime(), true);
+          const stalledAt = await player.getTime();
+          if (!live) return;
+          onBroadcastRef.current(true, stalledAt.seconds, true);
           return;
         }
-        broadcastNow(true, player.getTime());
+        const singerAt = await player.getTime();
+        if (!live) return;
+        broadcastNow(true, singerAt.seconds);
         return;
       }
 
@@ -135,14 +144,19 @@ export function useVideoSync({
         setPlaybackBlocked(false);
         return;
       }
-      if (player.getLoadedVideoId() !== current.videoId) return;
+      const loadedVideoId = await player.getLoadedVideoId();
+      if (!live) return;
+      if (loadedVideoId !== current.videoId) return;
       if (!clockSyncedRef.current) {
         // Frozen correction is fine during an outage; an active nudge is not
-        if (player.getPlaybackRate() !== 1) player.setPlaybackRate(1);
+        const idleRate = await player.getPlaybackRate();
+        if (!live) return;
+        if (idleRate !== 1) player.setPlaybackRate(1);
         return;
       }
 
-      const state = player.getState();
+      const state = await player.getState();
+      if (!live) return;
       if (state === PAUSED || state === UNSTARTED || state === CUED) {
         const now = Date.now();
         if (now - lastPlayAtRef.current >= PLAY_RETRY_MS) {
@@ -162,13 +176,19 @@ export function useVideoSync({
       const requested = requestedRateRef.current;
       if (requested !== null) {
         requestedRateRef.current = null;
-        if (!isRateApplied(requested, player.getPlaybackRate())) {
+        const appliedRate = await player.getPlaybackRate();
+        if (!live) return;
+        if (!isRateApplied(requested, appliedRate)) {
           rateSupportedRef.current = false;
           player.setPlaybackRate(1);
         }
       }
 
-      const serverNow = Date.now() + serverOffsetRef.current;
+      // The clock is anchored to the instant the player was sampled, not to the instant
+      // the answer arrived, so a slow read lands as latency and never as drift bias.
+      const { seconds: position, readAt } = await player.getTime();
+      if (!live) return;
+      const serverNow = readAt + serverOffsetRef.current;
       const target = computeTarget(
         current.videoTime,
         current.wallTime,
@@ -179,7 +199,7 @@ export function useVideoSync({
 
       const decision = computeSyncAction(
         target,
-        player.getTime(),
+        position,
         rateSupportedRef.current,
         persistTicksRef.current,
       );
@@ -190,12 +210,17 @@ export function useVideoSync({
           // The cooldown lives in seekTo, so a suppressed seek still clears the persist count
           seekTo(decision.action.target);
           return;
-        case "reset-rate":
-          if (player.getPlaybackRate() !== 1) player.setPlaybackRate(1);
+        case "reset-rate": {
+          const currentRate = await player.getPlaybackRate();
+          if (!live) return;
+          if (currentRate !== 1) player.setPlaybackRate(1);
           return;
+        }
         case "nudge": {
           const rate = decision.action.rate;
-          if (player.getPlaybackRate() !== rate) {
+          const currentRate = await player.getPlaybackRate();
+          if (!live) return;
+          if (currentRate !== rate) {
             player.setPlaybackRate(rate);
             requestedRateRef.current = rate;
           }
@@ -206,8 +231,16 @@ export function useVideoSync({
       }
     };
 
-    const interval = setInterval(tick, TICK_MS);
+    // One tick at a time. A web read settles inside the same task, so this never
+    // fires here; a slower player must not have two corrections in flight at once.
+    let ticking = false;
+    const interval = setInterval(() => {
+      if (ticking) return;
+      ticking = true;
+      void tick().finally(() => { ticking = false; });
+    }, TICK_MS);
     return () => {
+      live = false;
       clearInterval(interval);
       player.setPlaybackRate(1);
     };

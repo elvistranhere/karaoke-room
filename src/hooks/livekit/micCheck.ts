@@ -5,6 +5,7 @@ import { Track } from "livekit-client";
 
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
 import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
+import { resolveCaptureProfile, toMediaTrackConstraints } from "~/lib/audioProfile";
 import {
   applyNoiseCancellationInPlace,
   capturesAreExclusive,
@@ -107,6 +108,9 @@ export function useMicCheck(
     mixMicStreamRef,
     mixOwnsMicRef,
     isMicEnabledRef,
+    micModeRef,
+    talkingNCRef,
+    singingNCRef,
     selectedOutputRef,
     voiceEffectRef,
     effectWetDryRef,
@@ -239,14 +243,14 @@ export function useMicCheck(
     let acquired: MediaStream | null = null;
     let acquiredShared = false;
     try {
+      const profile = resolveCaptureProfile({
+        purpose: "mic-check-talk",
+        micMode: micModeRef.current,
+        talkingNC: noiseCancellation,
+        singingNC: singingNCRef.current,
+      });
       const { stream, shared } = await acquireCheckStream({
-        audio: {
-          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-          echoCancellation: noiseCancellation,
-          noiseSuppression: noiseCancellation,
-          autoGainControl: noiseCancellation,
-          channelCount: 1,
-        },
+        audio: toMediaTrackConstraints(profile, captureDeviceId),
       });
       acquired = stream;
       acquiredShared = shared;
@@ -344,15 +348,14 @@ export function useMicCheck(
     let acquired: MediaStream | null = null;
     let acquiredShared = false;
     try {
+      const profile = resolveCaptureProfile({
+        purpose: "mic-check-sing",
+        micMode: micModeRef.current,
+        talkingNC: talkingNCRef.current,
+        singingNC: noiseCancellation,
+      });
       const { stream, shared } = await acquireCheckStream({
-        audio: {
-          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-          echoCancellation: noiseCancellation,
-          noiseSuppression: noiseCancellation,
-          autoGainControl: noiseCancellation,
-          channelCount: 2,
-          sampleRate: 48000,
-        },
+        audio: toMediaTrackConstraints(profile, captureDeviceId),
       });
       acquired = stream;
       acquiredShared = shared;
@@ -457,14 +460,14 @@ export function useMicCheck(
       const oldStream = micCheckStreamRef.current;
       if (releaseFirst) stopStream(oldStream);
       try {
+        const profile = resolveCaptureProfile({
+          purpose: "mic-check-talk",
+          micMode: micModeRef.current,
+          talkingNC: nc,
+          singingNC: singingNCRef.current,
+        });
         const newStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-            echoCancellation: nc,
-            noiseSuppression: nc,
-            autoGainControl: nc,
-            channelCount: 1,
-          },
+          audio: toMediaTrackConstraints(profile, captureDeviceId),
         });
 
         // The check can be stopped mid-capture: the old refs are already null, so
@@ -514,15 +517,14 @@ export function useMicCheck(
       const oldStream = micCheckStreamRef.current;
       if (releaseFirst) stopStream(oldStream);
       try {
+        const profile = resolveCaptureProfile({
+          purpose: "mic-check-sing",
+          micMode: micModeRef.current,
+          talkingNC: talkingNCRef.current,
+          singingNC: nc,
+        });
         const newStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-            echoCancellation: nc,
-            noiseSuppression: nc,
-            autoGainControl: nc,
-            channelCount: 2,
-            sampleRate: 48000,
-          },
+          audio: toMediaTrackConstraints(profile, captureDeviceId),
         });
 
         // The check can be stopped mid-capture: the old refs are already null, so

@@ -6,8 +6,27 @@ import { AudioPresets, Track, type Room } from "livekit-client";
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
 import { writePref } from "~/lib/prefs";
 import { beginAudioCapture, endAudioCapture, resetAudioSession } from "~/lib/audioSession";
+import {
+  resolveCaptureProfile,
+  toMediaTrackConstraints,
+  type CaptureProfile,
+} from "~/lib/audioProfile";
+import { classifyMicError, MIC_TOGGLE_ERRORS, START_SINGING_ERRORS } from "~/lib/micErrors";
 import { applyNoiseCancellationInPlace, capturesAreExclusive, stopStream } from "~/lib/micCapture";
 import type { LiveKitCtx } from "./context";
+
+// The web driver's translation of a profile preset. LiveKit's "music" preset is what
+// the talking profile has always published at, so "voice" maps onto it rather than
+// onto speech.
+const LIVEKIT_PRESETS = {
+  voice: AudioPresets.music,
+  musicStereo: AudioPresets.musicHighQualityStereo,
+  musicHQ: AudioPresets.musicHighQuality,
+};
+
+export function toAudioPreset(preset: CaptureProfile["preset"]) {
+  return LIVEKIT_PRESETS[preset];
+}
 
 // The singer publishes this alongside LiveKit's muted managed mic, so both carry
 // Track.Source.Microphone and only the name tells them apart.
@@ -65,6 +84,8 @@ export function useSingingNCHotSwap(
 ): void {
   const {
     prevSingingNCRef,
+    micModeRef,
+    talkingNCRef,
     mixCtxRef,
     mixMicSourceRef,
     mixMicStreamRef,
@@ -97,15 +118,14 @@ export function useSingingNCHotSwap(
       const oldStream = mixMicStreamRef.current;
       if (releaseFirst) stopStream(oldStream);
       try {
+        const profile = resolveCaptureProfile({
+          purpose: "singing",
+          micMode: micModeRef.current,
+          talkingNC: talkingNCRef.current,
+          singingNC: nc,
+        });
         const newStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-            echoCancellation: nc,
-            noiseSuppression: nc,
-            autoGainControl: nc,
-            channelCount: 2,
-            sampleRate: 48000,
-          },
+          audio: toMediaTrackConstraints(profile, captureDeviceId),
         });
 
         // The turn can end while getUserMedia is pending; the fresh capture would
@@ -188,6 +208,8 @@ export function useCapture(
     micIntentGenRef,
     micErrorTimerRef,
     isMicEnabledRef,
+    micModeRef,
+    talkingNCRef,
     singingNCRef,
     voiceEffectRef,
     effectWetDryRef,
@@ -242,16 +264,14 @@ export function useCapture(
           isMicEnabledRef.current = newState;
         } else if (newState && !mixMicStreamRef.current) {
           // Add mic to mix
-          const nc = singingNCRef.current;
+          const profile = resolveCaptureProfile({
+            purpose: "singing",
+            micMode: micModeRef.current,
+            talkingNC: talkingNCRef.current,
+            singingNC: singingNCRef.current,
+          });
           const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-              echoCancellation: nc,
-              noiseSuppression: nc,
-              autoGainControl: nc,
-              channelCount: 2,
-              sampleRate: 48000,
-            },
+            audio: toMediaTrackConstraints(profile, captureDeviceId),
           });
 
           const ctx = mixCtxRef.current;
@@ -294,21 +314,15 @@ export function useCapture(
       setIsMicEnabled(mixOwnsMicRef.current
         ? mixMicStreamRef.current !== null
         : room.localParticipant.isMicrophoneEnabled === true);
-      const errName = err instanceof Error ? err.name : "";
-      const isTransient = errName === "NotAllowedError" || errName === "NotFoundError";
-      const msg = errName === "NotAllowedError"
-        ? "Mic permission needed - click Unmute again"
-        : errName === "NotFoundError"
-          ? "No microphone found - check your device"
-          : (err instanceof Error ? err.message : "Mic failed");
+      const { message: msg, autoClearMs } = classifyMicError(err, MIC_TOGGLE_ERRORS);
       setError(msg);
       // Clear previous timer, schedule new one - only one timer active at a time
       if (micErrorTimerRef.current) clearTimeout(micErrorTimerRef.current);
-      if (isTransient) {
+      if (autoClearMs !== null) {
         micErrorTimerRef.current = setTimeout(() => {
           setError((prev) => prev === msg ? null : prev);
           micErrorTimerRef.current = null;
-        }, 3000);
+        }, autoClearMs);
       }
     } finally {
       isTogglingMicRef.current = false;
@@ -450,16 +464,14 @@ export function useCapture(
 
       // Taking the stage never overrides an explicit mute: the pipeline is built
       // either way, and the detach after publish keeps a muted singer silent.
-      const singNC = singingNCRef.current;
+      const profile = resolveCaptureProfile({
+        purpose: "singing",
+        micMode: micModeRef.current,
+        talkingNC: talkingNCRef.current,
+        singingNC: singingNCRef.current,
+      });
       const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
-          echoCancellation: singNC,
-          noiseSuppression: singNC,
-          autoGainControl: singNC,
-          channelCount: 2,
-          sampleRate: 48000,
-        },
+        audio: toMediaTrackConstraints(profile, captureDeviceId),
       });
 
       // Voice effect chain feeds a dedicated destination (low-latency send path)
@@ -490,8 +502,8 @@ export function useCapture(
       const pub = await room.localParticipant.publishTrack(voiceTrack, {
         source: Track.Source.Microphone,
         name: VOICE_TRACK_NAME,
-        audioPreset: AudioPresets.musicHighQuality,
-        dtx: false,
+        audioPreset: toAudioPreset(profile.preset),
+        dtx: profile.dtx,
         red: false,
       });
 
@@ -513,13 +525,10 @@ export function useCapture(
         }
       } catch { /* best effort */ }
 
-      if (err instanceof Error && err.name === "NotAllowedError") {
-        setSingingError("Microphone permission needed to sing");
-      } else {
-        const msg = err instanceof Error ? err.message : "Failed to start singing";
-        console.error("[LiveKit] Singing error:", err);
-        setSingingError(msg);
-      }
+      const { kind, message } = classifyMicError(err, START_SINGING_ERRORS);
+      // A denial is the user's answer, not a fault worth a stack in the console
+      if (kind !== "denied") console.error("[LiveKit] Singing error:", err);
+      setSingingError(message);
     } finally {
       isSingingInFlightRef.current = false;
     }

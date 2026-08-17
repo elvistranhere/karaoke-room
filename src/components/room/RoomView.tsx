@@ -9,6 +9,7 @@ import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { useWakeLock } from "~/hooks/useWakeLock";
 import { Bluetooth, Check, LoaderCircle, LogOut, MicOff, Pencil, Settings as SettingsIcon, Volume2, WifiOff, X } from "lucide-react";
+import { resolveCaptureProfile } from "~/lib/audioProfile";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -228,20 +229,25 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const songNameRef = useRef(songName);
   songNameRef.current = songName;
 
+  // The handle answers with promises, and every caller here ships the position on the
+  // wire, so they all want the seconds and the same fallback for a missing player.
+  const readPlayerTime = useCallback(async () => (await playerRef.current?.getTime())?.seconds ?? 0, []);
+
   const handlePlayerStateChange = useCallback((state: number) => {
     if (!isMyTurnForPlayerRef.current) return;
     // 1 = playing, 5 = cued: the video metadata is available in both
     if ((state === 1 || state === 5) && !songNameRef.current) {
-      const title = playerRef.current?.getTitle();
-      if (title) setSongName(title);
+      void playerRef.current?.getTitle().then((title) => { if (title) setSongName(title); });
     }
     // The singer is the clock, so a pause the app did not initiate still has to ship.
     // Only while the room believes playback is live: swapping videos also lands in
     // PAUSED, and that position belongs to the video that just left the stage.
-    if (state === 1) broadcastNowRef.current?.(true, playerRef.current?.getTime() ?? 0);
-    if (state === 2 && videoRef.current?.playing) broadcastNowRef.current?.(false, playerRef.current?.getTime() ?? 0);
+    if (state === 1) void readPlayerTime().then((at) => broadcastNowRef.current?.(true, at));
+    if (state === 2 && videoRef.current?.playing) {
+      void readPlayerTime().then((at) => broadcastNowRef.current?.(false, at));
+    }
     if (state === 0) broadcastNowRef.current?.(false, 0);
-  }, [videoRef]);
+  }, [videoRef, readPlayerTime]);
 
   const { mountRef, player, apiReady, ready: playerReady, errorCode: playerErrorCode, embedBlocked, createPlayer } =
     useYouTubePlayer({ onStateChange: handlePlayerStateChange });
@@ -263,6 +269,29 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const broadcastNowRef = useRef(broadcastNow);
   broadcastNowRef.current = broadcastNow;
+
+  const handleTransportPlay = useCallback(async () => {
+    // Play after the video ended restarts it, so broadcast 0 rather than the
+    // duration the player still reports
+    const ended = (await player.getState()) === 0;
+    if (ended) player.seek(0);
+    player.play();
+    broadcastNow(true, ended ? 0 : await readPlayerTime());
+  }, [player, broadcastNow, readPlayerTime]);
+
+  const handleTransportPause = useCallback(async () => {
+    player.pause();
+    broadcastNow(false, await readPlayerTime());
+  }, [player, broadcastNow, readPlayerTime]);
+
+  // The toolbar's NC light reads the same rule the managed capture obeys, so it can
+  // never claim a toggle the mic is not on.
+  const managedCaptureProfile = resolveCaptureProfile({
+    purpose: "managed",
+    micMode,
+    talkingNC,
+    singingNC,
+  });
 
   const micChecking = micCheckState !== "idle" && micCheckState !== "error";
 
@@ -501,21 +530,23 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         if (!videoRef.current?.playing) return;
-        const at = playerRef.current?.getTime() ?? 0;
+        // Handing back the clock cannot wait on a read a freezing page may never
+        // answer. The position is read after the pause because a paused player's clock
+        // is frozen, so it cannot drift while the read is in flight.
         pausedWhileHiddenRef.current = true;
         playerRef.current?.pause();
-        broadcastNowRef.current(false, at);
+        void readPlayerTime().then((at) => broadcastNowRef.current(false, at));
         return;
       }
       if (!pausedWhileHiddenRef.current) return;
       pausedWhileHiddenRef.current = false;
       if (videoRef.current?.playing) return;
       playerRef.current?.play();
-      broadcastNowRef.current(true, playerRef.current?.getTime() ?? 0);
+      void readPlayerTime().then((at) => broadcastNowRef.current(true, at));
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isMyTurn, videoRef]);
+  }, [isMyTurn, videoRef, readPlayerTime]);
 
   // These screens unmount the modal that owns the mic check while useLiveKit stays
   // mounted, so the loopback would keep running with no button left to stop it.
@@ -883,15 +914,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 }
                 onSetSongName={isMyTurn ? setSongName : undefined}
                 onLoadVideo={isMyTurn ? handleLoadVideo : undefined}
-                onPlay={isMyTurn ? () => {
-                  // Play after the video ended restarts it, so broadcast 0 rather than the
-                  // duration the player still reports
-                  const ended = player.getState() === 0;
-                  if (ended) player.seek(0);
-                  player.play();
-                  broadcastNow(true, ended ? 0 : player.getTime());
-                } : undefined}
-                onPause={isMyTurn ? () => { player.pause(); broadcastNow(false, player.getTime()); } : undefined}
+                onPlay={isMyTurn ? handleTransportPlay : undefined}
+                onPause={isMyTurn ? handleTransportPause : undefined}
                 onRestart={isMyTurn ? () => { player.seek(0); player.play(); broadcastNow(true, 0); } : undefined}
                 playbackReady={playerReady}
                 onMixMusicGain={setMusic}
@@ -990,7 +1014,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               effectWetDry={effectWetDry}
               onEffectWetDry={setEffectWetDry}
               noiseCancellationMode={noiseCancellationMode}
-              ncActive={micMode === "raw" ? singingNC : talkingNC}
+              ncActive={managedCaptureProfile.nc}
               onNoiseCancellationModeChange={setNoiseCancellationMode}
               onSoundProfileOpen={() => setSoundProfileOpen(true)}
               onRecoverAudio={handleTapToHear}

@@ -313,3 +313,24 @@ export const VOICE_EFFECTS: { id: VoiceEffect; label: string; description: strin
   { id: "bright", label: "Bright", description: "Crisp, clear presence" },
   { id: "chorus", label: "Chorus", description: "Thick, doubled vocal" },
 ];
+
+// The wet/dry a singer starts at, and the value a malformed or out-of-range stored
+// one falls back to.
+export const DEFAULT_WET_DRY = 0.5;
+
+/**
+ * Read the stored voice effect back. Anything the catalogue does not list, including
+ * a value written by an older build, reads as no effect at all.
+ */
+export function parseStoredVoiceEffect(raw: string | null): VoiceEffect {
+  return VOICE_EFFECTS.find((effect) => effect.id === raw)?.id ?? "none";
+}
+
+/**
+ * Read the stored wet/dry back. Only a finite 0..1 number survives: the chains apply
+ * it straight to a gain, so a NaN would silence the effect for a whole turn.
+ */
+export function parseStoredWetDry(raw: string | null): number {
+  const saved = raw === null ? NaN : Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_WET_DRY;
+}

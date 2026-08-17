@@ -38,6 +38,21 @@ function loadIframeApi(): Promise<typeof YT> {
   return apiPromise;
 }
 
+/**
+ * A position with the instant it was sampled at. The reader cannot time the read
+ * itself: behind a bridge the answer arrives a round trip after the player was asked,
+ * and a clock read taken on arrival would bias the drift by that round trip.
+ */
+export interface TimeReading {
+  seconds: number;
+  readAt: number;
+}
+
+/**
+ * The player port. Commands are fire and forget; every read is a promise, because a
+ * player behind a bridge (a native WebView, per the mobile plan) can only answer one
+ * asynchronously. On web every one of them resolves on the spot.
+ */
 export interface YouTubePlayerHandle {
   load: (videoId: string, startSeconds: number, autoplay: boolean) => void;
   play: () => void;
@@ -45,13 +60,13 @@ export interface YouTubePlayerHandle {
   seek: (seconds: number) => void;
   setVolume: (volume: number) => void;
   setPlaybackRate: (rate: number) => void;
-  getPlaybackRate: () => number;
-  getState: () => number;
-  getTime: () => number;
-  getDuration: () => number;
-  getTitle: () => string | null;
-  getLoadedVideoId: () => string | null;
-  isReady: () => boolean;
+  getPlaybackRate: () => Promise<number>;
+  getState: () => Promise<number>;
+  getTime: () => Promise<TimeReading>;
+  getDuration: () => Promise<number>;
+  getTitle: () => Promise<string | null>;
+  getLoadedVideoId: () => Promise<string | null>;
+  isReady: () => Promise<boolean>;
 }
 
 interface UseYouTubePlayerParams {
@@ -197,13 +212,17 @@ export function useYouTubePlayer({ onStateChange }: UseYouTubePlayerParams = {})
       if (readyRef.current) playerRef.current?.setVolume(clamped);
     },
     setPlaybackRate: (rate) => { playerRef.current?.setPlaybackRate(rate); },
-    getPlaybackRate: () => playerRef.current?.getPlaybackRate() ?? 1,
-    getState: () => playerRef.current?.getPlayerState() ?? -1,
-    getTime: () => playerRef.current?.getCurrentTime() ?? 0,
-    getDuration: () => playerRef.current?.getDuration() ?? 0,
-    getTitle: () => playerRef.current?.getVideoData()?.title || null,
-    getLoadedVideoId: () => loadedVideoIdRef.current,
-    isReady: () => readyRef.current,
+    // The IFrame API answers synchronously, so each read is already settled by the
+    // time the caller awaits it and no tick can straddle two frames.
+    getPlaybackRate: async () => playerRef.current?.getPlaybackRate() ?? 1,
+    getState: async () => playerRef.current?.getPlayerState() ?? -1,
+    // Position and instant come out of one statement, so a driver can only widen the
+    // gap between them, never the caller.
+    getTime: async () => ({ seconds: playerRef.current?.getCurrentTime() ?? 0, readAt: Date.now() }),
+    getDuration: async () => playerRef.current?.getDuration() ?? 0,
+    getTitle: async () => playerRef.current?.getVideoData()?.title || null,
+    getLoadedVideoId: async () => loadedVideoIdRef.current,
+    isReady: async () => readyRef.current,
   });
 
   const clearError = useCallback(() => setErrorCode(null), []);

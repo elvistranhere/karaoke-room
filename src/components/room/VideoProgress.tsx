@@ -27,13 +27,19 @@ export function VideoProgress({ player, active }: VideoProgressProps) {
       setDuration(0);
       return;
     }
-    const tick = () => {
-      setPosition(player.getTime());
-      setDuration(player.getDuration());
+    let live = true;
+    const tick = async () => {
+      const [time, total] = await Promise.all([player.getTime(), player.getDuration()]);
+      if (!live) return;
+      setPosition(time.seconds);
+      setDuration(total);
     };
-    tick();
-    const interval = window.setInterval(tick, 500);
-    return () => window.clearInterval(interval);
+    void tick();
+    const interval = window.setInterval(() => { void tick(); }, 500);
+    return () => {
+      live = false;
+      window.clearInterval(interval);
+    };
   }, [player, active]);
 
   if (!active || duration <= 0) return null;

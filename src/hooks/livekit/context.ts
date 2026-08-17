@@ -4,7 +4,12 @@ import { useRef, useState, type Dispatch, type RefObject, type SetStateAction } 
 import type { LocalTrackPublication, Room } from "livekit-client";
 
 import type { MicMode } from "../useAudioDevices";
-import type { EffectChain, VoiceEffect } from "~/lib/voiceEffects";
+import {
+  parseStoredVoiceEffect,
+  parseStoredWetDry,
+  type EffectChain,
+  type VoiceEffect,
+} from "~/lib/voiceEffects";
 import { readPref } from "~/lib/prefs";
 import { createVoiceMixer, type VoiceMixer } from "~/lib/voiceMixer";
 
@@ -180,18 +185,15 @@ export function useLiveKitCtx({
   const [mixMicStreamState, setMixMicStreamState] = useState<MediaStream | null>(null);
   const mixPubRef = useRef<LocalTrackPublication | null>(null);
   const effectChainRef = useRef<EffectChain | null>(null);
-  const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>(() => {
-    const saved = readPref("karaoke-voice-effect");
-    return saved === "hall" || saved === "echo" || saved === "warm" || saved === "bright" || saved === "chorus" ? saved : "none";
-  });
+  const [voiceEffect, setVoiceEffectState] = useState<VoiceEffect>(
+    () => parseStoredVoiceEffect(readPref("karaoke-voice-effect")),
+  );
   // Seeded from the stored effect: the audio chain reads the ref, so leaving it at the
   // default would silently drop the restored effect until the next manual change
   const voiceEffectRef = useRef<VoiceEffect>(voiceEffect);
-  const [effectWetDry, setEffectWetDryState] = useState(() => {
-    const raw = readPref("karaoke-effect-wetdry");
-    const saved = raw === null ? NaN : Number(raw);
-    return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 0.5;
-  });
+  const [effectWetDry, setEffectWetDryState] = useState(
+    () => parseStoredWetDry(readPref("karaoke-effect-wetdry")),
+  );
   const effectWetDryRef = useRef(effectWetDry); // synchronous value for active audio chains
 
   const tokenRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);

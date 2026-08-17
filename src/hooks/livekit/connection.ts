@@ -9,16 +9,32 @@ import {
   type RemoteTrackPublication,
   type RemoteParticipant,
   ConnectionState,
-  AudioPresets,
   DisconnectReason,
 } from "livekit-client";
 
 import type { MicMode } from "../useAudioDevices";
 import type { VoiceMixer } from "~/lib/voiceMixer";
+import {
+  resolveCaptureProfile,
+  toMediaTrackConstraints,
+  type CaptureProfile,
+} from "~/lib/audioProfile";
 import { capturesAreExclusive, stopStream } from "~/lib/micCapture";
 import { resumeSilentUnlock } from "~/lib/silentUnlock";
-import { dropMixCapture, MIC_STOPPED_MESSAGE } from "./capture";
+import { dropMixCapture, MIC_STOPPED_MESSAGE, toAudioPreset } from "./capture";
 import type { LiveKitCtx } from "./context";
+
+// The web translation of a capture profile onto LiveKit's own managed-mic options.
+// The connect path and both republish effects write exactly this and nothing else.
+function toCaptureDefaults(profile: CaptureProfile) {
+  return {
+    echoCancellation: profile.nc,
+    noiseSuppression: profile.nc,
+    autoGainControl: profile.nc,
+    channelCount: profile.channels,
+    sampleRate: profile.sampleRateHz ?? undefined,
+  };
+}
 
 const playPausedRemoteElements = () => {
   document.querySelectorAll<HTMLAudioElement>('audio[id^="lk-audio-"]').forEach((el) => {
@@ -70,8 +86,12 @@ export function useSyncNCToRoom(lk: LiveKitCtx): () => void {
   return useCallback(() => {
     const room = roomRef.current;
     if (!room) return;
-    const isRaw = micModeRef.current === "raw";
-    const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
+    const { nc } = resolveCaptureProfile({
+      purpose: "managed",
+      micMode: micModeRef.current,
+      talkingNC: talkingNCRef.current,
+      singingNC: singingNCRef.current,
+    });
     room.options.audioCaptureDefaults = {
       ...room.options.audioCaptureDefaults,
       echoCancellation: nc,
@@ -126,17 +146,16 @@ export function useRoomConnection(
 
     let cancelled = false;
 
-    const isRawMode = micModeRef.current === "raw";
-    // NC setting depends on the current mode
-    const ncEnabled = isRawMode ? singingNCRef.current : talkingNCRef.current;
+    const profile = resolveCaptureProfile({
+      purpose: "managed",
+      micMode: micModeRef.current,
+      talkingNC: talkingNCRef.current,
+      singingNC: singingNCRef.current,
+    });
     const room = new Room({
       audioCaptureDefaults: {
-        echoCancellation: ncEnabled,
-        noiseSuppression: ncEnabled,
-        autoGainControl: ncEnabled,
+        ...toCaptureDefaults(profile),
         deviceId: captureDeviceId || undefined,
-        channelCount: isRawMode ? 2 : 1,
-        sampleRate: isRawMode ? 48000 : undefined,
       },
       audioOutput: {
         deviceId: selectedOutputDeviceId || undefined,
@@ -144,10 +163,8 @@ export function useRoomConnection(
       adaptiveStream: true,
       dynacast: true,
       publishDefaults: {
-        audioPreset: isRawMode
-          ? AudioPresets.musicHighQualityStereo
-          : AudioPresets.music,
-        dtx: !isRawMode, // DTX saves bandwidth for voice, disable for music
+        audioPreset: toAudioPreset(profile.preset),
+        dtx: profile.dtx, // DTX saves bandwidth for voice, disable for music
         red: true, // redundant encoding for packet loss resilience
       },
     });
@@ -432,7 +449,9 @@ export function useInputDeviceSwitch(
 ): void {
   const {
     roomRef,
+    micModeRef,
     singingNCRef,
+    talkingNCRef,
     mixCtxRef,
     mixMicGainRef,
     mixMicSourceRef,
@@ -467,16 +486,14 @@ export function useInputDeviceSwitch(
         const oldStream = mixMicStreamRef.current;
         if (releaseFirst) stopStream(oldStream);
         try {
-          const nc = singingNCRef.current;
+          const profile = resolveCaptureProfile({
+            purpose: "singing",
+            micMode: micModeRef.current,
+            talkingNC: talkingNCRef.current,
+            singingNC: singingNCRef.current,
+          });
           const newStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: { exact: captureDeviceId },
-              echoCancellation: nc,
-              noiseSuppression: nc,
-              autoGainControl: nc,
-              channelCount: 2,
-              sampleRate: 48000,
-            },
+            audio: toMediaTrackConstraints(profile, captureDeviceId),
           });
 
           // The mix can be torn down while getUserMedia is pending: without this the
@@ -553,22 +570,22 @@ export function useMicModeSwitch(
     // retries when isMicEnabled becomes true again
     prevMicModeRef.current = micMode;
 
-    const isRaw = micMode === "raw";
     console.log("[LiveKit] Switching mic mode to:", micMode);
 
     // Unpublish current mic, then re-enable with new constraints
     void (async () => {
       try {
         await room.localParticipant.setMicrophoneEnabled(false);
-        // Use NC toggle for the target mode
-        const nc = isRaw ? singingNCRef.current : talkingNCRef.current;
+        // The profile for the target mode, NC toggle included
+        const profile = resolveCaptureProfile({
+          purpose: "managed",
+          micMode,
+          talkingNC: talkingNCRef.current,
+          singingNC: singingNCRef.current,
+        });
         room.options.audioCaptureDefaults = {
           ...room.options.audioCaptureDefaults,
-          echoCancellation: nc,
-          noiseSuppression: nc,
-          autoGainControl: nc,
-          channelCount: isRaw ? 2 : 1,
-          sampleRate: isRaw ? 48000 : undefined,
+          ...toCaptureDefaults(profile),
         };
         await room.localParticipant.setMicrophoneEnabled(true);
         console.log("[LiveKit] Mic mode switched to", micMode);
@@ -610,18 +627,13 @@ export function useNCRepublish(
     // the new NC to the room when it restores it.
     if (!activeProfileChanged || !room || !isConnected || !isMicEnabled || mixOwnsMicRef.current || micCheckAbortRef.current) return;
 
-    const isRaw = micMode === "raw";
-    const nc = isRaw ? singingNC : talkingNC;
+    const profile = resolveCaptureProfile({ purpose: "managed", micMode, talkingNC, singingNC });
     void (async () => {
       try {
         await room.localParticipant.setMicrophoneEnabled(false);
         room.options.audioCaptureDefaults = {
           ...room.options.audioCaptureDefaults,
-          echoCancellation: nc,
-          noiseSuppression: nc,
-          autoGainControl: nc,
-          channelCount: isRaw ? 2 : 1,
-          sampleRate: isRaw ? 48000 : undefined,
+          ...toCaptureDefaults(profile),
         };
         await room.localParticipant.setMicrophoneEnabled(true);
       } catch (err) {
