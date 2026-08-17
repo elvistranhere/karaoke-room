@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   Room,
   RoomEvent,
@@ -38,7 +38,7 @@ export function useSyncNCToRoom(lk: LiveKitCtx): () => void {
 export function useRoomConnection(
   lk: LiveKitCtx,
   roomCode: string,
-  selectedInputDeviceId: string,
+  captureDeviceId: string,
   selectedOutputDeviceId: string,
 ): void {
   const {
@@ -84,7 +84,7 @@ export function useRoomConnection(
         echoCancellation: ncEnabled,
         noiseSuppression: ncEnabled,
         autoGainControl: ncEnabled,
-        deviceId: selectedInputDeviceId || undefined,
+        deviceId: captureDeviceId || undefined,
         channelCount: isRawMode ? 2 : 1,
         sampleRate: isRawMode ? 48000 : undefined,
       },
@@ -360,7 +360,7 @@ export function useRoomConnection(
     };
     // playerName uses a ref - name changes only go through PartyKit, not LiveKit.
     // micMode is NOT included - handled by a separate effect that republishes the mic track.
-    // selectedInputDeviceId/selectedOutputDeviceId are NOT included - handled by separate effects.
+    // captureDeviceId/selectedOutputDeviceId are NOT included - handled by separate effects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode]);
 }
@@ -369,7 +369,7 @@ export function useRoomConnection(
 
 export function useInputDeviceSwitch(
   lk: LiveKitCtx,
-  selectedInputDeviceId: string,
+  captureDeviceId: string,
   isConnected: boolean,
 ): void {
   const {
@@ -384,11 +384,17 @@ export function useInputDeviceSwitch(
     setMixMicStreamState,
   } = lk;
 
+  // isConnected flips on every LiveKit reconnect, and re-running the branch below
+  // would re-capture a live singing mix mid-song for a device that never changed.
+  const appliedDeviceIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     const room = roomRef.current;
-    if (!room || !isConnected || !selectedInputDeviceId) return;
+    if (!room || !isConnected || !captureDeviceId) return;
+    if (appliedDeviceIdRef.current === captureDeviceId) return;
+    appliedDeviceIdRef.current = captureDeviceId;
 
-    console.log("[LiveKit] Switching mic input to device:", selectedInputDeviceId);
+    console.log("[LiveKit] Switching mic input to device:", captureDeviceId);
 
     // If mix is active, re-capture the mic from the new device
     if (mixPubRef.current && mixMicStreamRef.current) {
@@ -398,7 +404,7 @@ export function useInputDeviceSwitch(
           const nc = singingNCRef.current;
           const newStream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              deviceId: { exact: selectedInputDeviceId },
+              deviceId: { exact: captureDeviceId },
               echoCancellation: nc,
               noiseSuppression: nc,
               autoGainControl: nc,
@@ -437,11 +443,11 @@ export function useInputDeviceSwitch(
       })();
     } else {
       // Normal path: let LiveKit handle it
-      void room.switchActiveDevice("audioinput", selectedInputDeviceId).catch((err) => {
+      void room.switchActiveDevice("audioinput", captureDeviceId).catch((err) => {
         console.error("[LiveKit] Error switching input device:", err);
       });
     }
-  }, [selectedInputDeviceId, isConnected]);
+  }, [captureDeviceId, isConnected]);
 }
 
 // --- Switch mic mode without reconnecting ---

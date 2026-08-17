@@ -50,28 +50,34 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
     roomCode,
     isMyTurn,
     selectedInputDeviceId,
+    builtInInputDeviceId,
     selectedOutputDeviceId,
     micMode,
     talkingNC,
     singingNC,
   } = params;
 
+  // One device id governs every getUserMedia and switchActiveDevice in the hook.
+  // builtInInputDeviceId is non-null only on Android with a Bluetooth input route
+  // and no explicit user choice, so an explicit selection always wins.
+  const captureDeviceId = builtInInputDeviceId ?? selectedInputDeviceId;
+
   const { ctx, state } = useLiveKitCtx(params);
   const syncNCToRoom = useSyncNCToRoom(ctx);
 
   // The effects below run in the order the single-file hook ran them: the singing
   // NC hot-swap sits between the mic-mode republish and the output switch.
-  useRoomConnection(ctx, roomCode, selectedInputDeviceId, selectedOutputDeviceId);
-  useInputDeviceSwitch(ctx, selectedInputDeviceId, state.isConnected);
+  useRoomConnection(ctx, roomCode, captureDeviceId, selectedOutputDeviceId);
+  useInputDeviceSwitch(ctx, captureDeviceId, state.isConnected);
   useMicModeSwitch(ctx, micMode, state.isConnected, state.isMicEnabled, talkingNC, singingNC);
   useNCRepublish(ctx, micMode, talkingNC, singingNC, state.isConnected, state.isMicEnabled);
-  useSingingNCHotSwap(ctx, singingNC, selectedInputDeviceId);
+  useSingingNCHotSwap(ctx, singingNC, captureDeviceId);
   useOutputDeviceSwitch(ctx, selectedOutputDeviceId, state.isConnected);
 
   const { startTalkingMicCheck, startSingingMicCheck, stopMicCheck } = useMicCheck(
     ctx,
     state.micCheckState,
-    selectedInputDeviceId,
+    captureDeviceId,
     talkingNC,
     singingNC,
     state.voiceEffect,
@@ -86,7 +92,7 @@ export function useLiveKit(params: UseLiveKitParams): UseLiveKitReturn {
     setEffectWetDry,
     startSinging,
     stopSinging,
-  } = useCapture(ctx, selectedInputDeviceId, state.isSinging, isMyTurn, syncNCToRoom, stopMicCheck);
+  } = useCapture(ctx, captureDeviceId, state.isSinging, isMyTurn, syncNCToRoom, stopMicCheck);
 
   return {
     room: ctx.roomRef.current,

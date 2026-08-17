@@ -3,6 +3,7 @@
 import { useCallback, useEffect } from "react";
 
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
+import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
 import type { LiveKitCtx, MicCheckState } from "./context";
 
 const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
@@ -48,7 +49,7 @@ export interface MicCheckApi {
 export function useMicCheck(
   lk: LiveKitCtx,
   micCheckState: MicCheckState,
-  selectedInputDeviceId: string,
+  captureDeviceId: string,
   talkingNC: boolean,
   singingNC: boolean,
   voiceEffect: VoiceEffect,
@@ -98,6 +99,8 @@ export function useMicCheck(
     }
     micCheckAbortRef.current?.();
     micCheckAbortRef.current = null;
+    // After the abort: it stops the loopback capture this release answers for
+    endAudioCapture("mic-check");
     restoreRemoteAudio();
     if (micCheckPrevMixGainRef.current !== null) {
       if (mixMicGainRef.current) mixMicGainRef.current.gain.value = micCheckPrevMixGainRef.current;
@@ -157,10 +160,11 @@ export function useMicCheck(
       micCheckErrorTimerRef.current = null;
     }
 
+    beginAudioCapture("mic-check");
     try {
       const stream = await getMicStreamWithTimeout({
         audio: {
-          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
           echoCancellation: noiseCancellation,
           noiseSuppression: noiseCancellation,
           autoGainControl: noiseCancellation,
@@ -174,7 +178,7 @@ export function useMicCheck(
         return;
       }
       const track = stream.getAudioTracks()[0];
-      if (!track) { micCheckInFlightRef.current = false; return; }
+      if (!track) { micCheckInFlightRef.current = false; endAudioCapture("mic-check"); return; }
 
       // Route mic -> speakers via AudioContext
       const ctx = new AudioContext();
@@ -228,10 +232,11 @@ export function useMicCheck(
     } catch (err) {
       console.error("[LiveKit] Talking mic check error:", err);
       micCheckInFlightRef.current = false;
+      endAudioCapture("mic-check");
       setMicCheckState("error");
       scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
+  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // Singing Mic Check: live loopback through voice effect chain
   const startSingingMicCheck = useCallback(async (noiseCancellation: boolean) => {
@@ -249,10 +254,11 @@ export function useMicCheck(
       micCheckErrorTimerRef.current = null;
     }
 
+    beginAudioCapture("mic-check");
     try {
       const stream = await getMicStreamWithTimeout({
         audio: {
-          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
           echoCancellation: noiseCancellation,
           noiseSuppression: noiseCancellation,
           autoGainControl: noiseCancellation,
@@ -267,7 +273,7 @@ export function useMicCheck(
         return;
       }
       const rawTrack = stream.getAudioTracks()[0];
-      if (!rawTrack) { micCheckInFlightRef.current = false; return; }
+      if (!rawTrack) { micCheckInFlightRef.current = false; endAudioCapture("mic-check"); return; }
 
       // Route mic -> effect chain -> speakers
       const ctx = new AudioContext({ sampleRate: 48000 });
@@ -330,10 +336,11 @@ export function useMicCheck(
     } catch (err) {
       console.error("[LiveKit] Singing mic check error:", err);
       micCheckInFlightRef.current = false;
+      endAudioCapture("mic-check");
       setMicCheckState("error");
       scheduleMicCheckErrorReset();
     }
-  }, [micCheckState, selectedInputDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
+  }, [micCheckState, captureDeviceId, muteRemoteAudio, isolateMicCheckFromRoom, scheduleMicCheckErrorReset, stopMicCheck]);
 
   // --- Hot-swap NC during talking mic check ---
   // When talkingNC changes while monitoring-talk, re-capture mic with new constraints
@@ -350,7 +357,7 @@ export function useMicCheck(
         const nc = talkingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
             echoCancellation: nc,
             noiseSuppression: nc,
             autoGainControl: nc,
@@ -398,7 +405,7 @@ export function useMicCheck(
         const nc = singingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
             echoCancellation: nc,
             noiseSuppression: nc,
             autoGainControl: nc,

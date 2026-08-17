@@ -5,6 +5,7 @@ import { AudioPresets, Track } from "livekit-client";
 
 import { createEffectChain, type VoiceEffect } from "~/lib/voiceEffects";
 import { writePref } from "~/lib/prefs";
+import { beginAudioCapture, endAudioCapture, resetAudioSession } from "~/lib/audioSession";
 import type { LiveKitCtx } from "./context";
 
 // The singer publishes this alongside LiveKit's muted managed mic, so both carry
@@ -19,7 +20,7 @@ export const MIC_ON_PREF_KEY = "karaoke-mic-on";
 export function useSingingNCHotSwap(
   lk: LiveKitCtx,
   singingNC: boolean,
-  selectedInputDeviceId: string,
+  captureDeviceId: string,
 ): void {
   const {
     prevSingingNCRef,
@@ -45,7 +46,7 @@ export function useSingingNCHotSwap(
         const nc = singingNC;
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+            deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
             echoCancellation: nc,
             noiseSuppression: nc,
             autoGainControl: nc,
@@ -78,7 +79,7 @@ export function useSingingNCHotSwap(
         console.error("[LiveKit] Error hot-swapping NC:", err);
       }
     })();
-  }, [singingNC, selectedInputDeviceId]);
+  }, [singingNC, captureDeviceId]);
 }
 
 export interface CaptureApi {
@@ -97,7 +98,7 @@ export interface CaptureApi {
 
 export function useCapture(
   lk: LiveKitCtx,
-  selectedInputDeviceId: string,
+  captureDeviceId: string,
   isSinging: boolean,
   isMyTurn: boolean,
   syncNCToRoom: () => void,
@@ -163,6 +164,8 @@ export function useCapture(
     }
 
     isTogglingMicRef.current = true;
+    // play-and-record has to be the session type before the capture opens, never after
+    if (newState) beginAudioCapture("mic");
     try {
       console.log("[LiveKit] Setting mic enabled:", newState);
 
@@ -178,7 +181,7 @@ export function useCapture(
           const nc = singingNCRef.current;
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+              deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
               echoCancellation: nc,
               noiseSuppression: nc,
               autoGainControl: nc,
@@ -216,9 +219,12 @@ export function useCapture(
         setIsMicEnabled(newState);
       }
 
+      if (!newState) endAudioCapture("mic");
       if (persist) writePref(MIC_ON_PREF_KEY, newState ? "on" : "off");
       console.log("[LiveKit] Mic is now", newState ? "ON" : "OFF");
     } catch (err) {
+      // The capture never opened, so releasing here cannot pin a live one to playback
+      if (newState) endAudioCapture("mic");
       console.error("[LiveKit] Mic error:", err);
       // A denied permission must not leave the button showing a live mic
       setIsMicEnabled(mixOwnsMicRef.current
@@ -248,7 +254,7 @@ export function useCapture(
         void applyMicStateSelfRef.current?.(pending.state, pending.persist);
       }
     }
-  }, [selectedInputDeviceId, detachMicFromMix]);
+  }, [captureDeviceId, detachMicFromMix]);
   applyMicStateSelfRef.current = applyMicState;
 
   // Explicit target, not a toggle: the caller passes the state its label promised,
@@ -279,6 +285,9 @@ export function useCapture(
       void mixCtxRef.current?.close();
     }
     mixCtxRef.current = null;
+    // Last: the mic stream above is already stopped, and any other owner still
+    // holding the session (the managed mic, a mic check) keeps play-and-record.
+    endAudioCapture("singing");
   }, []);
 
   // Expose the published voice gain so the singer can set their own level
@@ -339,13 +348,14 @@ export function useCapture(
     // Claimed before the first await so no other path re-arms the managed mic
     // while the pipeline is still being built.
     mixOwnsMicRef.current = true;
+    beginAudioCapture("singing");
     try {
       // Taking the stage never overrides an explicit mute: the pipeline is built
       // either way, and the detach after publish keeps a muted singer silent.
       const singNC = singingNCRef.current;
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: selectedInputDeviceId ? { exact: selectedInputDeviceId } : undefined,
+          deviceId: captureDeviceId ? { exact: captureDeviceId } : undefined,
           echoCancellation: singNC,
           noiseSuppression: singNC,
           autoGainControl: singNC,
@@ -403,6 +413,7 @@ export function useCapture(
       syncNCToRoom();
       try {
         if (isMicEnabledRef.current && roomRef.current) {
+          beginAudioCapture("mic");
           await roomRef.current.localParticipant.setMicrophoneEnabled(true);
         }
       } catch { /* best effort */ }
@@ -417,7 +428,7 @@ export function useCapture(
     } finally {
       isSingingInFlightRef.current = false;
     }
-  }, [selectedInputDeviceId, cleanupMix, syncNCToRoom, detachMicFromMix]);
+  }, [captureDeviceId, cleanupMix, syncNCToRoom, detachMicFromMix]);
 
   const stopSinging = useCallback(() => {
     const room = roomRef.current;
@@ -444,11 +455,17 @@ export function useCapture(
     // Restore managed mic with current NC settings
     syncNCToRoom();
     if (room && isMicEnabledRef.current) {
+      beginAudioCapture("mic");
       void room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
         console.error("[LiveKit] Error restoring managed mic:", err);
       });
     }
   }, [cleanupMix, syncNCToRoom]);
+
+  // Leaving the room drops every owner. The release to "playback" is never written
+  // here on mount: the label-permission probe in useAudioDevices is still opening a
+  // capture at that point, and "playback" pins a category that cannot record.
+  useEffect(() => resetAudioSession, []);
 
   // The singing pipeline follows the stage turn: start on promotion, stop on exit
   useEffect(() => {

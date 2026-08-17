@@ -8,7 +8,7 @@ import { useAudioDevices } from "~/hooks/useAudioDevices";
 import { useYouTubePlayer } from "~/hooks/useYouTubePlayer";
 import { useVideoSync } from "~/hooks/useVideoSync";
 import { useWakeLock } from "~/hooks/useWakeLock";
-import { Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, WifiOff } from "lucide-react";
+import { Bluetooth, Check, LoaderCircle, LogOut, Pencil, Settings as SettingsIcon, WifiOff, X } from "lucide-react";
 import { detectBrowser, type BrowserInfo } from "~/lib/browser";
 import { StageAnnouncement } from "./StageAnnouncement";
 import { StageBanner } from "./StageBanner";
@@ -47,6 +47,7 @@ import {
 } from "~/components/ui/dialog";
 
 const API_WAIT_MS = 5000;
+const BT_NOTICE_KEY = "karaoke-bt-notice-dismissed";
 const DEFAULT_TITLE = "Karaoke Now | Sing Together Online";
 
 interface RoomViewProps {
@@ -131,7 +132,26 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     setSelectedOutputId,
     micMode,
     setMicMode,
+    bluetoothDetected,
+    builtInInputDeviceId,
   } = useAudioDevices();
+
+  const [btNoticeDismissed, setBtNoticeDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem(BT_NOTICE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissBtNotice = useCallback(() => {
+    setBtNoticeDismissed(true);
+    try {
+      sessionStorage.setItem(BT_NOTICE_KEY, "1");
+    } catch {
+      // storage unavailable, the dismissal still holds for this mount
+    }
+  }, []);
 
   const {
     room,
@@ -156,6 +176,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     playerName,
     isMyTurn,
     selectedInputDeviceId: selectedInputId,
+    builtInInputDeviceId,
     selectedOutputDeviceId: selectedOutputId,
     micMode,
     talkingNC,
@@ -702,6 +723,31 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         </div>
       )}
 
+      {/* Bluetooth route notice - informational, not an error: the page cannot keep
+          A2DP alive while a mic is open, so the only fix is a different route */}
+      {bluetoothDetected && !btNoticeDismissed && (
+        <div
+          className="relative z-10 mx-4 mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
+          style={{ background: "var(--color-dark-raised)", color: "var(--color-text-secondary)" }}
+          role="status"
+        >
+          <Bluetooth size={14} style={{ color: "var(--color-primary-bright)", flexShrink: 0 }} />
+          <span className="min-w-0 flex-1">
+            Bluetooth headsets drop to phone-call quality while a mic is on, wired or speaker sounds best.
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Dismiss Bluetooth notice"
+            onClick={dismissBtNotice}
+            className="size-7 shrink-0 cursor-pointer"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <X size={14} />
+          </Button>
+        </div>
+      )}
+
       <RoomShell
         panels={roomPanels}
         stage={
@@ -912,6 +958,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
         inputDevices={inputDevices}
         outputDevices={outputDevices}
         selectedInputId={selectedInputId}
+        activeInputId={builtInInputDeviceId ?? selectedInputId}
         selectedOutputId={selectedOutputId}
         onInputChange={setSelectedInputId}
         onOutputChange={setSelectedOutputId}

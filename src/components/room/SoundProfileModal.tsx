@@ -5,6 +5,7 @@ import { Mic, Volume2 } from "lucide-react";
 import type { AudioDevice, MicMode } from "~/hooks/useAudioDevices";
 import type { MicCheckState } from "~/hooks/useLiveKit";
 import { VOICE_EFFECTS, type VoiceEffect } from "~/lib/voiceEffects";
+import { isMobileAudioRoute } from "~/lib/audioRoutes";
 import { DIVIDER } from "~/lib/surfaces";
 import type { NoiseCancellationMode } from "./Toolbar";
 import { Button } from "~/components/ui/button";
@@ -34,6 +35,9 @@ interface SoundProfileModalProps {
   inputDevices: AudioDevice[];
   outputDevices: AudioDevice[];
   selectedInputId: string;
+  // The device capture actually opens, which the Bluetooth override can move off
+  // the selection above
+  activeInputId: string;
   selectedOutputId: string;
   onInputChange: (id: string) => void;
   onOutputChange: (id: string) => void;
@@ -59,6 +63,7 @@ export function SoundProfileModal({
   inputDevices,
   outputDevices,
   selectedInputId,
+  activeInputId,
   selectedOutputId,
   onInputChange,
   onOutputChange,
@@ -68,6 +73,13 @@ export function SoundProfileModal({
   micCheckState,
 }: SoundProfileModalProps) {
   const [micCheckProfile, setMicCheckProfile] = useState<MicMode>(micMode);
+  // setSinkId has no real targets on mobile: Android does not implement it and iOS
+  // exposes one virtual speaker, so the picker would only ever be a dead control.
+  const showOutputPicker = !isMobileAudioRoute();
+  const overriddenInput =
+    activeInputId && activeInputId !== selectedInputId
+      ? inputDevices.find((d) => d.deviceId === activeInputId) ?? null
+      : null;
   const wetDry = Math.round(effectWetDry * 100);
   const monitoring = micCheckState === "monitoring-talk" || micCheckState === "monitoring-sing";
 
@@ -268,20 +280,27 @@ export function SoundProfileModal({
                     {inputDevices.map((d) => <SelectItem key={d.deviceId} value={d.deviceId}>{d.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {overriddenInput && (
+                  <p className="mt-1.5 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                    Recording from {overriddenInput.label} to keep Bluetooth playback in full quality. Pick a mic to override.
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label htmlFor="speaker-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
-                <Select value={selectedOutputId} onValueChange={(v) => { if (v) onOutputChange(v); }}>
-                  <SelectTrigger id="speaker-device" aria-label="Speaker" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {outputDevices.length === 0 ? <SelectItem value="">Default</SelectItem> : null}
-                    {outputDevices.map((d) => <SelectItem key={d.deviceId} value={d.deviceId}>{d.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              {showOutputPicker && (
+                <div>
+                  <label htmlFor="speaker-device" className="mb-1.5 block text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Speaker</label>
+                  <Select value={selectedOutputId} onValueChange={(v) => { if (v) onOutputChange(v); }}>
+                    <SelectTrigger id="speaker-device" aria-label="Speaker" className="h-10! w-full cursor-pointer rounded-lg bg-[var(--color-dark-card)] text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {outputDevices.length === 0 ? <SelectItem value="">Default</SelectItem> : null}
+                      {outputDevices.map((d) => <SelectItem key={d.deviceId} value={d.deviceId}>{d.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </section>
         </div>

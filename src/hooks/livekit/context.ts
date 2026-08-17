@@ -13,6 +13,8 @@ export interface UseLiveKitParams {
   playerName: string;
   isMyTurn: boolean;
   selectedInputDeviceId: string;
+  // Android + Bluetooth route + no explicit input choice, null everywhere else
+  builtInInputDeviceId: string | null;
   selectedOutputDeviceId: string;
   micMode: MicMode;
   talkingNC: boolean;  // noise cancellation for talking mode

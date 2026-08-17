@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { findBuiltInInputId, isActiveRouteBluetooth, isAndroidDevice } from "~/lib/audioRoutes";
+import { beginAudioCapture, endAudioCapture } from "~/lib/audioSession";
 import { readPref, writePref } from "~/lib/prefs";
 
 const INPUT_PREF_KEY = "karaoke-input-device";
@@ -23,6 +25,8 @@ interface UseAudioDevicesReturn {
   micMode: MicMode;
   setMicMode: (mode: MicMode) => void;
   refreshDevices: () => Promise<void>;
+  bluetoothDetected: boolean;
+  builtInInputDeviceId: string | null;
 }
 
 export function useAudioDevices(): UseAudioDevicesReturn {
@@ -31,11 +35,21 @@ export function useAudioDevices(): UseAudioDevicesReturn {
   const [selectedInputId, setSelectedInputId] = useState<string>("");
   const [selectedOutputId, setSelectedOutputId] = useState<string>("");
   const [micMode, setMicMode] = useState<MicMode>("voice");
+  // Only a stored or clicked choice counts as explicit; the inputs[0] fallback below
+  // is the app picking for the user and may be overridden on a Bluetooth route.
+  const [inputIsExplicit, setInputIsExplicit] = useState(false);
 
   const refreshDevices = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      for (const track of stream.getTracks()) track.stop();
+      // Labels need permission, and this probe is a capture like any other: it has
+      // to own the audio session or a "playback" write lands under a live mic.
+      beginAudioCapture("probe");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        for (const track of stream.getTracks()) track.stop();
+      } finally {
+        endAudioCapture("probe");
+      }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
 
@@ -62,6 +76,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
         const saved = readPref(INPUT_PREF_KEY);
         const match = saved ? inputs.find((d) => d.deviceId === saved) : undefined;
         setSelectedInputId((match ?? inputs[0]!).deviceId);
+        if (match) setInputIsExplicit(true);
       }
       if (!selectedOutputId && outputs.length > 0) {
         const saved = readPref(OUTPUT_PREF_KEY);
@@ -84,6 +99,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
 
   const rememberInput = useCallback((id: string) => {
     setSelectedInputId(id);
+    setInputIsExplicit(true);
     writePref(INPUT_PREF_KEY, id);
   }, []);
 
@@ -91,6 +107,28 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     setSelectedOutputId(id);
     writePref(OUTPUT_PREF_KEY, id);
   }, []);
+
+  // The route in use, not the inventory: a headset that is merely paired while the
+  // user is already on speakers must not be told to stop using Bluetooth.
+  const inputRouteIsBluetooth = useMemo(
+    () => isActiveRouteBluetooth(inputDevices, selectedInputId),
+    [inputDevices, selectedInputId],
+  );
+  const bluetoothDetected = useMemo(
+    () => inputRouteIsBluetooth || isActiveRouteBluetooth(outputDevices, selectedOutputId),
+    [inputRouteIsBluetooth, outputDevices, selectedOutputId],
+  );
+
+  // Android only: Chromium flips the link to SCO when the headset mic opens, so the
+  // built-in mic is what keeps A2DP. iOS routes to HFP whatever deviceId we ask for.
+  // Gated on the input route alone, because Chrome on Android enumerates no outputs.
+  const builtInInputDeviceId = useMemo(
+    () =>
+      inputRouteIsBluetooth && !inputIsExplicit && isAndroidDevice()
+        ? findBuiltInInputId(inputDevices)
+        : null,
+    [inputRouteIsBluetooth, inputIsExplicit, inputDevices],
+  );
 
   return {
     inputDevices,
@@ -102,5 +140,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     micMode,
     setMicMode,
     refreshDevices,
+    bluetoothDetected,
+    builtInInputDeviceId,
   };
 }
