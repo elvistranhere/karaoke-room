@@ -5,6 +5,7 @@ import { LoaderCircle, Search } from "lucide-react";
 import { parseYouTubeId, type YouTubeSearchResult } from "~/lib/youtube";
 import { cacheGenre } from "~/lib/atmosphereAuto";
 import { fetchYouTubeSearch } from "~/lib/apiBase";
+import { track } from "~/lib/analytics";
 
 interface VideoUrlInputProps {
   onLoad: (videoId: string) => void;
@@ -24,6 +25,12 @@ export function VideoUrlInput({ onLoad, label = "Load video", autoFocus = false 
   const pick = (result: YouTubeSearchResult | string) => {
     const videoId = typeof result === "string" ? result : result.videoId;
     if (typeof result !== "string") cacheGenre(videoId, result.genre);
+    // A pasted link has no genre yet: the atmosphere provider looks that up later, and
+    // the id and the title are exactly what analytics must never see.
+    track("song_loaded", {
+      genre: typeof result === "string" ? "unknown" : result.genre,
+      has_search: typeof result !== "string",
+    });
     setValue("");
     setResults(null);
     setError(null);

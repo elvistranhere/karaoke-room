@@ -8,6 +8,10 @@
 // enumerate, so "the worker said 403" has to degrade to same-origin rather than to a dead
 // microphone.
 
+import { createLogger } from "./logger";
+
+const log = createLogger("apiBase");
+
 const DEFAULT_PARTY_HOST = "localhost:1999";
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?$/;
 
@@ -57,10 +61,10 @@ async function fetchWithLegacyFallback(
   try {
     const res = await fetch(workerUrl, init);
     if (res.status !== 403 || !legacyReachable()) return res;
-    console.warn("[apiBase] Worker refused this origin, falling back to the Next route");
+    log.warn("Worker refused this origin, falling back to the Next route");
   } catch (err) {
     if (init?.signal?.aborted || !legacyReachable()) throw err;
-    console.warn("[apiBase] Worker unreachable, falling back to the Next route:", err);
+    log.warn("Worker unreachable, falling back to the Next route:", err);
   }
   return fetch(legacyUrl, init);
 }

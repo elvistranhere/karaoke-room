@@ -24,6 +24,9 @@ import { capturesAreExclusive, stopStream } from "~/lib/micCapture";
 import { resumeSilentUnlock } from "~/lib/silentUnlock";
 import { dropMixCapture, MIC_STOPPED_MESSAGE, toAudioPreset } from "./capture";
 import type { LiveKitCtx } from "./context";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("LiveKit");
 
 // The web translation of a capture profile onto LiveKit's own managed-mic options.
 // The connect path and both republish effects write exactly this and nothing else.
@@ -67,7 +70,7 @@ export function resumeRoomAudio(room: Room | null, mixer: VoiceMixer): Promise<v
         await room.startAudio();
         playPausedRemoteElements();
       } catch (err) {
-        console.warn("[LiveKit] startAudio failed from the audio recovery control:", err);
+        log.warn("startAudio failed from the audio recovery control:", err);
       }
     }
     await settled;
@@ -181,7 +184,7 @@ export function useRoomConnection(
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return;
-        console.log("[LiveKit] Subscribed to audio from", participant.identity, "source:", track.source);
+        log.debug("Subscribed to audio from", participant.identity, "source:", track.source);
         const el = track.attach();
         el.id = `lk-audio-${participant.identity}-${track.sid}`;
         el.dataset.lkIdentity = participant.identity;
@@ -198,7 +201,7 @@ export function useRoomConnection(
         document.body.appendChild(el);
         // Force play - may fail due to autoplay policy, but startAudio handles that
         el.play().catch(() => {
-          console.log("[LiveKit] Autoplay blocked for", participant.identity, "- will resume on user click");
+          log.debug("Autoplay blocked for", participant.identity, "- will resume on user click");
         });
         // The element stays attached and playing: browsers only feed a remote WebRTC
         // track into Web Audio while it also has a live media sink, and the mixer
@@ -215,7 +218,7 @@ export function useRoomConnection(
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return;
-        console.log("[LiveKit] Unsubscribed audio from", participant.identity);
+        log.debug("Unsubscribed audio from", participant.identity);
         mixer.detach(pub.trackSid);
         const owned = remoteAudioElsRef.current.get(pub.trackSid);
         if (owned) {
@@ -256,18 +259,18 @@ export function useRoomConnection(
 
     // Connection state - including reconnect awareness
     room.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
-      console.log("[LiveKit] Connection state:", state);
+      log.debug("Connection state:", state);
       if (cancelled) return;
       setIsConnected(state === ConnectionState.Connected);
     });
 
     room.on(RoomEvent.Reconnecting, () => {
-      console.log("[LiveKit] Reconnecting...");
+      log.debug("Reconnecting...");
       if (!cancelled) setError("Reconnecting...");
     });
 
     room.on(RoomEvent.Reconnected, () => {
-      console.log("[LiveKit] Reconnected!");
+      log.debug("Reconnected!");
       if (!cancelled) {
         setIsConnected(true);
         setError(null);
@@ -275,7 +278,7 @@ export function useRoomConnection(
     });
 
     room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
-      console.log("[LiveKit] Disconnected, reason:", reason);
+      log.debug("Disconnected, reason:", reason);
       if (!cancelled) {
         setIsConnected(false);
         // Don't show error for client-initiated disconnects (page refresh, navigation)
@@ -313,11 +316,11 @@ export function useRoomConnection(
         const url = (data.url?.startsWith("wss://")) ? data.url : process.env.NEXT_PUBLIC_LIVEKIT_URL;
         if (!url) throw new Error("NEXT_PUBLIC_LIVEKIT_URL not set");
 
-        console.log("[LiveKit] Connecting to", url, data.keySet ? `(key set #${data.keySet})` : "");
+        log.debug("Connecting to", url, data.keySet ? `(key set #${data.keySet})` : "");
         await room.connect(url, data.token);
         if (cancelled) return;
 
-        console.log("[LiveKit] Connected! Local participant:", room.localParticipant.identity);
+        log.debug("Connected! Local participant:", room.localParticipant.identity);
         setIsConnected(true);
         setError(null);
 
@@ -343,13 +346,13 @@ export function useRoomConnection(
         // startAudio unmutes every attached element, so the mixer has to re-assert
         // its element state afterwards or each remote voice plays twice.
         room.startAudio().catch((e) => {
-          console.warn("[LiveKit] startAudio failed (will retry on user click):", e);
+          log.warn("startAudio failed (will retry on user click):", e);
         }).finally(() => mixer.syncElements());
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : "Connection failed";
         const reason = (err as Error & { reason?: string }).reason;
-        console.error("[LiveKit] Error:", err);
+        log.error("Error:", err);
         setError(msg);
 
         // all-exhausted = every key is quota-hit, no point retrying
@@ -362,7 +365,7 @@ export function useRoomConnection(
           if (attempt < 3) {
             const retryAfterMs = (err as Error & { retryAfterMs?: number }).retryAfterMs;
             const delay = Math.min(retryAfterMs ?? 5000, 30_000);
-            console.log(`[LiveKit] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/3)...`);
+            log.debug(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/3)...`);
             setTimeout(() => { if (!cancelled) void connect(attempt + 1, false); }, delay);
           }
           return;
@@ -372,7 +375,7 @@ export function useRoomConnection(
         // Retry once (no keyHint needed - server picks a fresh healthy key).
         if (reason === "room-exhausted") {
           if (attempt < 1) {
-            console.log("[LiveKit] Room reassigned to healthy key, retrying...");
+            log.debug("Room reassigned to healthy key, retrying...");
             setTimeout(() => { if (!cancelled) void connect(attempt + 1, false); }, 1000);
           }
           return;
@@ -382,7 +385,7 @@ export function useRoomConnection(
         if (attempt < 3) {
           const tryNextKey = attempt === 0; // first retry uses next key set
           const delay = Math.min(1000 * 2 ** attempt, 8000);
-          console.log(`[LiveKit] Retrying in ${delay}ms (attempt ${attempt + 1}/3)${tryNextKey ? " with next key" : ""}...`);
+          log.debug(`Retrying in ${delay}ms (attempt ${attempt + 1}/3)${tryNextKey ? " with next key" : ""}...`);
           setTimeout(() => { if (!cancelled) void connect(attempt + 1, tryNextKey); }, delay);
         }
       }
@@ -493,7 +496,7 @@ export function useInputDeviceSwitch(
     if (appliedDeviceIdRef.current === captureDeviceId) return;
     appliedDeviceIdRef.current = captureDeviceId;
 
-    console.log("[LiveKit] Switching mic input to device:", captureDeviceId);
+    log.debug("Switching mic input to device:", captureDeviceId);
 
     // If mix is active, re-capture the mic from the new device
     if (mixPubRef.current && mixMicStreamRef.current) {
@@ -538,10 +541,10 @@ export function useInputDeviceSwitch(
               newSource.connect(gain);
             }
             mixMicSourceRef.current = newSource;
-            console.log("[LiveKit] Mix mic switched to new input device");
+            log.debug("Mix mic switched to new input device");
           }
         } catch (err) {
-          console.error("[LiveKit] Error switching mix input device:", err);
+          log.error("Error switching mix input device:", err);
           // The old capture is already gone on the release-first path, and stop() raises
           // no event, so the watchdog is told rather than left waiting for one. The mix
           // can also have been torn down while getUserMedia was pending, and that
@@ -555,7 +558,7 @@ export function useInputDeviceSwitch(
     } else {
       // Normal path: let LiveKit handle it
       void room.switchActiveDevice("audioinput", captureDeviceId).catch((err) => {
-        console.error("[LiveKit] Error switching input device:", err);
+        log.error("Error switching input device:", err);
       });
     }
   }, [captureDeviceId, isConnected]);
@@ -590,7 +593,7 @@ export function useMicModeSwitch(
     // retries when isMicEnabled becomes true again
     prevMicModeRef.current = micMode;
 
-    console.log("[LiveKit] Switching mic mode to:", micMode);
+    log.debug("Switching mic mode to:", micMode);
 
     // Unpublish current mic, then re-enable with new constraints
     void (async () => {
@@ -608,9 +611,9 @@ export function useMicModeSwitch(
           ...toCaptureDefaults(profile),
         };
         await room.localParticipant.setMicrophoneEnabled(true);
-        console.log("[LiveKit] Mic mode switched to", micMode);
+        log.debug("Mic mode switched to", micMode);
       } catch (err) {
-        console.error("[LiveKit] Error switching mic mode:", err);
+        log.error("Error switching mic mode:", err);
       }
     })();
   }, [micMode, isConnected, isMicEnabled, talkingNC, singingNC]);
@@ -657,7 +660,7 @@ export function useNCRepublish(
         };
         await room.localParticipant.setMicrophoneEnabled(true);
       } catch (err) {
-        console.error("[LiveKit] Error updating noise cancellation:", err);
+        log.error("Error updating noise cancellation:", err);
       }
     })();
   }, [talkingNC, singingNC, micMode, isConnected, isMicEnabled]);
@@ -682,11 +685,11 @@ export function useOutputDeviceSwitch(
     // Only switch output if the browser supports it (setSinkId / speaker-selection)
     const supportsOutput = typeof HTMLAudioElement.prototype.setSinkId === "function";
     if (!supportsOutput) {
-      console.log("[LiveKit] Browser does not support audio output selection - skipping");
+      log.debug("Browser does not support audio output selection - skipping");
       return;
     }
 
-    console.log("[LiveKit] Switching audio output to device:", selectedOutputDeviceId);
+    log.debug("Switching audio output to device:", selectedOutputDeviceId);
     void room.switchActiveDevice("audiooutput", selectedOutputDeviceId).catch(() => {
       // Silently ignore - some browsers don't support this
     });

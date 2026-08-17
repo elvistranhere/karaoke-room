@@ -59,6 +59,11 @@
         "noArrayIndexKey": "off",
         // CONTROL_CHARS_RE strips control characters from room names on purpose.
         "noControlCharactersInRegex": "off",
+        // Production users are on this build: the console is theirs, not ours. Every
+        // module logs through `createLogger`/`createPartyLogger`, which gate debug and
+        // info in production and retain nothing. `src/shared/log.ts` is the only file
+        // allowed to reach `console`, in the override below.
+        "noConsole": "error",
         // Every hit is the `forEach((t) => t.stop())` idiom, where the returned value
         // is void and discarding it is the point.
         "useIterableCallbackReturn": "off"
@@ -71,6 +76,12 @@
   // This is that guard: a UI file naming one of these specifiers is the mistake, whether
   // or not the import is currently type-only.
   "overrides": [
+    // The shared logging core. `console` is what it exists to wrap, and nothing else in
+    // `src/` or `party/` may name it, the two wrappers included.
+    {
+      "includes": ["src/shared/log.ts"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
     {
       "includes": ["src/components/**", "src/hooks/**"],
       "linter": {

@@ -35,6 +35,9 @@
 
 import type { EnvReader } from "./env";
 import type { RedisClient } from "./redis";
+import { createSharedLogger } from "./log";
+
+const log = createSharedLogger("KeyRotation");
 
 export interface LiveKitKeySet {
   apiKey: string;
@@ -208,8 +211,8 @@ export async function getKeyForRoom(
     const effectiveKey = await r.get<number>(roomKey);
     if (effectiveKey !== null) {
       if (!keySets[effectiveKey]) {
-        console.error(
-          "[KeyRotation] Redis mapping references missing key index",
+        log.error(
+          "Redis mapping references missing key index",
           { room, currentKey: effectiveKey, configuredKeyCount: keySets.length },
         );
         await r.del(roomKey, fpKey);
@@ -219,8 +222,8 @@ export async function getKeyForRoom(
         const fingerprint = keyFingerprint(keySets[effectiveKey]!.apiKey);
         const storedFingerprint = exhausted ? null : await r.get<string>(fpKey);
         if (storedFingerprint && storedFingerprint !== fingerprint) {
-          console.error(
-            "[KeyRotation] Room mapping resolves to a different LiveKit key on this host - the key variant set must be identical on every host that mints tokens",
+          log.error(
+            "Room mapping resolves to a different LiveKit key on this host - the key variant set must be identical on every host that mints tokens",
             { room, currentKey: effectiveKey, configuredKeyCount: keySets.length },
           );
           await r.del(roomKey, fpKey);
@@ -293,7 +296,7 @@ export async function getKeyForRoom(
     await r.set(fpKey, keyFingerprint(keySets[bestIdx]!.apiKey), { ex: ROOM_KEY_TTL });
     return { keySet: keySets[bestIdx]!, index: bestIdx };
   } catch (err) {
-    console.error("[KeyRotation] Redis error, falling back to hash:", err);
+    log.error("Redis error, falling back to hash:", err);
     const idx = hashRoomToKey(room, keySets.length);
     return { keySet: keySets[idx]!, index: idx };
   }

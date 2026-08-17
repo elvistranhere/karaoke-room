@@ -5,6 +5,9 @@ import { usePartySocket } from "./usePartySocket";
 import { usePartyClock } from "./usePartyClock";
 import { getClientId } from "~/lib/clientId";
 import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "~/types/room";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("RoomState");
 
 interface UseRoomStateParams {
   roomCode: string;
@@ -210,35 +213,38 @@ export function useRoomState({
         handleTimeSyncRef.current(msg.t0, msg.t1);
         break;
       case "name-taken":
-        console.log("[RoomState] Name taken:", msg.name, "suggestions:", msg.suggestions);
+        log.debug("Name taken:", msg.name, "suggestions:", msg.suggestions);
         setNameTaken({ name: msg.name, suggestions: msg.suggestions });
         break;
       case "you-joined":
-        console.log("[RoomState] My peer ID:", msg.peerId);
+        log.debug("My peer ID:", msg.peerId);
         myPeerIdRef.current = msg.peerId;
         setMyPeerId(msg.peerId);
         break;
       case "kicked":
-        console.log("[RoomState] Kicked by:", msg.by);
+        log.debug("Kicked by:", msg.by);
         setKicked(msg.by);
         // Stop the socket, otherwise it reconnects into the ban check forever
         closeSocketRef.current?.();
         break;
       case "auth-required":
-        console.log("[RoomState] Auth required for room");
+        log.debug("Auth required for room");
         setAuthRequired(true);
         setAuthFailed(false);
         break;
       case "auth-failed":
-        console.log("[RoomState] Auth failed");
+        log.debug("Auth failed");
         setAuthFailed(true);
         break;
       case "admin-changed":
-        console.log("[RoomState] Admin changed to:", msg.name);
+        log.debug("Admin changed to:", msg.name);
         setRoomState((prev) => ({ ...prev, adminPeerId: msg.peerId }));
         break;
       case "error":
-        console.error("[RoomState] Server error:", msg.message);
+        // Interpolated, not a detail: `app_error` carries the message and an Error's own
+        // message, so a reason passed as a detail would report every server rejection as
+        // the same empty event. The server's reasons are canned strings with no user data.
+        log.error(`Server error: ${msg.message}`);
         break;
       default:
         break;

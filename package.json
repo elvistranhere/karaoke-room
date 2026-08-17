@@ -33,6 +33,7 @@
     "nanoid": "^5.1.7",
     "next": "^15.2.3",
     "partysocket": "^1.1.16",
+    "posthog-js": "^1.417.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",

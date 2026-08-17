@@ -8,6 +8,9 @@ import { partyOrigin } from "~/lib/apiBase";
 import { validateRoomCode } from "~/lib/room-code";
 import { processEnvReader } from "~/shared/env";
 import { mintLiveKitToken } from "~/shared/livekitToken";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("livekit-token");
 
 // `keyHint=next` writes rotation state shared by every room on that key, and this route
 // reaches the same Redis the worker does, so it owes the same gate `party/token.ts` runs:
@@ -22,7 +25,7 @@ async function roomHasPresence(room: string): Promise<boolean> {
     const state = (await res.json()) as { participants?: number };
     return (state.participants ?? 0) > 0;
   } catch (err) {
-    console.warn("[livekit-token] presence check failed, honouring keyHint:", err);
+    log.warn("presence check failed, honouring keyHint:", err);
     return true;
   }
 }

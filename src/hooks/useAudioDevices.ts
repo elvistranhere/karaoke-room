@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { findBuiltInInputId, isActiveRouteBluetooth, isAndroidDevice } from "~/lib/audioRoutes";
 import { beginAudioCapture, endAudioCapture, hasAudioCaptureOwner } from "~/lib/audioSession";
 import { readPref, writePref } from "~/lib/prefs";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("AudioDevices");
 
 const INPUT_PREF_KEY = "karaoke-input-device";
 const OUTPUT_PREF_KEY = "karaoke-output-device";
@@ -123,7 +126,7 @@ export function useAudioDevices({ armed }: UseAudioDevicesParams): UseAudioDevic
         applyOutput((match ?? outputs[0]!).deviceId);
       }
     } catch (err) {
-      console.error("[AudioDevices] Error:", err);
+      log.error("Error:", err);
     }
     // armed is a dependency so the effect below re-runs the moment the gesture lands:
     // that pass is the one that finally has permission and can read real labels.

@@ -5,6 +5,7 @@ import { Baloo_2, Be_Vietnam_Pro } from "next/font/google";
 import { TRPCReactProvider } from "~/trpc/react";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ServiceWorkerRegistrar } from "~/components/ServiceWorkerRegistrar";
+import { Analytics } from "~/components/Analytics";
 
 const display = Baloo_2({
   subsets: ["latin", "vietnamese"],
@@ -58,6 +59,7 @@ export default function RootLayout({
           <TooltipProvider delay={250}>{children}</TooltipProvider>
         </TRPCReactProvider>
         <ServiceWorkerRegistrar />
+        <Analytics />
       </body>
     </html>
   );

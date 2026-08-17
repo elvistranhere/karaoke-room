@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Users, Music, Lock, Search, Plus, LogIn, Eye, EyeOff } from "lucide-react";
 import { SURFACE_LIFT } from "~/lib/surfaces";
+import { track } from "~/lib/analytics";
+import { writeSessionPref } from "~/lib/prefs";
 
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
@@ -29,14 +31,19 @@ export default function Home() {
 
   const handleCreate = () => {
     const code = generateRoomCode();
+    track("room_created");
+    // Read once by the room view, which is where the join itself is observed. Same
+    // sessionStorage convention as the name, password and listing handoff below, and the
+    // same guarded writer: a browser that blocks storage still gets its room.
+    writeSessionPref(`room-creator-${code}`, "1");
     if (passwordEnabled && roomPassword.trim()) {
-      sessionStorage.setItem(`room-password-${code}`, roomPassword.trim());
+      writeSessionPref(`room-password-${code}`, roomPassword.trim());
     }
     if (roomName.trim()) {
-      sessionStorage.setItem(`room-name-${code}`, roomName.trim());
+      writeSessionPref(`room-name-${code}`, roomName.trim());
     }
     if (showInBrowse) {
-      sessionStorage.setItem(`room-public-${code}`, "1");
+      writeSessionPref(`room-public-${code}`, "1");
     }
     router.push(`/room/${code}`);
   };

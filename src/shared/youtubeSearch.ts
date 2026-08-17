@@ -2,6 +2,9 @@ import { classifyGenre, type Genre } from "../lib/atmosphereGenre";
 import { YOUTUBE_ID_RE, type YouTubeSearchResult } from "../lib/youtube";
 import type { EnvReader } from "./env";
 import { getRedis, type RedisClient } from "./redis";
+import { createSharedLogger } from "./log";
+
+const log = createSharedLogger("YouTubeSearch");
 
 // YouTube Data API v3 lookups, shared by the PartyKit endpoint and the legacy Next
 // route. search.list costs 100 of the 10k daily quota units, so every answer is
@@ -104,7 +107,7 @@ async function claimMissBudget(store: RedisClient | null): Promise<boolean> {
     const used = await store.incr(counterKey);
     if (used === 1) await store.expire(counterKey, QUOTA_COUNTER_TTL_S);
     if (used > DAILY_MISS_BUDGET) {
-      console.warn("[YouTubeSearch] daily search.list budget spent", { used, budget: DAILY_MISS_BUDGET });
+      log.warn("daily search.list budget spent", { used, budget: DAILY_MISS_BUDGET });
       return false;
     }
     return true;

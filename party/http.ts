@@ -1,4 +1,7 @@
 import type * as Party from "partykit/server";
+import { createPartyLogger } from "./log";
+
+const log = createPartyLogger("Party");
 
 // Shared hardening for the worker's HTTP endpoints (token minting, YouTube search).
 // Read what each control actually covers before relying on it:
@@ -73,7 +76,7 @@ export function corsFor(req: Party.Request, env: Record<string, unknown>): CorsD
 
   if (allowlist.length === 0) {
     if (!isDevHost(req)) {
-      console.warn("[Party] PARTY_ALLOWED_ORIGINS is not set - rejecting browser origin", origin);
+      log.warn("PARTY_ALLOWED_ORIGINS is not set - rejecting browser origin", origin);
       return { allowed: false, headers: { "Access-Control-Allow-Origin": origin, Vary: "Origin" } };
     }
     return { allowed: true, headers: { "Access-Control-Allow-Origin": origin, Vary: "Origin" } };

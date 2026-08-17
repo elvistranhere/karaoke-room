@@ -10,6 +10,9 @@ import {
   rateLimited,
   RateLimiter,
 } from "./http";
+import { configurePartyLog, createPartyLogger } from "./log";
+
+const log = createPartyLogger("Token");
 
 // Sized for a full room reconnecting after a network blip, not for one browser tab: ten
 // participants (the LiveKit `maxParticipants`) each run a 3-attempt connect ladder plus a
@@ -42,12 +45,15 @@ export default class TokenEndpoint implements Party.Server {
       return (state.participants ?? 0) > 0;
     } catch (err) {
       // A failure here must not break real failover for a real room.
-      console.warn("[Token] presence check failed, honouring keyHint:", err);
+      log.warn("presence check failed, honouring keyHint:", err);
       return true;
     }
   }
 
   async onRequest(req: Party.Request) {
+    // This party has no onStart, so the request is where PARTY_DEBUG arms the gate for
+    // its own logs and for the src/shared/ modules it calls.
+    configurePartyLog(this.room.env);
     const cors = corsFor(req, this.room.env);
     if (!cors.allowed) return forbiddenOrigin(cors.headers);
     if (req.method === "OPTIONS") return preflightResponse(cors.headers);

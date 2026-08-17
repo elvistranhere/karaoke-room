@@ -16,7 +16,7 @@ npm run build            # Production build
 npm run deploy:party     # Deploy PartyKit server to Cloudflare
 ```
 
-Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`, plus the security-relevant pure functions in `party/http.ts` and `src/lib/apiBase.ts`); there is no component test layer. The include list is `src/**/*.test.ts` and `party/**/*.test.ts`. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
+Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`, the logging gate and analytics privacy helpers in `src/lib/logger.ts` and `src/lib/analytics.ts`, plus the security-relevant pure functions in `party/http.ts` and `src/lib/apiBase.ts`); there is no component test layer. The include list is `src/**/*.test.ts` and `party/**/*.test.ts`. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
 
 ## Playwright E2E
 
@@ -111,6 +111,27 @@ singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
 
 `src/lib/voiceEffects.ts` — Pure Web Audio API, zero dependencies. Each effect returns `{ input, output, cleanup, setWetDry }`. Effects: Hall (feedback delay network), Echo (delay + feedback), Warm/Bright (BiquadFilter EQ), Chorus (LFO-modulated delay).
 
+## Logging
+
+Nothing in `src/` or `party/` may name `console`: biome's `suspicious/noConsole` is an error, and `src/shared/log.ts` is the one file with an override.
+
+- **`src/shared/log.ts`** is the core both runtimes wrap: the levels, the bracket prefix and the console call, plus `createSharedLogger` for the dual-runtime modules under `src/shared/`. It holds no state that outlives a call. That is deliberate: this file is bundled into the Durable Object and the Next server, where a module-level buffer would be one user's data sitting in another user's process.
+- **`src/lib/logger.ts`** - `createLogger("LiveKit")` returns `debug/info/warn/error` and prints the same bracket prefix the app always had (`[LiveKit] ...`), so a namespace is what you grep for. In production `debug` and `info` are dropped unless the debug gate is on; `warn` and `error` always emit. The gate is `karaoke-debug` in localStorage or `?debug` on any URL, which persists (`?debug=0` clears it). A suppressed line is gone, not retained: nothing keeps log details anywhere, because they hold display names, device labels and raw wire frames.
+- **Namespaces are per module family**, not per file: `LiveKit` (all of `src/hooks/livekit/`), `RoomState`, `PartySocket`, `AudioDevices`, `apiBase`, `KeyRotation`, `LiveKitToken`, `YouTubeSearch`, `livekit-token`, `tRPC`.
+- **`party/log.ts`** is the worker's twin, same levels and prefix, gated on the `PARTY_DEBUG` env var. A Durable Object has no `process.env`, so `configurePartyLog(this.room.env)` is what arms the gate: `party/index.ts` calls it in `onStart()`, and `party/token.ts` and `party/search.ts` call it at the top of `onRequest` because they have no `onStart`. It arms the same gate `createSharedLogger` reads, so the `src/shared/` half of the worker's logging obeys `PARTY_DEBUG` too. Parties that only log `warn`/`error` need no call, because those always emit.
+- **`logger.error` is also the error-analytics path**: it feeds `app_error` through the sink `src/lib/analytics.ts` registers, so an error branch needs no analytics call of its own.
+
+## Analytics
+
+PostHog, client only, and a full no-op unless `NEXT_PUBLIC_POSTHOG_KEY` is set: the SDK sits behind a dynamic `import("posthog-js")` that never runs without a key, so dev, CI and the e2e suite never load it. `src/lib/analytics.ts` owns the whole surface: a typed event union, `track(event, props)`, and an anonymous device id in localStorage.
+
+- **The event union is the contract.** Adding an event means a variant in `EventProps` plus a row in `docs/design/ANALYTICS.md`, in the same change. The two `track` overloads make a wrong or missing payload a compile error.
+- **Instrument the existing seam**, the handler that carries the user's intent, and never restructure a component to host an event.
+- **Never sent**: display names, chat content (a length bucket only), video ids/titles, room codes (a salted local marker answers "been here before" and never leaves localStorage), or error stacks. Autocapture, session replay, pageviews and surveys are all off, and Do Not Track is honoured before the SDK is fetched.
+- **The capture flags are not enough on their own.** PostHog attaches `$current_url`, `$pathname`, `$referrer` and their `$initial_*`/`$session_entry_*` copies to every event whatever those flags say, and the room page path *is* the room code (a legacy share link carries the display name too). `POSTHOG_PROPERTY_DENYLIST` plus the `sanitize_properties` hook in `src/lib/analytics.ts` is what stops that, and the hook also drops any URL-valued property whatever a future SDK calls it.
+- **Analytics is never load-bearing**: `track` swallows a throwing vendor, and it is called after the action it reports, never before. Three of the call sites are the audio-recovery taps.
+- **A local write an event needs is gated too**: `analyticsEnabled()` is checked before `markRoomVisited`, so a Do Not Track browser is left with no room history either. `docs/design/ANALYTICS.md` is the full taxonomy and the privacy rules.
+
 ## Patterns
 
 - **Refs over state** for values accessed in callbacks/timeouts to avoid stale closures (`isMicEnabledRef`, `talkingNCRef`, `singingNCRef`, `voiceEffectRef`).
@@ -157,7 +178,7 @@ A third token layer on top of the primitives and the shadcn semantic layer. `src
 - **Props interface above component**: `interface ComponentNameProps { ... }`
 - **File naming**: PascalCase for components (`StageBanner.tsx`), camelCase for hooks/utils (`useLiveKit.ts`, `voiceEffects.ts`)
 - **`"use client"` directive** at top of every component and hook file
-- **Biome is linter-only** (`biome.jsonc`) - the formatter and the import assist are off on purpose, so no rule ever reformats a file. Rules that fight the existing style are disabled with a written reason in the config. TypeScript strict mode (`noUncheckedIndexedAccess`) is still the primary gate.
+- **Biome is linter-only** (`biome.jsonc`) - the formatter and the import assist are off on purpose, so no rule ever reformats a file. Rules that fight the existing style are disabled with a written reason in the config, and `suspicious/noConsole` is on with an override for `src/shared/log.ts` only. TypeScript strict mode (`noUncheckedIndexedAccess`) is still the primary gate.
 
 ## UI Patterns
 
@@ -177,9 +198,9 @@ The room shows a reconnect banner whenever `useRoomState`'s `isConnected` is fal
 
 ## Environment
 
-PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production, comma-separated browser origins allowed to call the HTTP endpoints; a deployed worker with it unset refuses every browser origin, exactly like `REGISTRY_TOKEN`, and local dev hostnames reflect without it), `FEATURE_FLAGS` (optional, comma-separated flag names that arrive in every `RoomState`), plus the LiveKit, Upstash and YouTube vars below, because the token and search endpoints now run on the worker.
+PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production, comma-separated browser origins allowed to call the HTTP endpoints; a deployed worker with it unset refuses every browser origin, exactly like `REGISTRY_TOKEN`, and local dev hostnames reflect without it), `FEATURE_FLAGS` (optional, comma-separated flag names that arrive in every `RoomState`), `PARTY_DEBUG` (optional, `1` or `true` opens the worker's `debug`/`info` logs; `warn`/`error` always reach the Cloudflare tail), plus the LiveKit, Upstash and YouTube vars below, because the token and search endpoints now run on the worker.
 
-Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation and search caching, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`), `YOUTUBE_API_KEY` for in-app YouTube search (Data API v3; without it the video input is paste-only; results are filtered to embeddable videos and cached 24h in Redis because search.list costs 100 of the 10k daily quota units). See `docs/IDEOLOGY.md` for key rotation architecture.
+Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation and search caching, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`), `YOUTUBE_API_KEY` for in-app YouTube search (Data API v3; without it the video input is paste-only; results are filtered to embeddable videos and cached 24h in Redis because search.list costs 100 of the 10k daily quota units), `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` for analytics (no key means the SDK is never loaded and every `track()` is a no-op; the host picks the EU or US region and defaults to US). See `docs/IDEOLOGY.md` for key rotation architecture and `docs/design/ANALYTICS.md` for the event taxonomy.
 
 Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedIndexedAccess`.
 

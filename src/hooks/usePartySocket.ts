@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PartySocket from "partysocket";
 import { partyHost } from "~/lib/apiBase";
 import type { ClientMessage, ServerMessage } from "~/types/room";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("PartySocket");
 
 interface UsePartySocketParams {
   roomCode: string;
@@ -52,7 +55,9 @@ export function usePartySocket({
         const msg = JSON.parse(event.data as string) as ServerMessage;
         onMessageRef.current(msg);
       } catch {
-        console.error("Failed to parse server message:", event.data);
+        // The frame itself stays a detail: it holds chat text, so it may reach the
+        // console but never the error event.
+        log.error("Failed to parse server message", event.data);
       }
     });
 

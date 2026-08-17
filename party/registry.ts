@@ -1,4 +1,7 @@
 import type * as Party from "partykit/server";
+import { createPartyLogger } from "./log";
+
+const log = createPartyLogger("Registry");
 
 interface RoomEntry {
   name: string | null;
@@ -50,7 +53,7 @@ export default class Registry implements Party.Server {
       return req.headers.get("x-registry-token") === token;
     }
     if (DEV_HOSTNAMES.has(url.hostname)) return true;
-    console.warn("[Registry] REGISTRY_TOKEN is not set - rejecting write");
+    log.warn("REGISTRY_TOKEN is not set - rejecting write");
     return false;
   }
 

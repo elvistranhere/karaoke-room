@@ -32,7 +32,8 @@ import { DEFAULT_PERSON_MIX, personMixKey } from "~/lib/volumeModel";
 import { playReactionSound } from "./ReactionBar";
 import { startSilentUnlock, stopSilentUnlock } from "~/lib/silentUnlock";
 import { chatNameColor } from "~/lib/chatColors";
-import { readPref, writePref } from "~/lib/prefs";
+import { readPref, readSessionPref, removeSessionPref, writePref, writeSessionPref } from "~/lib/prefs";
+import { analyticsEnabled, chatLengthBucket, markRoomVisited, track, type TurnEndReason } from "~/lib/analytics";
 import { useAtmosphere } from "~/hooks/useAtmosphere";
 import { DIVIDER } from "~/lib/surfaces";
 import { AuthModal } from "./AuthModal";
@@ -51,6 +52,12 @@ import {
 const API_WAIT_MS = 5000;
 const BT_NOTICE_KEY = "karaoke-bt-notice-dismissed";
 const DEFAULT_TITLE = "Karaoke Now | Sing Together Online";
+
+// Written by the create card on the home page. Same sessionStorage handoff the room name,
+// password and listing choice already use.
+function wasCreatedHere(roomCode: string): boolean {
+  return readSessionPref(`room-creator-${roomCode}`) === "1";
+}
 
 interface RoomViewProps {
   roomCode: string;
@@ -143,21 +150,10 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     // mic is open the probe is redundant anyway, and enumerateDevices reads real labels.
   } = useAudioDevices({ armed: audioUnlocked && !micOnJoinPending });
 
-  const [btNoticeDismissed, setBtNoticeDismissed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return sessionStorage.getItem(BT_NOTICE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [btNoticeDismissed, setBtNoticeDismissed] = useState(() => readSessionPref(BT_NOTICE_KEY) === "1");
   const dismissBtNotice = useCallback(() => {
     setBtNoticeDismissed(true);
-    try {
-      sessionStorage.setItem(BT_NOTICE_KEY, "1");
-    } catch {
-      // storage unavailable, the dismissal still holds for this mount
-    }
+    writeSessionPref(BT_NOTICE_KEY, "1");
   }, []);
 
   const {
@@ -226,6 +222,14 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const isMyTurnForPlayerRef = useRef(isMyTurn);
   isMyTurnForPlayerRef.current = isMyTurn;
+
+  // Turn analytics. The reason is set by whichever local control ended the turn; the
+  // playback flag is the fallback, and is only written while the stage is this client's,
+  // so it still holds the last state of the turn on the render that ends it.
+  const turnStartedAtRef = useRef(0);
+  const turnEndReasonRef = useRef<TurnEndReason | null>(null);
+  const stagePlayingWhileMineRef = useRef(false);
+  if (isMyTurn) stagePlayingWhileMineRef.current = roomState.video?.playing ?? false;
   const songNameRef = useRef(songName);
   songNameRef.current = songName;
 
@@ -304,6 +308,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   const handleTapToHear = useCallback(() => {
     resumeVoicePlayback();
     if (videoRef.current?.playing) playerRef.current?.play();
+    // Reported after the recovery it names, so the report can never be what stops it.
+    track("audio_recover_tapped");
   }, [resumeVoicePlayback, videoRef]);
 
   const {
@@ -357,6 +363,35 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     sendVideoLoad(videoId);
   }, [sendVideoLoad]);
 
+  // Analytics wrappers. Each one sits on the single call site the UI already used, so the
+  // event fires exactly where the user's intent is, never on a server echo of it.
+  const handleJoinQueue = useCallback(() => {
+    track("queue_joined");
+    joinQueue();
+  }, [joinQueue]);
+
+  const handleLeaveQueue = useCallback(() => {
+    if (isMyTurn) turnEndReasonRef.current = "self";
+    leaveQueue();
+  }, [leaveQueue, isMyTurn]);
+
+  const handleFinishSinging = useCallback(() => {
+    turnEndReasonRef.current = "self";
+    finishSinging();
+  }, [finishSinging]);
+
+  const handleReact = useCallback((emoji: string) => {
+    track("reaction_sent", { emoji });
+    sendReaction(emoji);
+  }, [sendReaction]);
+
+  // The bucket only: chat text never leaves the room.
+  const handleSendChat = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (trimmed) track("chat_sent", { length_bucket: chatLengthBucket(trimmed.length) });
+    sendChat(text);
+  }, [sendChat]);
+
   // Forward name-taken rejection to parent so it can show the name modal
   useEffect(() => {
     if (!nameTaken) return;
@@ -397,16 +432,68 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   useEffect(() => {
     if (isMyTurn && !wasMyTurnRef.current) {
       wasMyTurnRef.current = true;
+      turnStartedAtRef.current = Date.now();
+      turnEndReasonRef.current = null;
+      track("turn_started");
       if (micMode === "voice") setMicMode("raw");
     }
     if (!isMyTurn && wasMyTurnRef.current) {
       wasMyTurnRef.current = false;
+      // Only the singer's own client reports the turn, so each turn is counted once.
+      // The reason is inferred from what this client can see: it set the reason itself,
+      // or the server took the stage away. The server disarms its 60s idle timer while
+      // the stage video is playing, so a turn cut short mid-song is an admin skip and an
+      // idle one is that timeout.
+      track("turn_finished", {
+        duration_s: Math.max(0, Math.round((Date.now() - turnStartedAtRef.current) / 1000)),
+        finished_by: turnEndReasonRef.current ?? (stagePlayingWhileMineRef.current ? "skip" : "timeout"),
+      });
+      turnEndReasonRef.current = null;
+      stagePlayingWhileMineRef.current = false;
       setSongName(null);
       // Switch back to talking mode when done singing
       if (micMode === "raw") setMicMode("voice");
     }
     if (!isMyTurn) wasMyTurnRef.current = false;
   }, [isMyTurn, micMode, setMicMode]);
+
+  // Analytics: landing in the roster is the moment the join is real. A locked room sits
+  // on the auth modal until then, and a reconnect keeps the same page session, so this
+  // fires once per visit. The room code is hashed locally to answer "been here before".
+  const hasJoined = myPeerId !== null && roomState.participants.some((p) => p.id === myPeerId);
+  const joinTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!hasJoined || joinTrackedRef.current) return;
+    joinTrackedRef.current = true;
+    // The visit marker is local state this event needs, so it is only written when the
+    // event can actually be sent: a Do Not Track browser leaves with nothing stored.
+    if (!analyticsEnabled()) return;
+    track("room_joined", {
+      role: wasCreatedHere(roomCode) ? "creator" : "joiner",
+      rejoin: markRoomVisited(roomCode),
+    });
+  }, [hasJoined, roomCode]);
+
+  // Two notices worth knowing the reach of: the Bluetooth route warning, and every
+  // surface that tells this device its audio is blocked. Both are latched like the join
+  // above, because both booleans flap: a Bluetooth route change flips one, and the 1s
+  // play retry briefly reaching PLAYING flips the other, so the device already failing to
+  // hold its audio would report the same notice again and again.
+  const btNoticeVisible = bluetoothDetected && !btNoticeDismissed;
+  const btNoticeTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!btNoticeVisible || btNoticeTrackedRef.current) return;
+    btNoticeTrackedRef.current = true;
+    track("bt_notice_shown");
+  }, [btNoticeVisible]);
+
+  const playbackBlockedVisible = audioUnlocked && (voicePlaybackBlocked || (playbackBlocked && !isMyTurn));
+  const playbackBlockedTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!playbackBlockedVisible || playbackBlockedTrackedRef.current) return;
+    playbackBlockedTrackedRef.current = true;
+    track("playback_blocked_shown");
+  }, [playbackBlockedVisible]);
 
   // Send status updates (includes LiveKit identity). isSharingAudio now means
   // "the stage video is playing", which is what suspends the 60s singer timer.
@@ -435,21 +522,21 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   // Auto-submit password from sessionStorage (room creator flow)
   useEffect(() => {
     if (!authRequired || authAutoSubmittedRef.current) return;
-    const stored = sessionStorage.getItem(`room-password-${roomCode}`);
+    const stored = readSessionPref(`room-password-${roomCode}`);
     if (stored) {
       authAutoSubmittedRef.current = true;
       sendAuth(stored);
-      sessionStorage.removeItem(`room-password-${roomCode}`);
+      removeSessionPref(`room-password-${roomCode}`);
     }
   }, [authRequired, roomCode, sendAuth]);
 
   // Set password after joining as room creator
   useEffect(() => {
     if (!isAdmin || authAutoSubmittedRef.current) return;
-    const stored = sessionStorage.getItem(`room-password-${roomCode}`);
+    const stored = readSessionPref(`room-password-${roomCode}`);
     if (stored) {
       sendSetPassword(stored);
-      sessionStorage.removeItem(`room-password-${roomCode}`);
+      removeSessionPref(`room-password-${roomCode}`);
     }
   }, [isAdmin, roomCode, sendSetPassword]);
 
@@ -457,30 +544,22 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
   // so this is a no-op for a room that already knows them.
   useEffect(() => {
     if (!isAdmin) return;
-    const storedName = sessionStorage.getItem(`room-name-${roomCode}`);
+    const storedName = readSessionPref(`room-name-${roomCode}`);
     if (storedName) sendSetRoomName(storedName);
-    const storedPublic = sessionStorage.getItem(`room-public-${roomCode}`);
+    const storedPublic = readSessionPref(`room-public-${roomCode}`);
     if (storedPublic) sendSetPublic(storedPublic === "1");
   }, [isAdmin, roomCode, sendSetRoomName, sendSetPublic]);
 
   // Settings edits win over the create-card values on the next replay
   const handleSetRoomName = useCallback((name: string | null) => {
     sendSetRoomName(name);
-    try {
-      if (name) sessionStorage.setItem(`room-name-${roomCode}`, name);
-      else sessionStorage.removeItem(`room-name-${roomCode}`);
-    } catch {
-      // storage unavailable, the server still has the change
-    }
+    if (name) writeSessionPref(`room-name-${roomCode}`, name);
+    else removeSessionPref(`room-name-${roomCode}`);
   }, [sendSetRoomName, roomCode]);
 
   const handleSetPublic = useCallback((isPublic: boolean) => {
     sendSetPublic(isPublic);
-    try {
-      sessionStorage.setItem(`room-public-${roomCode}`, isPublic ? "1" : "0");
-    } catch {
-      // storage unavailable, the server still has the change
-    }
+    writeSessionPref(`room-public-${roomCode}`, isPublic ? "1" : "0");
   }, [sendSetPublic, roomCode]);
 
   // The join gesture asks for the mic, but LiveKit may still be connecting, so the
@@ -622,8 +701,8 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
           roomState={roomState}
           myPeerId={myPeerId}
           participantStatus={participantStatus}
-          onRequestJoinQueue={joinQueue}
-          onLeaveQueue={leaveQueue}
+          onRequestJoinQueue={handleJoinQueue}
+          onLeaveQueue={handleLeaveQueue}
         />
       ),
     },
@@ -634,11 +713,11 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       content: (
         <ChatPanel
           messages={chatMessages}
-          onSend={sendChat}
+          onSend={handleSendChat}
           myPeerId={myPeerId}
           adminPeerId={roomState.adminPeerId}
           currentSingerId={roomState.currentSingerId}
-          onReact={sendReaction}
+          onReact={handleReact}
         />
       ),
     },
@@ -822,7 +901,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
       {audioUnlocked && micStopped && (
         <button
           type="button"
-          onClick={() => { void restartMic(); }}
+          onClick={() => { void restartMic(); track("mic_restart_tapped"); }}
           className="relative z-10 mx-4 mt-2 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold shadow-[var(--shadow-control)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.99] lg:mx-6"
           style={{
             background: "linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))",
@@ -839,7 +918,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
       {/* Bluetooth route notice - informational, not an error: the page cannot keep
           A2DP alive while a mic is open, so the only fix is a different route */}
-      {bluetoothDetected && !btNoticeDismissed && (
+      {btNoticeVisible && (
         <div
           className="relative z-10 mx-4 mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs lg:mx-6"
           style={{ background: "var(--color-dark-raised)", color: "var(--color-text-secondary)" }}
@@ -874,7 +953,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
               errorCode={playerErrorCode}
               isSinger={isMyTurn}
               showTapToPlay={playbackBlocked && !isMyTurn && !voicePlaybackBlocked}
-              onTapToPlay={() => { resumeMixer(); player.play(); }}
+              onTapToPlay={() => { resumeMixer(); player.play(); track("audio_recover_tapped"); }}
             />
             <VideoProgress player={player} active={roomState.video !== null && playerReady} />
             <div
@@ -895,7 +974,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 getSingerTrack={getSingerTrack}
                 roomState={roomState}
                 isMyTurn={isMyTurn}
-                onFinishSinging={finishSinging}
+                onFinishSinging={handleFinishSinging}
                 audioError={singingError}
                 onSkipSinger={
                   isAdmin && !isMyTurn && roomState.currentSingerId !== null
@@ -909,7 +988,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                 }
                 onAddToQueue={
                   roomState.queue.length === 0 && !isMyTurn
-                    ? joinQueue
+                    ? handleJoinQueue
                     : undefined
                 }
                 onSetSongName={isMyTurn ? setSongName : undefined}

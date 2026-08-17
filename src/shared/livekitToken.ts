@@ -4,6 +4,9 @@ import { validateRoomCode } from "../lib/room-code";
 import type { EnvReader } from "./env";
 import { getKeyForRoom, getKeySets } from "./keyRotation";
 import { getRedis } from "./redis";
+import { createSharedLogger } from "./log";
+
+const log = createSharedLogger("LiveKitToken");
 
 // LiveKit token minting with Redis-backed key rotation, shared by the PartyKit
 // endpoint and the legacy Next route so both answer with identical shapes.
@@ -93,7 +96,7 @@ export async function mintLiveKitToken(req: TokenRequest, env: EnvReader): Promi
       },
     };
   } catch (error) {
-    console.error("Failed to generate LiveKit token:", error);
+    log.error("Failed to generate LiveKit token:", error);
 
     // Check if it's a quota error from JWT signing (unlikely but defensive)
     const isQuota = error instanceof Error &&

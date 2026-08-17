@@ -14,6 +14,9 @@ import {
 import { classifyMicError, MIC_TOGGLE_ERRORS, START_SINGING_ERRORS } from "~/lib/micErrors";
 import { applyNoiseCancellationInPlace, capturesAreExclusive, stopStream } from "~/lib/micCapture";
 import type { LiveKitCtx } from "./context";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("LiveKit");
 
 // The web driver's translation of a profile preset. LiveKit's "music" preset is what
 // the talking profile has always published at, so "voice" maps onto it rather than
@@ -103,13 +106,13 @@ export function useSingingNCHotSwap(
     // Only hot-swap if the singing mix is live
     if (!mixPubRef.current || !mixMicStreamRef.current || !mixCtxRef.current) return;
 
-    console.log("[LiveKit] Hot-swapping NC while singing:", singingNC ? "ON" : "OFF");
+    log.debug("Hot-swapping NC while singing:", singingNC ? "ON" : "OFF");
     const ctx = mixCtxRef.current;
     void (async () => {
       const nc = singingNC;
       // The free swap: no second capture, no gap, and no Bluetooth route flip
       if (await applyNoiseCancellationInPlace(mixMicStreamRef.current, nc)) {
-        console.log("[LiveKit] Mix mic NC applied in place:", nc ? "ON" : "OFF");
+        log.debug("Mix mic NC applied in place:", nc ? "ON" : "OFF");
         return;
       }
       // iOS holds one capture unit per device, and a second getUserMedia mutes the
@@ -145,12 +148,12 @@ export function useSingingNCHotSwap(
           const newSource = ctx.createMediaStreamSource(newStream);
           newSource.connect(chain.input);
           mixMicSourceRef.current = newSource;
-          console.log("[LiveKit] Mix mic re-captured with NC:", nc ? "ON" : "OFF");
+          log.debug("Mix mic re-captured with NC:", nc ? "ON" : "OFF");
         }
         // A mic check borrowing this capture follows the new stream off the state
         // write above, which is the one place every mix-capture change lands.
       } catch (err) {
-        console.error("[LiveKit] Error hot-swapping NC:", err);
+        log.error("Error hot-swapping NC:", err);
         // The old capture is already gone on the release-first path and a stopped track
         // raises no event, so nothing downstream would ever notice the mic is dead.
         // The turn can also have ended while getUserMedia was pending, and its teardown
@@ -253,7 +256,7 @@ export function useCapture(
     // play-and-record has to be the session type before the capture opens, never after
     if (newState) beginAudioCapture("mic");
     try {
-      console.log("[LiveKit] Setting mic enabled:", newState);
+      log.debug("Setting mic enabled:", newState);
 
       // If the mix owns the mic, add/remove it there instead of the LiveKit managed
       // mic. mixOwnsMicRef, not mixPubRef: startSinging claims the mic before its
@@ -291,10 +294,10 @@ export function useCapture(
           mixMicStreamRef.current = stream; setMixMicStreamState(stream);
           effectChainRef.current = chain;
 
-          console.log("[LiveKit] Mic added to mix on the fly");
+          log.debug("Mic added to mix on the fly");
         } else if (!newState && mixMicStreamRef.current) {
           detachMicFromMix();
-          console.log("[LiveKit] Mic removed from mix on the fly");
+          log.debug("Mic removed from mix on the fly");
         }
         setIsMicEnabled(newState);
       } else {
@@ -305,11 +308,11 @@ export function useCapture(
 
       if (!newState) endAudioCapture("mic");
       if (persist) writePref(MIC_ON_PREF_KEY, newState ? "on" : "off");
-      console.log("[LiveKit] Mic is now", newState ? "ON" : "OFF");
+      log.debug("Mic is now", newState ? "ON" : "OFF");
     } catch (err) {
       // The capture never opened, so releasing here cannot pin a live one to playback
       if (newState) endAudioCapture("mic");
-      console.error("[LiveKit] Mic error:", err);
+      log.error("Mic error:", err);
       // A denied permission must not leave the button showing a live mic
       setIsMicEnabled(mixOwnsMicRef.current
         ? mixMicStreamRef.current !== null
@@ -431,7 +434,7 @@ export function useCapture(
     chain.output.connect(micGain);
     effectChainRef.current = chain;
 
-    console.log("[LiveKit] Voice effect switched to:", effect);
+    log.debug("Voice effect switched to:", effect);
   }, []);
 
   const setEffectWetDry = useCallback((wet: number) => {
@@ -498,7 +501,7 @@ export function useCapture(
       const voiceTrack = dest.stream.getAudioTracks()[0];
       if (!voiceTrack) throw new Error("No voice track");
 
-      console.log("[LiveKit] Publishing singer voice track...");
+      log.debug("Publishing singer voice track...");
       const pub = await room.localParticipant.publishTrack(voiceTrack, {
         source: Track.Source.Microphone,
         name: VOICE_TRACK_NAME,
@@ -507,7 +510,7 @@ export function useCapture(
         red: false,
       });
 
-      console.log("[LiveKit] Voice track published!", pub.trackSid);
+      log.debug("Voice track published!", pub.trackSid);
 
       mixPubRef.current = pub;
       // A mute that landed while the pipeline was building only moved the flag
@@ -527,7 +530,7 @@ export function useCapture(
 
       const { kind, message } = classifyMicError(err, START_SINGING_ERRORS);
       // A denial is the user's answer, not a fault worth a stack in the console
-      if (kind !== "denied") console.error("[LiveKit] Singing error:", err);
+      if (kind !== "denied") log.error("Singing error:", err);
       setSingingError(message);
     } finally {
       isSingingInFlightRef.current = false;
@@ -537,7 +540,7 @@ export function useCapture(
   const stopSinging = useCallback(() => {
     const room = roomRef.current;
 
-    console.log("[LiveKit] Stopping singing");
+    log.debug("Stopping singing");
 
     if (mixPubRef.current?.track && room?.localParticipant) {
       void room.localParticipant.unpublishTrack(mixPubRef.current.track);
@@ -561,7 +564,7 @@ export function useCapture(
     if (room && isMicEnabledRef.current) {
       beginAudioCapture("mic");
       void room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
-        console.error("[LiveKit] Error restoring managed mic:", err);
+        log.error("Error restoring managed mic:", err);
       });
     }
   }, [cleanupMix, syncNCToRoom]);

@@ -1,6 +1,9 @@
 import type * as Party from "partykit/server";
 import { clientMessageSchema } from "./types";
 import type { ChatMessage, ClientMessage, ParticipantStatus, RoomState, ServerMessage, VideoState } from "./types";
+import { configurePartyLog, createPartyLogger } from "./log";
+
+const log = createPartyLogger("KaraokeRoom");
 
 interface ParticipantEntry {
   name: string;
@@ -86,6 +89,7 @@ export default class KaraokeRoom implements Party.Server {
 
   // Runs before the first onConnect/onRequest, so a woken DO already knows who it is
   async onStart() {
+    configurePartyLog(this.room.env);
     await this.hydrate();
   }
 
@@ -129,7 +133,7 @@ export default class KaraokeRoom implements Party.Server {
 
   private persist(patch: Record<string, unknown>) {
     void this.room.storage.put(patch).catch((err: unknown) => {
-      console.error(`[KaraokeRoom] Failed to persist ${Object.keys(patch).join(", ")} for ${this.room.id}`, err);
+      log.error(`Failed to persist ${Object.keys(patch).join(", ")} for ${this.room.id}`, err);
     });
   }
 
@@ -174,7 +178,7 @@ export default class KaraokeRoom implements Party.Server {
         }
       }
       for (const id of deadIds) {
-        console.log(`[KaraokeRoom] Heartbeat timeout for ${id} — evicting`);
+        log.debug(`Heartbeat timeout for ${id} — evicting`);
         this.removeParticipant(id);
       }
       // Keepalive: a quiet public room still has to outlive the registry expiry,
@@ -204,7 +208,7 @@ export default class KaraokeRoom implements Party.Server {
       this.singerTimer = setTimeout(() => {
         if (!this.currentSingerId) return;
         // Fire for both disconnected AND idle connected singers
-        console.log(`[KaraokeRoom] Singer ${this.currentSingerId} timed out - advancing queue`);
+        log.debug(`Singer ${this.currentSingerId} timed out - advancing queue`);
         this.currentSingerId = null;
         this.videoState = null;
         this.promoteNextSinger();
@@ -228,7 +232,7 @@ export default class KaraokeRoom implements Party.Server {
   private handleVideoStall() {
     const current = this.videoState;
     if (!current?.playing) return;
-    console.log(`[KaraokeRoom] Singer ${current.singerId} stopped syncing - pausing playback`);
+    log.debug(`Singer ${current.singerId} stopped syncing - pausing playback`);
     // Hold the last reported position rather than advancing it: the singer's player
     // most likely froze there, and resuming re-stamps a fresh time anyway.
     this.videoState = { ...current, playing: false, wallTime: Date.now() };
@@ -261,7 +265,7 @@ export default class KaraokeRoom implements Party.Server {
     // Evict connections that don't join within 30s (extra time for name-taken flow)
     setTimeout(() => {
       if (!this.participants.has(conn.id)) {
-        console.log(`[KaraokeRoom] Connection ${conn.id} never joined - disconnecting`);
+        log.debug(`Connection ${conn.id} never joined - disconnecting`);
         this.lastPong.delete(conn.id);
         try { conn.close(); } catch { /* already closed */ }
       }
@@ -364,7 +368,7 @@ export default class KaraokeRoom implements Party.Server {
   }
 
   onError(conn: Party.Connection, _error: Error) {
-    console.error(`[KaraokeRoom] Connection error for ${conn.id}`);
+    log.error(`Connection error for ${conn.id}`);
     this.pendingAuth.delete(conn.id);
     if (!this.participants.has(conn.id)) {
       this.lastPong.delete(conn.id);
@@ -403,7 +407,7 @@ export default class KaraokeRoom implements Party.Server {
     // If the room is now empty, drop the session state so the DO can be GC'd cleanly.
     // Room identity (name, listing, password, admin, bans) is persisted and deliberately kept.
     if (this.participants.size === 0) {
-      console.log(`[KaraokeRoom] Room ${this.room.id} is empty - resetting session state`);
+      log.debug(`Room ${this.room.id} is empty - resetting session state`);
       this.queue = [];
       this.currentSingerId = null;
       this.videoState = null;

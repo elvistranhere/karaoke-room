@@ -13,6 +13,9 @@ import {
   stopStream,
 } from "~/lib/micCapture";
 import type { LiveKitCtx, MicCheckState } from "./context";
+import { createLogger } from "~/lib/logger";
+
+const log = createLogger("LiveKit");
 
 const MIC_CHECK_GUM_TIMEOUT_MS = 15000;
 const CTX_RESUME_TIMEOUT_MS = 400;
@@ -297,7 +300,7 @@ export function useMicCheck(
       muteRemoteAudio();
       isolateMicCheckFromRoom();
       setMicCheckState("monitoring-talk");
-      console.log("[LiveKit] Talking mic check: live monitoring started");
+      log.debug("Talking mic check: live monitoring started");
 
       // Read the refs, not the captured locals: hot-swaps replace stream and source
       micCheckAbortRef.current = () => {
@@ -315,7 +318,7 @@ export function useMicCheck(
       };
       micCheckInFlightRef.current = false;
     } catch (err) {
-      console.error("[LiveKit] Talking mic check error:", err);
+      log.error("Talking mic check error:", err);
       if (acquired && !acquiredShared && micCheckStreamRef.current !== acquired) stopStream(acquired);
       micCheckInFlightRef.current = false;
       micCheckSharedStreamRef.current = false;
@@ -410,7 +413,7 @@ export function useMicCheck(
       muteRemoteAudio();
       isolateMicCheckFromRoom();
       setMicCheckState("monitoring-sing");
-      console.log("[LiveKit] Singing mic check: live monitoring with effect:", voiceEffectRef.current);
+      log.debug("Singing mic check: live monitoring with effect:", voiceEffectRef.current);
 
       // Read the refs, not the captured locals: hot-swaps replace stream, source, and chain
       micCheckAbortRef.current = () => {
@@ -429,7 +432,7 @@ export function useMicCheck(
       };
       micCheckInFlightRef.current = false;
     } catch (err) {
-      console.error("[LiveKit] Singing mic check error:", err);
+      log.error("Singing mic check error:", err);
       if (acquired && !acquiredShared && micCheckStreamRef.current !== acquired) stopStream(acquired);
       micCheckInFlightRef.current = false;
       micCheckSharedStreamRef.current = false;
@@ -449,7 +452,7 @@ export function useMicCheck(
     const gain = micCheckGainRef.current;
     if (!ctx || !oldSource || !gain) return;
 
-    console.log("[LiveKit] Hot-swapping talking NC during mic check:", talkingNC ? "ON" : "OFF");
+    log.debug("Hot-swapping talking NC during mic check:", talkingNC ? "ON" : "OFF");
     void (async () => {
       const nc = talkingNC;
       // The singing hot-swap owns the capture whenever the check is only borrowing it
@@ -486,9 +489,9 @@ export function useMicCheck(
         newSource.connect(gain);
         micCheckSourceRef.current = newSource;
 
-        console.log("[LiveKit] Talking mic check re-captured with NC:", nc ? "ON" : "OFF");
+        log.debug("Talking mic check re-captured with NC:", nc ? "ON" : "OFF");
       } catch (err) {
-        console.error("[LiveKit] Error hot-swapping talking NC:", err);
+        log.error("Error hot-swapping talking NC:", err);
         // Nothing is left to monitor once the old capture was released, and a dead
         // loopback would keep the room ducked and the mic held.
         if (releaseFirst) stopMicCheck();
@@ -506,7 +509,7 @@ export function useMicCheck(
     const chain = micCheckEffectChainRef.current;
     if (!ctx || !oldSource || !chain) return;
 
-    console.log("[LiveKit] Hot-swapping singing NC during mic check:", singingNC ? "ON" : "OFF");
+    log.debug("Hot-swapping singing NC during mic check:", singingNC ? "ON" : "OFF");
     void (async () => {
       const nc = singingNC;
       // The singing hot-swap owns the capture whenever the check is only borrowing it
@@ -543,9 +546,9 @@ export function useMicCheck(
         newSource.connect(chain.input);
         micCheckSourceRef.current = newSource;
 
-        console.log("[LiveKit] Singing mic check re-captured with NC:", nc ? "ON" : "OFF");
+        log.debug("Singing mic check re-captured with NC:", nc ? "ON" : "OFF");
       } catch (err) {
-        console.error("[LiveKit] Error hot-swapping singing NC:", err);
+        log.error("Error hot-swapping singing NC:", err);
         // Nothing is left to monitor once the old capture was released, and a dead
         // loopback would keep the room ducked and the mic held.
         if (releaseFirst) stopMicCheck();
@@ -574,7 +577,7 @@ export function useMicCheck(
     newChain.setWetDry?.(effectWetDryRef.current);
     micCheckEffectChainRef.current = newChain;
 
-    console.log("[LiveKit] Singing mic check effect swapped to:", voiceEffect);
+    log.debug("Singing mic check effect swapped to:", voiceEffect);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceEffect]);
 

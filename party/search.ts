@@ -10,6 +10,7 @@ import {
   rateLimited,
   RateLimiter,
 } from "./http";
+import { configurePartyLog } from "./log";
 
 // A burst brake only. It is not what protects the YouTube quota and cannot be: 20/min
 // still spends the whole 10k daily budget in an hour, and a single Durable Object's
@@ -29,6 +30,9 @@ export default class SearchEndpoint implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   async onRequest(req: Party.Request) {
+    // This party has no onStart, so the request is where PARTY_DEBUG arms the gate for
+    // its own logs and for the src/shared/ modules it calls.
+    configurePartyLog(this.room.env);
     const cors = corsFor(req, this.room.env);
     if (!cors.allowed) return forbiddenOrigin(cors.headers);
     if (req.method === "OPTIONS") return preflightResponse(cors.headers);
