@@ -1,8 +1,13 @@
-"use client";
-
+import type { Metadata } from "next";
 import { WifiOff } from "lucide-react";
 import { buttonVariants } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
+
+export const metadata: Metadata = {
+  title: "You are offline",
+  description: "Karaoke Now needs a connection. Reconnect and the room is still there.",
+  robots: { index: false, follow: false },
+};
 
 export default function OfflinePage() {
   return (

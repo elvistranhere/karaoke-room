@@ -11,6 +11,7 @@
     "dev:all": "npx partykit dev --port 1999 & next dev --turbo",
     "e2e": "playwright test",
     "lint": "biome lint .",
+    "og": "node scripts/generate-og.mjs",
     "deploy:party": "npx partykit deploy",
     "preview": "next build && next start",
     "start": "next start",

@@ -82,6 +82,13 @@
       "includes": ["src/shared/log.ts"],
       "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
     },
+    // The landing page's JSON-LD block. A `<script type="application/ld+json">` needs raw
+    // text and React escapes string children, so this is the only way to emit it; the
+    // payload is a module-level literal with no user input in it.
+    {
+      "includes": ["src/app/page.tsx"],
+      "linter": { "rules": { "security": { "noDangerouslySetInnerHtml": "off" } } }
+    },
     {
       "includes": ["src/components/**", "src/hooks/**"],
       "linter": {

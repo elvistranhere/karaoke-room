@@ -6,6 +6,9 @@ import { TRPCReactProvider } from "~/trpc/react";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ServiceWorkerRegistrar } from "~/components/ServiceWorkerRegistrar";
 import { Analytics } from "~/components/Analytics";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL, socialMetadata } from "~/lib/seo";
+
+const DEFAULT_TITLE = "Online Karaoke Rooms - Sing Together with Friends, Free";
 
 const display = Baloo_2({
   subsets: ["latin", "vietnamese"],
@@ -21,9 +24,24 @@ const body = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "Karaoke Now | Sing Together Online",
-  description:
-    "Real-time online karaoke rooms. Join with a code, put a YouTube video on stage, and sing with friends.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: DEFAULT_TITLE,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    "online karaoke",
+    "karaoke with friends",
+    "karaoke room",
+    "sing together online",
+    "youtube karaoke",
+    "free karaoke",
+    "virtual karaoke party",
+    "karaoke no signup",
+  ],
+  category: "entertainment",
   icons: [
     { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
     { rel: "apple-touch-icon", url: "/apple-touch-icon.png" },
@@ -33,6 +51,9 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Karaoke",
   },
+  // No `path`: an inherited og:url would make every route without its own
+  // openGraph block claim to be the homepage.
+  ...socialMetadata({ title: DEFAULT_TITLE, description: SITE_DESCRIPTION }),
 };
 
 export const viewport: Viewport = {
