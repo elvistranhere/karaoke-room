@@ -60,7 +60,7 @@ Comments in code only for non-obvious invariants the code cannot express, capped
 
 ## Architecture
 
-**Karaoke Now** (prod: `https://www.karaokenow.co`; also served at `https://karaokenow.vietbrosinaus.com` and `https://karaoke-room.vercel.app`, with apex `karaokenow.co` redirecting to www) is a real-time karaoke room app. Three systems work together:
+**Karaoke Now** (prod: `https://www.karaokenow.co`, the single canonical origin; `karaokenow.co`, `karaokenow.vietbrosinaus.com` and `karaoke-room.vercel.app` all 308-redirect to it, paths and queries preserved) is a real-time karaoke room app. Three systems work together:
 
 1. **PartyKit** (`party/`) - Cloudflare Durable Objects for room state (participants, queue, chat, playback). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
 
@@ -215,7 +215,7 @@ Working consequence: a long-lived tab or installed PWA serves the previous shell
 
 ## Environment
 
-PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production; must include every browser origin the app serves: `https://www.karaokenow.co`, `https://karaokenow.co`, `https://karaokenow.vietbrosinaus.com` and `https://karaoke-room.vercel.app`), `FEATURE_FLAGS` (optional), `PARTY_DEBUG` (optional), plus the LiveKit, Upstash and YouTube vars because the token and search endpoints run on the worker.
+PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production; `https://www.karaokenow.co` is the only origin that executes the app since every other domain 308-redirects to it, but the legacy origins stay listed as harmless belt-and-braces), `FEATURE_FLAGS` (optional), `PARTY_DEBUG` (optional), plus the LiveKit, Upstash and YouTube vars because the token and search endpoints run on the worker.
 
 Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults `localhost:1999`), `UPSTASH_REDIS_REST_URL`/`_TOKEN`, `LIVEKIT_API_KEY_N` (auto-discovered to `_20`), `YOUTUBE_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`/`NEXT_PUBLIC_POSTHOG_HOST`. See `docs/IDEOLOGY.md` for key rotation and `docs/design/ANALYTICS.md` for the taxonomy.
 
