@@ -1,3 +1,5 @@
+> **DECISION (Elvis, 2026-08-18): the name stays Karaoke Now.** The shortlist below is kept as a record. The keep-the-name path in section 4 is the operative guidance; `com.karaokenow.app` stays as the bundle ID and is no longer a concern since name and ID now agree.
+
 # Branding and Naming: a decision document
 
 **Status:** proposal. Nothing here is decided. Every recommendation is argued so Elvis can disagree with the argument rather than the conclusion.
