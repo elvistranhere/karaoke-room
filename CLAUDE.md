@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The common practice for every change, shaped by how this repo is actually operated:
 
-- **Ship to main directly.** No feature branches, no PRs. Prod deploys from main automatically (see Deployment). The tradeoff is discipline before the push, not process after it.
+- **Who ships how.** Main is protected: 1 approval, Vercel CI, conversations resolved. Elvis (owner) bypasses and ships to main directly, and sessions working under his direct instruction do the same; that privilege is his, not a convention. Everyone else works on a feature branch and opens a PR through the review gauntlet (`gh pr create`, address bot and human review, merge when clean). Either path pays the same discipline: the gates below run before a push or a merge, never after.
+- **Prod deploys from main automatically** (see Deployment), so whatever lands on main is live minutes later. Treat a merge like a release.
 - **Gates before every push**, no exceptions: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run e2e` when anything the suite touches changed (room flow, audio, sync, protocol, endpoints). `npm run build` when routing, config, or the service worker changed. A push with a known-red gate is never acceptable; a typecheck error that reaches main gets fixed in the next commit within minutes, not batched.
 - **Commit style**: exactly one line, no `Co-Authored-By`, no em dashes. The commit says what changed; the reasoning lives in this file, the docs, or the code's own invariants.
 - **Stage surgically.** Multiple agents or workstreams often have uncommitted work in this tree at once. `git add <specific files>` for your change; `git add -A` only when you have verified every modified file is yours. Sweeping another stream's half-finished work into your commit has broken main before.
