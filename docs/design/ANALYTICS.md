@@ -174,3 +174,8 @@ module holds a namespaced logger and the bracket prefix is unchanged: `[LiveKit]
   user and every room.
 - `logger.error` also feeds `app_error` through the sink analytics registers at init, which
   is why an error path needs no analytics call of its own.
+
+
+## Verifying delivery
+
+posthog-js silently drops events from automated browsers (`navigator.webdriver`, HeadlessChrome brands) unless `opt_out_useragent_filter` is set, and we keep the filter ON so QA bots never pollute product data. Consequence: a Playwright session proves init (the `config.js` fetch) but can never prove capture. To verify delivery end to end, send a probe through the capture API instead (`POST https://us.i.posthog.com/i/v0/e/` with the project key) and read it back with a HogQL query through the management API.
