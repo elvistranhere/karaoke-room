@@ -232,6 +232,7 @@ Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedInd
 - `concurrency: partykit-deploy` with `cancel-in-progress: false` keeps two merges from deploying out of order.
 - **`VERCEL_DEPLOY_HOOK_URL` secret** (optional, GitHub Actions): chains a Vercel redeploy after the PartyKit health check; when absent the workflow logs and skips.
 - Watch a deploy with `gh api repos/vietbrosinaus/karaoke-room/commits/<sha>/status --jq .state`.
+- **Annotate meaningful deploys in PostHog** so graph spikes correlate to releases: `curl -s -X POST https://us.posthog.com/api/projects/563535/annotations/ -H "Authorization: Bearer $POSTHOG_PERSONAL_API_KEY" -H "Content-Type: application/json" -d '{"content":"<one line>","scope":"project"}'` (the key lives in `.env`, gitignored). Dashboards: Product Pulse and Audio Health, both API-managed; add insights through the API so they stay reproducible.
 
 ## Review and Audit Patterns
 
