@@ -2,253 +2,267 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## How We Work
+
+The common practice for every change, shaped by how this repo is actually operated:
+
+- **Ship to main directly.** No feature branches, no PRs. Prod deploys from main automatically (see Deployment). The tradeoff is discipline before the push, not process after it.
+- **Gates before every push**, no exceptions: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run e2e` when anything the suite touches changed (room flow, audio, sync, protocol, endpoints). `npm run build` when routing, config, or the service worker changed. A push with a known-red gate is never acceptable; a typecheck error that reaches main gets fixed in the next commit within minutes, not batched.
+- **Commit style**: exactly one line, no `Co-Authored-By`, no em dashes. The commit says what changed; the reasoning lives in this file, the docs, or the code's own invariants.
+- **Stage surgically.** Multiple agents or workstreams often have uncommitted work in this tree at once. `git add <specific files>` for your change; `git add -A` only when you have verified every modified file is yours. Sweeping another stream's half-finished work into your commit has broken main before.
+- **Substantive changes run the pipeline**: implement, then two adversarial reviewers with different lenses (see Review Pattern), then a fix pass, then the orchestrator runs the gates independently before committing. The reviewers exist to find real breakage and they regularly do; "the implementer said it works" is not a gate.
+- **Verify on prod, not in theory.** After a user-visible change deploys, join a fresh room on prod with a throwaway Playwright script (repo devDependency; launch Chromium with the fake-media flags from `playwright.config.ts`) and look at the result. Never test in a room a human is using; make a new room code.
+- **Bug reports from a phone or a long-lived tab may predate the latest deploy.** The service worker serves the cached shell until a refresh, so before diagnosing "still broken", check whether the report shows the current build (hard refresh, or kill the installed PWA from the app switcher).
+- **When a claim can be measured, measure it.** Pixel-diff screenshots with paint layers toggled to attribute a rendering artifact; read the wire or a Playwright trace to attribute a race; list LiveKit rooms server-side to check for leaks. The console is not on the YouTube iframe's side: use DevTools' frame selector to see inside it manually, but never build logic on it.
+- **Never override an explicit user choice.** This is both a product rule (see Product Principles) and a code-review lens: recovery paths, auto-switches and defaults must all yield to a real human decision (an explicit device pick, an explicit mute).
+
+## Product Principles
+
+- **Discord is the reference product.** One consistent experience across web, desktop and mobile; per-user local audio control; floating menus over inline expansion; status glyphs on the roster. When designing anything cross-platform or audio, check how Discord does it first.
+- **Listening is local, per user.** No participant may change another participant's audio state, ever. The wire carries no message that mutes, unmutes or sets the gain of anyone else. The singer controls shared playback only; the admin allowlist is kick, transfer admin, skip singer, remove from queue, room settings. Anything outside that allowlist that affects another user is a bug.
+- **One volume per person, no role states.** A person has `{volume, muted}` applied identically whether they talk or sing.
+- **Decided once, propagated everywhere.** A behavior decision (capture profile, gain math, sync policy, error copy) lives in exactly one pure module with tests; platform code only translates it. Anything decided twice is a bug. See `docs/design/AUDIO-ARCHITECTURE.md` for the layer map.
+- **Audio experience is the priority.** UI is in a good state; the lasting differentiator is that the room sounds right on every platform. `docs/qa/AUDIO-QUIRKS-AUDIT.md` tracks the known platform quirks and their fix status; `docs/qa/AUDIO-TEST-MATRIX.md` is the release test sheet (run the 10-minute smoke subset before meaningful releases).
+- **Privacy is enforced, not promised.** The analytics taxonomy in `docs/design/ANALYTICS.md` names everything sent; names, chat content, video ids/titles, room codes and stacks never leave the device, and tests plus a sanitizer hold that line.
+
 ## Commands
 
 ```bash
-npm run dev:all          # Next.js (3000) + PartyKit (1999) — use this for local dev
+npm run dev:all          # Next.js (3000) + PartyKit (1999) - use this for local dev
 npm run dev              # Next.js only
 npm run dev:party        # PartyKit only
 npm run lint             # biome lint . (linter only, formatter disabled)
 npm run typecheck        # tsc --noEmit
-npm run test             # vitest run (pure-function tests under src/**/*.test.ts)
+npm run test             # vitest run (pure-function tests under src/ and party/)
 npm run e2e              # playwright test (two-client browser suite under e2e/)
 npm run build            # Production build
 npm run deploy:party     # Deploy PartyKit server to Cloudflare
 ```
 
-Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/shared/protocol.ts`, the logging gate and analytics privacy helpers in `src/lib/logger.ts` and `src/lib/analytics.ts`, plus the security-relevant pure functions in `party/http.ts` and `src/lib/apiBase.ts`); there is no component test layer. The include list is `src/**/*.test.ts` and `party/**/*.test.ts`. Verify changes with `npm run lint`, `npm run typecheck` and `npm run test`, plus `npm run build` when routing, config, or the service worker changed.
+Vitest covers the pure models only (`src/lib/syncMath.ts`, `src/lib/volumeModel.ts`, `src/lib/audioProfile.ts`, `src/lib/audioRoutes.ts`, `src/lib/micErrors.ts`, `src/shared/protocol.ts`, the logging gate and analytics privacy helpers in `src/lib/logger.ts` and `src/lib/analytics.ts`, plus the security-relevant pure functions in `party/http.ts` and `src/lib/apiBase.ts`); there is no component test layer. On this machine the default e2e ports may be taken by stray servers: `E2E_NEXT_PORT=3200 E2E_PARTY_PORT=1997 npm run e2e` is the reliable invocation.
 
 ## Playwright E2E
 
 `e2e/` drives real browser contexts, one per participant, against the local Next.js and PartyKit servers that `playwright.config.ts` starts for the run. Chromium launches with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --autoplay-policy=no-user-gesture-required`, so `getUserMedia` resolves without a prompt and LiveKit gets a real track.
 
-- **One-time setup: `npx playwright install chromium`.** The project pins `channel: "chromium"`, so a fresh clone or CI runner fails at launch with "Chromium distribution 'chromium' is not found" until the browser is downloaded. `npm ci` does not do it.
-- **`NEXT_PUBLIC_PARTY_HOST` is pinned to `localhost:1999` in the webServer env**, so a `.env` pointing at the deployed PartyKit cannot silently take the room off the server under test. Override the ports with `E2E_NEXT_PORT` and `E2E_PARTY_PORT` when 3000 or 1999 is already taken by something other than this app; `reuseExistingServer` is on outside CI, so a stray server on either port would be used as-is.
-- **YouTube never loads.** `e2e/fixtures/youtubeStub.ts` answers `https://www.youtube.com/iframe_api` with a wall-clock implementation of the `YT.Player` surface that `useYouTubePlayer` and `useVideoSync` drive, and exposes it as `window.__ytStub` so a test can read the exact playback position. Thumbnails and the genre lookup are stubbed to the empty answers both call sites already handle. The suite asserts the sync protocol and its UI, never pixels of a real embed.
-- **No arbitrary sleeps.** Every wait is `expect` polling on a real condition: an attribute on the entry overlay, a rendered participant row, or a player position.
-
-## Git
-
-Do NOT include `Co-Authored-By` lines in commit messages.
+- **One-time setup: `npx playwright install chromium`.** The project pins `channel: "chromium"`, so a fresh clone or CI runner fails at launch until the browser is downloaded. `npm ci` does not do it.
+- **`NEXT_PUBLIC_PARTY_HOST` is pinned to `localhost:1999` in the webServer env**, so a `.env` pointing at the deployed PartyKit cannot silently take the room off the server under test. `reuseExistingServer` is on outside CI, so a stray server on either port would be used as-is: prefer the port overrides above.
+- **YouTube never loads.** `e2e/fixtures/youtubeStub.ts` answers `https://www.youtube.com/iframe_api` with a wall-clock implementation of the `YT.Player` surface that `useYouTubePlayer` and `useVideoSync` drive, and exposes it as `window.__ytStub` so a test can read the exact playback position. The suite asserts the sync protocol and its UI, never pixels of a real embed.
+- **No arbitrary sleeps.** Every wait is `expect` polling on a real condition.
+- **`getByRole` name matching is substring by default.** "Mute microphone" matches "Unmute microphone". Any locator whose accessible name is a substring of a sibling state must pass `exact: true`; this has produced a green-looking test that clicked the opposite button.
 
 ## Writing
 
-Never use em dashes (—). Use regular dashes (-) or rewrite the sentence.
+Never use em dashes. Use regular dashes (-) or rewrite the sentence. This applies to code, UI copy, commit messages, docs and PR text.
+
+Comments in code only for non-obvious invariants the code cannot express, capped at 1-2 lines. Never comments that narrate the next line, cite where code came from, or argue the change is correct.
 
 ## Architecture
 
-**Karaoke Now** is a real-time karaoke room app. Three systems work together:
+**Karaoke Now** (prod: `https://www.karaokenow.co`; also served at `https://karaokenow.vietbrosinaus.com` and `https://karaoke-room.vercel.app`, with apex `karaokenow.co` redirecting to www) is a real-time karaoke room app. Three systems work together:
 
-1. **PartyKit** (`party/`) — Cloudflare Durable Objects for room state (participants, queue, chat, playback). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
+1. **PartyKit** (`party/`) - Cloudflare Durable Objects for room state (participants, queue, chat, playback). The server in `party/index.ts` is a state machine with heartbeat-based cleanup (15s ping, 40s evict, 60s singer timeout).
 
 2. **LiveKit** - SFU for WebRTC audio transport. Voice only: the singer publishes their mic through the voice effect chain as one track. Music never crosses LiveKit.
 
-3. **Next.js 15** (App Router) — UI. The two backend endpoints moved to the worker (below); the `/api` routes are legacy passthroughs for cached shells.
+3. **Next.js 15** (App Router) - UI. The two backend endpoints moved to the worker (below); the `/api` routes are legacy passthroughs for cached shells.
 
 ### Backend Endpoints on the Worker
 
 Token minting and YouTube search run as two PartyKit parties, `party/token.ts` (`/parties/token/<ROOMCODE>`) and `party/search.ts` (`/parties/search/global`), so a client with no browser origin (React Native, a bundled Capacitor shell) can reach them. Both call the same code as the Next routes: `src/shared/livekitToken.ts` and `src/shared/youtubeSearch.ts`, with the runtime's env passed in as an `EnvReader` (`src/shared/env.ts`) because a worker's `process.env` is empty.
 
-- **The token party is sharded by room code, search is not.** A party room is one Durable Object in one colo, so pinning the join path to `global` would serialize every token mint worldwide through one instance. Sharding also makes the room the rate-limit and presence scope, and the endpoint 400s when the `room` query param disagrees with the party id. Search stays on `global` deliberately: it is hand-typed, so its rate is orders of magnitude lower, and one instance is what makes a per-IP brake mean anything. That single instance is a throughput ceiling; move it to a shard key if search ever lands on a hot path.
-- **The Next routes stay, and they are a live fallback, not dead weight.** `src/app/api/livekit-token/route.ts` and `src/app/api/youtube-search/route.ts` are marked legacy and are thin wrappers over the same shared functions. PartyKit deploys before Vercel, so a shell cached before the switch keeps calling `/api` until it refreshes; and `fetchLiveKitToken`/`fetchYouTubeSearch` retry against the same-origin `/api` path when the worker answers 403 or cannot be reached, which is what keeps voice alive on a Vercel preview whose per-deployment origin no static allowlist can enumerate. Delete them only after both of those stop mattering.
-- **`src/lib/apiBase.ts` is the client's only URL builder** for our backend: it resolves the same `NEXT_PUBLIC_PARTY_HOST` the socket uses and hands back `partyHost()`, `partyOrigin()`, `livekitTokenUrl()`, `youtubeSearchUrl()` and the two fetchers above.
-- **`party/http.ts` holds the two transport controls, and neither one is a general gate.** The `PARTY_ALLOWED_ORIGINS` allowlist decides whether a *browser* may read the response, and nothing else: a request with no `Origin` (native client, `<img src>`, `<script src>`, a top-level navigation) is not gated by it at all, so it stops cross-origin credential theft and no other attack. It fails closed the way `party/registry.ts` does - on a deployed host with the var unset a browser origin is refused rather than reflected - reflects only for local dev hostnames, normalizes case and trailing slashes so a config typo cannot black-hole the app, and accepts one `https://*.vercel.app`-shaped wildcard for preview origins. The fixed-window rate limit (429 with `reason: "rate-limited"`, 120/min per IP per room for tokens, 20/min for search) is therefore the only control on origin-less traffic, and it is keyed on `CF-Connecting-IP` alone: `X-Forwarded-For` is caller-supplied, so a deployed worker without the edge header buckets everything as `untrusted` and `partykit dev` does not limit at all.
-- **Anything that has to hold against a determined caller carries its own budget in Redis.** The YouTube daily `search.list` miss counter (`yt-quota:<date>`, 80 misses of the 10k unit budget, then the existing empty fail-soft) and the LiveKit key rotation state both live in `src/shared/`, because an in-memory per-instance counter can see neither the other instances nor the other IPs.
-- **`keyHint=next` is a report, not an assertion.** It writes `key:N:report_rooms`, and three distinct rooms reporting mark a key exhausted for every room on it. Room codes are free to invent, so `party/token.ts` only forwards the hint when the main party for that exact room id reports live participants, and the legacy `/api/livekit-token` route runs the same gate over HTTP because it reaches the same Redis. The client never sends it in response to a `rate-limited` 429 either: `src/hooks/livekit/connection.ts` backs off on `Retry-After` instead.
+- **The token party is sharded by room code, search is not.** A party room is one Durable Object in one colo, so pinning the join path to `global` would serialize every token mint worldwide through one instance. Sharding also makes the room the rate-limit and presence scope, and the endpoint 400s when the `room` query param disagrees with the party id. Search stays on `global` deliberately: it is hand-typed, so its rate is orders of magnitude lower, and one instance is what makes a per-IP brake mean anything.
+- **The Next routes stay, and they are a live fallback, not dead weight.** `src/app/api/livekit-token/route.ts` and `src/app/api/youtube-search/route.ts` are marked legacy and are thin wrappers over the same shared functions. `fetchLiveKitToken`/`fetchYouTubeSearch` retry against the same-origin `/api` path when the worker answers 403 or cannot be reached, which is what keeps voice alive on a Vercel preview whose per-deployment origin no static allowlist can enumerate.
+- **`src/lib/apiBase.ts` is the client's only URL builder** for our backend: `partyHost()`, `partyOrigin()`, `livekitTokenUrl()`, `youtubeSearchUrl()` and the two fetchers.
+- **`party/http.ts` holds the two transport controls, and neither one is a general gate.** The `PARTY_ALLOWED_ORIGINS` allowlist decides whether a *browser* may read the response, and nothing else: a request with no `Origin` is not gated by it at all. It fails closed on a deployed host with the var unset, reflects only for local dev hostnames, normalizes case and trailing slashes, and accepts one `https://*.vercel.app`-shaped wildcard. The fixed-window rate limit (429 with `reason: "rate-limited"`, 120/min per IP per room for tokens, 20/min for search) is keyed on `CF-Connecting-IP` alone; `partykit dev` does not limit at all.
+- **Anything that has to hold against a determined caller carries its own budget in Redis.** The YouTube daily `search.list` miss counter and the LiveKit key rotation state both live in `src/shared/`, because an in-memory per-instance counter can see neither the other instances nor the other IPs.
+- **`keyHint=next` is a report, not an assertion.** Three distinct rooms reporting mark a key exhausted for every room on it, so `party/token.ts` only forwards the hint when the main party for that exact room id reports live participants. The client never sends it in response to a `rate-limited` 429 either: `src/hooks/livekit/connection.ts` backs off on `Retry-After` instead.
 
 ### Voice Pipeline (Critical Path)
 
 The singer's audio pipeline in `src/hooks/livekit/capture.ts`:
 ```
-getUserMedia (mic) → Voice Effect Chain → Mic GainNode
-                                              ↓
+getUserMedia (mic) -> Voice Effect Chain -> Mic GainNode
+                                              |
                                   AudioContext.destination
-                                              ↓
+                                              |
                                   publishTrack (LiveKit, Track.Source.Microphone)
 ```
-`startSinging` runs automatically when the turn starts and `stopSinging` when it ends. All three of `startSinging`, `stopSinging` and `cleanupMix` live in `src/hooks/livekit/capture.ts`, and changes to them require careful review.
+`startSinging` runs automatically when the turn starts and `stopSinging` when it ends. All three of `startSinging`, `stopSinging` and `cleanupMix` live in `src/hooks/livekit/capture.ts`, and changes to them require careful review with the audio-path lens: list every changed line and justify each.
+
+Hard-won invariants in this path:
+- **Taking the stage never overrides an explicit mute.** The pipeline builds either way; a muted singer stays silent until they unmute themselves.
+- **Mic requests queue, they do not drop.** `applyMicState` coalesces a request that lands mid-flight into a pending slot; dropping it once let a mute click vanish under the join auto-unmute.
+- **Controls carry explicit intent.** The toolbar mic button passes the target state its label promised (`toggleMic(!isMicEnabled)`), never a bare toggle off a possibly-stale ref.
+- **One capture per turn.** iOS permanently mutes the first `getUserMedia` when a second opens, so the turn boundary releases the managed mic before the singing capture opens, hot-swaps prefer in-place `applyConstraints` (verified against `getSettings()`), the mic check borrows the live singing stream, and the device probe never runs under a live capture (`hasAudioCaptureOwner()` in `src/lib/audioSession.ts` is the arbiter).
+- **The capture profile is decided once**: `resolveCaptureProfile` in `src/lib/audioProfile.ts` is the only place channels, sample rate, NC choice, preset and dtx are chosen. Web adapters translate it; nothing re-decides it.
 
 ### Synced YouTube Playback (Critical Path)
 
 Every client runs its own YouTube IFrame player. The singer is the clock authority:
 
 ```
-singer player → video-sync {playing, videoTime} → PartyKit (stamps wallTime)
-                                                        ↓
-                                   video-state {video, serverTime} → every client
-                                                        ↓
+singer player -> video-sync {playing, videoTime} -> PartyKit (stamps wallTime)
+                                                        |
+                                   video-state {video, serverTime} -> every client
+                                                        |
         target = videoTime + (estimatedServerNow - wallTime)/1000 - offsetSec
-        drift  = target - player.getCurrentTime()  →  rate nudge or seek
+        drift  = target - position  ->  rate nudge or seek
 ```
 
 - `usePartyClock` estimates `serverOffset` from dedicated `time-sync` round trips. Never fold this into the ping/pong heartbeat: the server evicts on stale pongs.
-- `useVideoSync` runs one ~300ms interval over refs only, so drift correction never re-renders the player.
+- `useVideoSync` runs one ~300ms interval over refs only, so drift correction never re-renders the player, with a cancellation flag gating every post-await side effect.
+- **`YouTubePlayerHandle` getters are async and `getTime()` returns `{seconds, readAt}`.** The sample carries its own timestamp so a future native bridge's round trip cannot bias the drift math; the drift loop anchors the server clock to `readAt`, never to "now after the await".
 - `video-state` is a point broadcast, not `broadcastState()`, because it fires every ~2s.
 - The player is created inside the AudioUnlockOverlay click, the only guaranteed user gesture per client, and is never unmounted afterwards.
 - No user may touch the YouTube surface: `VideoStage` stacks a transparent blocker above the iframe, marks the player container `inert` (plus `tabindex=-1` on the frame for Safari), and the embed runs with `controls: 0, disablekb: 1`.
+- **What YouTube will not give us**: no audio access (music energy and full-mix recording are impossible), no ad/stream-limit signals (error classification is best-effort), decode position rather than speaker position (a sync floor no tuning breaks). Design around these, do not fight them.
 
 ### Protocol Single Source
 
-`src/shared/protocol.ts` is the only place the wire protocol is declared: every `ClientMessage`/`ServerMessage` variant and `RoomState`/`VideoState`/`ParticipantStatus`/`ChatMessage` is a Zod schema with the TypeScript type inferred from it. `party/types.ts` and `src/types/room.ts` are thin re-exports and **must never declare a type of their own**. The server imports the schemas by relative path (`../src/shared/protocol`), which partykit's bundler resolves; the client goes through `~/shared/protocol`.
+`src/shared/protocol.ts` is the only place the wire protocol is declared: every `ClientMessage`/`ServerMessage` variant and `RoomState`/`VideoState`/`ParticipantStatus`/`ChatMessage` is a Zod schema with the TypeScript type inferred from it. `party/types.ts` and `src/types/room.ts` are thin re-exports and **must never declare a type of their own**. The server imports the schemas by relative path (`../src/shared/protocol`); the client goes through `~/shared/protocol`.
 
-`onMessage` runs every inbound message through `clientMessageSchema.safeParse` and answers a failure with the `Unknown message type` error reply, so handlers only ever see well-shaped payloads. The schemas stay structural: length caps, the emoji allowlist and the YouTube id check stay in the handlers, where each has its own error reply.
+`onMessage` runs every inbound message through `clientMessageSchema.safeParse` and answers a failure with the `Unknown message type` error reply, so handlers only ever see well-shaped payloads. The schemas stay structural: length caps, the emoji allowlist and the YouTube id check stay in the handlers.
+
+Adding a message: (1) variant in `src/shared/protocol.ts`, (2) handler in `party/index.ts`, (3) case in `src/hooks/useRoomState.ts`, (4) wire in `RoomView.tsx`.
 
 ## Key Hooks
 
-- **`useRoomState`** — PartyKit WebSocket, room state, chat, reactions. Returns `send()` for raw messages.
-- **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check (live loopback). The most complex hook, and the only one that is split: `src/hooks/useLiveKit.ts` is a ~115-line facade that composes four modules under `src/hooks/livekit/`. `context.ts` owns the shared refs, state and `UseLiveKitParams`; `connection.ts` owns the room connection and the device/NC switch effects; `capture.ts` owns the singer path (`startSinging`, `stopSinging`, `cleanupMix`, `toggleMic`, the voice effect chain); `micCheck.ts` owns the isolated loopback context.
-- **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable handle.
-- **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast. The policy itself is `computeSyncAction`/`computeTarget` in `src/lib/syncMath.ts`; the hook only owns the interval, the refs and the seek cooldown.
-- **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples, computed by `estimateClockOffset`).
-- **`useSingerAudio`** - The one place that reaches into the LiveKit `Room` for the singer: returns a `getTrack()` and a `getStats()` callback, both null while there is no room or no singer.
-- **`useAudioLevel`** - Smoothed 0..1 meter level from any `() => number` source, used for the toolbar mic meter and the stage meter.
-- **`useAudioDevices`** — Device enumeration, mic mode (`"voice"` = NC on, `"raw"` = NC off).
-- **`useWakeLock`** - Screen wake lock while in a room, feature-detected, re-requested on `visibilitychange`, released on unmount.
-- **`useFlag`** - Reads a room-scoped feature flag out of `RoomState.flags`.
-- **`usePartySocket`** — Low-level PartyKit WebSocket wrapper with auto-reconnect.
+- **`useRoomState`** - PartyKit WebSocket, room state, chat, reactions. Returns `send()` for raw messages.
+- **`useLiveKit`** - LiveKit connection, mic toggle, singing voice pipeline, voice effects, mic check. A ~115-line facade over four modules in `src/hooks/livekit/`: `context.ts` (shared refs/state/params), `connection.ts` (room connection, device/NC switches, `resumeRoomAudio`), `capture.ts` (the singer path), `micCheck.ts` (isolated loopback). `micWatch.ts` is the mic-death watchdog, rebinding through LiveKit's own track events.
+- **`useYouTubePlayer`** - Injects the IFrame API once (module-level singleton promise) and owns the `YT.Player` instance behind a ref-stable async handle.
+- **`useVideoSync`** - Drift correction loop plus the singer's 2s broadcast. The policy is `computeSyncAction`/`computeTarget` in `src/lib/syncMath.ts`; the hook owns only the interval, refs and seek cooldown.
+- **`usePartyClock`** - `time-sync` sampler, returns `serverOffsetRef` (median of min-RTT samples).
+- **`useSingerAudio`** - The one place that reaches into the LiveKit `Room` for the singer: `getTrack()` and `getStats()` callbacks.
+- **`useAudioLevel`** - Smoothed 0..1 meter level from any `() => number` source.
+- **`useAudioDevices`** - Device enumeration, mic mode, Bluetooth route detection, and the Android built-in-mic preference (`builtInInputDeviceId`, null the moment the user picks a device explicitly).
+- **`useVolumeMix`** - Single source of truth for master, music and per-person `{volume, muted}`.
+- **`useWakeLock`**, **`useFlag`**, **`usePartySocket`** - as named.
 
 ## Voice Effects
 
-`src/lib/voiceEffects.ts` — Pure Web Audio API, zero dependencies. Each effect returns `{ input, output, cleanup, setWetDry }`. Effects: Hall (feedback delay network), Echo (delay + feedback), Warm/Bright (BiquadFilter EQ), Chorus (LFO-modulated delay).
+`src/lib/voiceEffects.ts` - Pure Web Audio API, zero dependencies. Each effect returns `{ input, output, cleanup, setWetDry }`. Effects: Hall, Echo, Warm/Bright, Chorus. `parseStoredVoiceEffect`/`parseStoredWetDry` are the stored-preference parsers.
+
+## Audio Reliability
+
+The platform quirk catalog and our standing against it live in `docs/qa/AUDIO-QUIRKS-AUDIT.md` (verdict per quirk, fix status) and `docs/qa/AUDIO-TEST-MATRIX.md` (the device test sheet). The recovery surfaces, all deliberate:
+
+- **"Can't hear?" toolbar pill**: always rendered, never signal-gated, because Android's force-fade and some iOS strandings leave no web-visible trace. It runs `resumeRoomAudio` (single-flight guarded) which resumes and, when needed, rebuilds the mixer graph with gains replayed.
+- **"Tap to hear the room" banner**: promoted version of the same control when the browser reports blocked playback (`canPlaybackAudio`) or the mixer holds a settled stall.
+- **"Mic stopped, tap to restart"**: the `micWatch` watchdog's surface. One automatic recovery attempt on returning to visibility; after that only the tap. Recovery never unmutes an explicitly muted user.
+- **Bluetooth**: opening any BT mic drops the whole link to phone-call quality (HFP), and on iOS the web cannot prevent it (`docs/plans/2026-08-17-bluetooth-hfp-research.md` has the sourced detail). We detect the route and say so; on Android we prefer the built-in mic when BT output is active and no explicit pick exists; on iOS `navigator.audioSession.type` is `playback` whenever nothing captures. `src/lib/audioRoutes.ts` owns the label heuristics (wired markers checked before Bluetooth markers, route-following pseudo-devices never pinned).
 
 ## Logging
 
 Nothing in `src/` or `party/` may name `console`: biome's `suspicious/noConsole` is an error, and `src/shared/log.ts` is the one file with an override.
 
-- **`src/shared/log.ts`** is the core both runtimes wrap: the levels, the bracket prefix and the console call, plus `createSharedLogger` for the dual-runtime modules under `src/shared/`. It holds no state that outlives a call. That is deliberate: this file is bundled into the Durable Object and the Next server, where a module-level buffer would be one user's data sitting in another user's process.
-- **`src/lib/logger.ts`** - `createLogger("LiveKit")` returns `debug/info/warn/error` and prints the same bracket prefix the app always had (`[LiveKit] ...`), so a namespace is what you grep for. In production `debug` and `info` are dropped unless the debug gate is on; `warn` and `error` always emit. The gate is `karaoke-debug` in localStorage or `?debug` on any URL, which persists (`?debug=0` clears it). A suppressed line is gone, not retained: nothing keeps log details anywhere, because they hold display names, device labels and raw wire frames.
-- **Namespaces are per module family**, not per file: `LiveKit` (all of `src/hooks/livekit/`), `RoomState`, `PartySocket`, `AudioDevices`, `apiBase`, `KeyRotation`, `LiveKitToken`, `YouTubeSearch`, `livekit-token`, `tRPC`.
-- **`party/log.ts`** is the worker's twin, same levels and prefix, gated on the `PARTY_DEBUG` env var. A Durable Object has no `process.env`, so `configurePartyLog(this.room.env)` is what arms the gate: `party/index.ts` calls it in `onStart()`, and `party/token.ts` and `party/search.ts` call it at the top of `onRequest` because they have no `onStart`. It arms the same gate `createSharedLogger` reads, so the `src/shared/` half of the worker's logging obeys `PARTY_DEBUG` too. Parties that only log `warn`/`error` need no call, because those always emit.
-- **`logger.error` is also the error-analytics path**: it feeds `app_error` through the sink `src/lib/analytics.ts` registers, so an error branch needs no analytics call of its own.
+- **`src/shared/log.ts`** is the core both runtimes wrap; it holds no state that outlives a call because it is bundled into the Durable Object and the Next server.
+- **`src/lib/logger.ts`** - `createLogger("LiveKit")` returns `debug/info/warn/error` with the bracket prefix (`[LiveKit] ...`). In production `debug`/`info` are dropped unless the debug gate is on (`karaoke-debug` in localStorage or `?debug` on any URL, persisted; `?debug=0` clears). `warn`/`error` always emit. Suppressed lines are gone, not retained.
+- **Namespaces are per module family**: `LiveKit`, `RoomState`, `PartySocket`, `AudioDevices`, `apiBase`, `KeyRotation`, `LiveKitToken`, `YouTubeSearch`, `tRPC`.
+- **`party/log.ts`** is the worker's twin, gated on `PARTY_DEBUG`, armed via `configurePartyLog(this.room.env)` in `onStart()` (or at the top of `onRequest` for parties without one).
+- **`logger.error` is also the error-analytics path**: it feeds `app_error` through the sink `src/lib/analytics.ts` registers.
 
 ## Analytics
 
-PostHog, client only, and a full no-op unless `NEXT_PUBLIC_POSTHOG_KEY` is set: the SDK sits behind a dynamic `import("posthog-js")` that never runs without a key, so dev, CI and the e2e suite never load it. `src/lib/analytics.ts` owns the whole surface: a typed event union, `track(event, props)`, and an anonymous device id in localStorage.
+PostHog (US cloud), client only, a full no-op unless `NEXT_PUBLIC_POSTHOG_KEY` is set; the SDK sits behind a dynamic import that never runs without a key. `src/lib/analytics.ts` owns the whole surface: a typed event union, `track(event, props)`, an anonymous device id.
 
-- **The event union is the contract.** Adding an event means a variant in `EventProps` plus a row in `docs/design/ANALYTICS.md`, in the same change. The two `track` overloads make a wrong or missing payload a compile error.
-- **Instrument the existing seam**, the handler that carries the user's intent, and never restructure a component to host an event.
-- **Never sent**: display names, chat content (a length bucket only), video ids/titles, room codes (a salted local marker answers "been here before" and never leaves localStorage), or error stacks. Autocapture, session replay, pageviews and surveys are all off, and Do Not Track is honoured before the SDK is fetched.
-- **The capture flags are not enough on their own.** PostHog attaches `$current_url`, `$pathname`, `$referrer` and their `$initial_*`/`$session_entry_*` copies to every event whatever those flags say, and the room page path *is* the room code (a legacy share link carries the display name too). `POSTHOG_PROPERTY_DENYLIST` plus the `sanitize_properties` hook in `src/lib/analytics.ts` is what stops that, and the hook also drops any URL-valued property whatever a future SDK calls it.
-- **Analytics is never load-bearing**: `track` swallows a throwing vendor, and it is called after the action it reports, never before. Three of the call sites are the audio-recovery taps.
-- **A local write an event needs is gated too**: `analyticsEnabled()` is checked before `markRoomVisited`, so a Do Not Track browser is left with no room history either. `docs/design/ANALYTICS.md` is the full taxonomy and the privacy rules.
+- **The event union is the contract.** Adding an event means a variant in `EventProps` plus a row in `docs/design/ANALYTICS.md`, in the same change.
+- **Instrument the existing seam**, the handler that carries the user's intent; never restructure a component to host an event.
+- **Never sent**: display names, chat content (length bucket only), video ids/titles, room codes (a salted local marker answers "been here before"), error stacks. Autocapture, replay, pageviews, surveys off; DNT honoured before the SDK is fetched.
+- **The capture flags are not enough on their own.** PostHog attaches `$current_url`/`$pathname`/referrer copies to every event regardless, and the room page path *is* the room code. `POSTHOG_PROPERTY_DENYLIST` plus the `sanitize_properties` hook stops that, and the hook drops any URL-valued property whatever a future SDK calls it.
+- **Analytics is never load-bearing**: `track` swallows a throwing vendor and is called after the action it reports.
 
 ## Patterns
 
-- **Refs over state** for values accessed in callbacks/timeouts to avoid stale closures (`isMicEnabledRef`, `talkingNCRef`, `singingNCRef`, `voiceEffectRef`).
-- **Hot-swap while singing**: NC toggle and voice effect changes re-capture the mic stream or rebuild the effect chain live without stopping the published track.
-- **Mic check uses separate AudioContext**: Routes mic → effect chain → `ctx.destination` (speakers) for self-monitoring. Completely isolated from the singing mix path.
-- **Listening is local, per user**: no participant may change another participant's audio state. The wire carries no message that mutes, unmutes or sets the gain of anyone else, and `RoomState` carries no per-user audio field. The singer controls shared playback (`video-load`, `video-sync`, play/pause/restart) and their own pipeline; the admin allowlist is kick, transfer admin, skip singer, remove from queue and room settings (name, public, password). `isDeafened` crosses the wire as a read-only roster glyph and no receiving client acts on it.
-- **`videoState` is server-owned**: Included in `RoomState` so late joiners catch up mid-song, and cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
-- **Room identity is persisted, the session is not**: `roomName`, `isPublic`, `passwordHash`, `adminClientId`, `adminVacatedAt` and `bannedClientIds` are write-through to `this.room.storage` and rehydrated in `onStart()`, so a DO restart or an empty-room moment keeps the room's identity. Chat, queue, participants and `videoState` stay in memory by design and are still cleared when the room empties. Because a password now outlives an empty room, there is no first-joiner exemption on `auth`. A kick ban outlives it too: there is no unban message, so a kick is permanent for that room code until the 200-entry LRU evicts it.
-- **Admin succession never deadlocks**: a vacant seat with a known `adminClientId` belongs to the departed admin for `ADMIN_GRACE_MS`, but only the timer hands it on. `armAdminGrace()` is therefore called from `claimAdminOnJoin` as well as `startAdminGrace`, arming whatever is left of the window (`adminVacatedAt` is persisted for exactly this), because a room that emptied never armed a timer and a DO restart loses both the timer and `adminVacatedAt`.
-- **Clock-authority stall detection**: the singer's `video-sync` stream is the room's playback heartbeat. `resetVideoStallTimer()` re-arms a 10s timer on every sync while `videoState.playing`; if it fires, the server pauses the room, broadcasts `video-state` and posts a system chat line. A rebuffering singer sends `video-sync` with `stalled: true`, which re-arms the timer without re-stamping a frozen position, so an ordinary rebuffer is not read as a dead device. The singer's page also broadcasts a pause on `visibilitychange` so a backgrounded phone hands the clock back immediately, and resumes when the page is visible again.
-- **Feature flags are room-scoped**: `RoomState.flags` is seeded from the PartyKit `FEATURE_FLAGS` env var (comma-separated names, each set to `true`) and read on the client with `useFlag(roomState, name)`. Room-scoped rather than user-scoped, because one participant on a different sync path is a correctness bug, not an experiment.
-- **Narrow props below RoomView**: no component under `RoomView` takes the LiveKit `Room`. `Toolbar` takes a `getMicLevel` callback, `StageBanner` takes a `getSingerLevel` callback, `AudioVisualizer` takes a `getSingerTrack` callback, and `useAutoSyncOffset` takes a stats provider. `RoomView` is where the transport is turned into those callbacks. The meters call `useAudioLevel` on the getter themselves, so a 75ms level tick re-renders one leaf instead of the whole room.
-- **Per-person volume**: `useVolumeMix` is the single source of truth (master, music, per-person `{volume, muted}` keyed by `personMixKey`: the name, or `peer:<peerId>` for the duplicate-friendly "Anonymous"). One volume per person, applied the same whether they are talking or singing, and a mute that holds in both: the People-row popover and the stage cockpit slider edit that one number. Blobs written by the old two-slot model migrate on read, `talk` becoming `volume` and `stage` being dropped. It pushes gains into `src/lib/voiceMixer.ts`, which runs every remote voice through `source -> personGain -> masterBus -> duck -> limiter -> output`. Names resolve to `lkIdentity` from PartyKit status updates only at apply time, so volumes survive reconnects, and identities stay in the gain map after a participant drops off the roster because their LiveKit track can outlive the WebSocket. The mixer also owns each `<audio>` element's volume: 0 while the graph is audible, the full local mix when the AudioContext is suspended or Web Audio failed. All of it is local: no volume value is ever broadcast. Every gain decision (mute, clamping, master composition, the music bus) is `resolveGains` in `src/lib/volumeModel.ts`, which also owns `personMixKey`, the stored-blob parse/serialize and the tracked-identity LRU; the hook holds the React state and pushes the result.
+- **Refs over state** for values accessed in callbacks/timeouts (`isMicEnabledRef`, `talkingNCRef`, `singingNCRef`, `voiceEffectRef`).
+- **Listening is local, per user** (see Product Principles): the wire carries no message that mutes, unmutes or sets the gain of anyone else, and `RoomState` carries no per-user audio field. `isDeafened` crosses the wire as a read-only roster glyph and no receiving client acts on it.
+- **`videoState` is server-owned**: in `RoomState` so late joiners catch up, cleared at every site that clears `currentSingerId`. Only `currentSingerId` may send `video-load`/`video-sync`.
+- **Room identity is persisted, the session is not**: `roomName`, `isPublic`, `passwordHash`, `adminClientId`, `adminVacatedAt` and `bannedClientIds` are write-through to `this.room.storage` and rehydrated in `onStart()`. Chat, queue, participants and `videoState` stay in memory by design. A kick is permanent for that room code until the 200-entry LRU evicts it.
+- **Admin succession never deadlocks**: a vacant seat belongs to the departed admin for `ADMIN_GRACE_MS`, but only the timer hands it on; `armAdminGrace()` is called from `claimAdminOnJoin` as well as `startAdminGrace`.
+- **Clock-authority stall detection**: the singer's `video-sync` stream is the room's playback heartbeat; 10s of silence while playing pauses the room with a system chat line. `stalled: true` re-arms without re-stamping a frozen position. The singer's page broadcasts a pause on `visibilitychange`.
+- **Feature flags are room-scoped** (`RoomState.flags`, seeded from `FEATURE_FLAGS`), because one participant on a different sync path is a correctness bug, not an experiment.
+- **Narrow props below RoomView**: no component under `RoomView` takes the LiveKit `Room`; RoomView turns the transport into callbacks. Meters call `useAudioLevel` themselves so a 75ms tick re-renders one leaf.
+- **Per-person volume**: `useVolumeMix` owns master, music and per-person `{volume, muted}` keyed by `personMixKey`. One volume per person, both modes, mute holds in both. Old two-slot blobs migrate on read (`talk` becomes `volume`, `stage` dropped). Gains push into `src/lib/voiceMixer.ts` (`source -> personGain -> masterBus -> duck -> limiter -> output`); the mixer also owns each `<audio>` element's volume (0 while the graph is audible, the full local mix in element fallback, with mute expressed through `el.muted` because iOS ignores element volume). Every gain decision is `resolveGains` in `src/lib/volumeModel.ts`. Nothing is ever broadcast.
 
-## Adding a New PartyKit Message
+## Styling and Design Language
 
-1. Add the variant to `clientMessageSchema` / `serverMessageSchema` in `src/shared/protocol.ts` (nothing else declares it)
-2. Handle in `party/index.ts` `onMessage` switch + add handler method
-3. Handle in `src/hooks/useRoomState.ts` `onMessage` switch
-4. Wire up in `RoomView.tsx`
-
-## Styling
-
-- **Tailwind CSS 4** + inline styles with CSS variables. No hardcoded colors.
-- All colors via `var(--color-*)`: primary (violet `#8B5CF6`), accent (amber `#F59E0B`), dark theme surfaces, text hierarchy.
-- **Icons**: `lucide-react` only. No emojis in UI - emojis only in chat messages and reaction bar.
-- **Fonts**: Outfit (`var(--font-display)`) for headings/buttons, DM Sans (`var(--font-body)`) for body. Both via `next/font/google`.
-- **Animations**: CSS keyframes in `globals.css` - `fade-in`, `slide-in`, `reaction-float`, `pulse-ring`.
+- **Tailwind CSS 4** + inline styles with CSS variables. No hardcoded colors; every color through `var(--color-*)`.
+- **Borderless elevation**: depth is a tone step plus a layered shadow (`--color-dark-bg/surface/card/raised`, `--shadow-elevation-0..3`, `--shadow-control` for the inset control edge). Borders are for inputs, focus, danger and active states only. No full-bleed divider lines or bands inside rounded panels: they read as square corners against the rounded silhouette; float internal sections as inset rounded rows instead.
+- **Semantic colors**: primary follows the playing song (see Atmosphere); amber is host, red is danger/attention, green is success, and those stay static.
+- **Fonts**: Baloo 2 (`var(--font-display)`) for headings/buttons, Be Vietnam Pro (`var(--font-body)`) for body, both via `next/font/google` with the Vietnamese subsets.
+- **Icons**: `lucide-react` only. No emojis in UI; emojis only in chat and the reaction bar. Icon vocabulary is strict: speaker glyphs (`Volume2`/`VolumeX`) mean local listening state, mic glyphs (`Mic`/`MicOff`) mean actual microphone state; one glyph never carries two meanings on one screen.
+- **Radii come from the tokens** (`rounded-xl` = `var(--radius-xl)` etc.); never hardcode a pixel radius next to token-radius siblings.
+- **shadcn/ui (base-nova, Base UI primitives)** in `src/components/ui/`. Base UI quirks: `Select` `onValueChange` passes `string | null`; `SelectValue` renders the raw value unless given a function child; `Switch` renders a `button` (use `render` + `nativeButton={false}` inside other buttons); `TooltipTrigger` swallows `disabled` unless given a rendered button.
+- **Component conventions**: named exports only, props interface above component, PascalCase components / camelCase hooks-utils, `"use client"` at the top of every component and hook file.
+- **Biome is linter-only**: the formatter and import assist are off on purpose. Rules that fight the existing style are disabled with a written reason in the config.
 
 ## Atmosphere Layer
 
-A third token layer on top of the primitives and the shadcn semantic layer. `src/lib/atmosphere.ts` registers fifteen typed `@property` custom properties (`--atmo-a/b/c`, `-glow`, `-tint`, `-accent`, `-accent-soft/-dim/-bright/-level`, `-strength`, `-pulse`, `-saturation`, `-warmth`, `-contrast`) so the between-song colour change cross-fades natively over 2s, declares the `AtmosphereProvider` interface and owns the only writer (`applyAtmosphere` on `document.documentElement`).
+A third token layer on top of the primitives and the shadcn semantic layer. `src/lib/atmosphere.ts` registers fifteen typed `@property` custom properties (`--atmo-a/b/c`, `-glow`, `-tint`, `-accent` family, `-strength`, `-pulse`, `-saturation`, `-warmth`, `-contrast`) so the between-song colour change cross-fades natively over 2s; `applyAtmosphere` on `document.documentElement` is the only writer.
 
-- **Surfaces consume the contract, never the inputs.** The room mesh (`.atmo-mesh`), the stage and video frame glow (`.atmo-frame`) and the panel glass (`.atmo-glass`, behind `SURFACE_PANEL`) reference the vars only.
-- **Primary is atmosphere-driven, the rest of the semantic layer is not.** The whole `--color-primary` family (and shadcn's `--primary`/`--ring`, which Tailwind's `@theme inline` block makes the real source of `--color-primary`) resolves to `var(--atmo-accent*, <violet>)`, so the interactive accent follows the playing song's hue. Only the hue moves: `composeAtmosphere` pins each band to the idle violet's own oklch lightness (accent 0.606 < level 0.728 < soft 0.791 < bright 0.839, so the scale never inverts mid-song), takes that step's chroma as a ceiling and clamps it to the sRGB gamut for the hue with `srgbSafeChroma`, so the browser never gamut-maps a token and quietly moves its lightness. `avoidDangerHue` pushes any hue within 18deg of red back out, so contrast and meaning never ride on the thumbnail. Amber is host, red is attention, green is success, and those stay static. The violet fallbacks are also the `@property` initial values, so an idle room resolves to exactly today's violet tokens.
-- **White-on-primary surfaces ramp off `--color-primary`, never off `-bright`.** The three white-text CTAs (`PlaybackControls` transport, `StageBanner` "Add to queue", `RoomView`'s audio unlock) are `linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 78%, black))`, both stops in the accent's dark half, so white holds 3.6:1 or better at every hue instead of the 1.7:1 the `-bright` step would give. `-soft`, `-bright` and `-level` are for text and icons on dark panels only. Dark text on a tinted-white surface (QueuePanel's "Add to Queue") mixes 25% primary into black, so the label stays anchored while the background floats with the hue.
-- **One provider today, structured for more.** `karaoke-theme` in localStorage selects it and is seeded with `auto` on first read, so a future picker is a new provider in `src/lib/atmosphereProviders.ts` plus a settings row.
-- **The `auto` provider**: thumbnail hue (`atmospherePalette.ts`, hue-bucketed off a 32px canvas, cached per videoId) decides colour, genre (`atmosphereGenre.ts`, from `topicDetails` on the search route's existing `videos.list` call, plus a `?id=` lookup for pasted links) decides behaviour, and `composeAtmosphere` in `atmosphereAuto.ts` turns both into oklch tokens. Idle rooms hold `IDLE_TOKENS`, the Neon Pulse violet, accents included.
-- **`--atmo-strength` is live and stays out of the cross-fade.** `AudioVisualizer` is the only writer: the singer's voice level drives it on a ~100ms tick through `setAtmosphereStrength`, under the 140ms opacity transition that smooths it, because the property is inherited and every write on the root costs a document-wide style recalc. Music energy is unmeasurable because YouTube audio never reaches the page, so the genre preset's `--atmo-pulse` is the tempo proxy. `prefers-reduced-motion` freezes the pulse and pins strength, and the colours still change.
-
-## Component Conventions
-
-- **Named exports only**: `export function ComponentName() {}` (not default exports)
-- **Props interface above component**: `interface ComponentNameProps { ... }`
-- **File naming**: PascalCase for components (`StageBanner.tsx`), camelCase for hooks/utils (`useLiveKit.ts`, `voiceEffects.ts`)
-- **`"use client"` directive** at top of every component and hook file
-- **Biome is linter-only** (`biome.jsonc`) - the formatter and the import assist are off on purpose, so no rule ever reformats a file. Rules that fight the existing style are disabled with a written reason in the config, and `suspicious/noConsole` is on with an override for `src/shared/log.ts` only. TypeScript strict mode (`noUncheckedIndexedAccess`) is still the primary gate.
-
-## UI Patterns
-
-- **Modal**: Backdrop (`fixed inset-0 z-40`, semi-transparent black, click to close) + centered card (`fixed left-1/2 top-1/2 z-50`). Always add Escape key handler via `useEffect`.
-- **Error display**: Banner div with danger color, or inline text. Hooks return `error: string | null`.
-- **Tabs**: Buttons with dynamic `borderBottom` color, content switching via state.
-- **Volume sliders**: Shared `VolumeSlider` component (`.volume-slider` CSS class). Voice ranges are `0-200` with a detent at 100; music stays `0-100` because YouTube caps it.
-- **Toggle buttons**: Show current state via icon/highlight, label describes the action.
+- **Surfaces consume the contract, never the inputs**: `.atmo-mesh` (page wash), `.atmo-halo` (long-range glow behind every panel; the near `.atmo-frame` glow paints under the opaque rails, so long reach must live behind them), `.atmo-glass` (panel tint), `.atmo-card`.
+- **Gradient falloffs are two-step**: a hard `transparent N%` stop paints a visible terminator arc that reads as a square corner where it crosses a panel edge.
+- **Primary is atmosphere-driven; only the hue moves.** `composeAtmosphere` pins each accent band to the idle violet's oklch lightness, clamps chroma into sRGB with `srgbSafeChroma`, and `avoidDangerHue` keeps the accent out of the red window. **The palette extracts hues on the HSL wheel and tokens are oklch, whose wheels differ: every palette hue passes through `hslHueToOklchHue` or a blue thumbnail renders teal.**
+- **White-on-primary CTAs ramp `var(--color-primary)` toward black**, never toward `-bright` (white on `-bright` is ~1.7:1). `-soft`/`-bright`/`-level` are for text and icons on dark panels only.
+- **The `auto` provider**: thumbnail hue decides colour, genre decides behaviour, idle rooms hold the Neon Pulse violet. `--atmo-strength` is the singer's live voice level (the only measurable energy; YouTube audio never reaches the page) written on a ~100ms tick by `AudioVisualizer` alone.
 
 ## PWA and Service Worker
 
-`public/sw.js` is an app-shell cache, registered from `ServiceWorkerRegistrar` (production builds only, so it never fights the dev server; in dev it unregisters any worker left over from a local production build and drops the `karaoke-shell-*` caches). It **must never cache API routes, PartyKit, LiveKit or YouTube**: it bails on every cross-origin request, on `/api/` and `/parties/`, and on a host denylist. Navigations are network-first with `/offline` as the fallback; hashed `_next/static` assets are cache-first.
+`public/sw.js` is an app-shell cache, registered in production builds only. It **must never cache API routes, PartyKit, LiveKit or YouTube**: it bails on cross-origin, `/api/`, `/parties/` and a host denylist. Navigations are network-first with `/offline` fallback; hashed `_next/static` assets cache-first. Cache busting keys the cache on `NEXT_PUBLIC_SW_VERSION` (commit SHA) with `skipWaiting` + `clientsClaim`.
 
-Cache busting is automatic: `next.config.js` puts the commit SHA (or a build timestamp locally) in `NEXT_PUBLIC_SW_VERSION`, the client registers `/sw.js?v=<version>`, and the worker names its cache after that value, then `skipWaiting` + `clientsClaim` and deletes every older `karaoke-shell-*` cache on activate.
-
-The room shows a reconnect banner whenever `useRoomState`'s `isConnected` is false. The join overlay covers the first connect, so that banner only ever means a socket that dropped mid-session.
+Working consequence: a long-lived tab or installed PWA serves the previous shell until refresh; treat "still broken" reports accordingly.
 
 ## Environment
 
-PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production, comma-separated browser origins allowed to call the HTTP endpoints; a deployed worker with it unset refuses every browser origin, exactly like `REGISTRY_TOKEN`, and local dev hostnames reflect without it), `FEATURE_FLAGS` (optional, comma-separated flag names that arrive in every `RoomState`), `PARTY_DEBUG` (optional, `1` or `true` opens the worker's `debug`/`info` logs; `warn`/`error` always reach the Cloudflare tail), plus the LiveKit, Upstash and YouTube vars below, because the token and search endpoints now run on the worker.
+PartyKit-side: `REGISTRY_TOKEN` (required in production), `PARTY_ALLOWED_ORIGINS` (required in production; must include every browser origin the app serves: `https://www.karaokenow.co`, `https://karaokenow.co`, `https://karaokenow.vietbrosinaus.com` and `https://karaoke-room.vercel.app`), `FEATURE_FLAGS` (optional), `PARTY_DEBUG` (optional), plus the LiveKit, Upstash and YouTube vars because the token and search endpoints run on the worker.
 
-Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults to `localhost:1999`), `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for key rotation and search caching, `LIVEKIT_API_KEY_N` for multi-key failover (auto-discovered up to `_20`), `YOUTUBE_API_KEY` for in-app YouTube search (Data API v3; without it the video input is paste-only; results are filtered to embeddable videos and cached 24h in Redis because search.list costs 100 of the 10k daily quota units), `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` for analytics (no key means the SDK is never loaded and every `track()` is a no-op; the host picks the EU or US region and defaults to US). See `docs/IDEOLOGY.md` for key rotation architecture and `docs/design/ANALYTICS.md` for the event taxonomy.
+Required: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`, `NEXT_PUBLIC_LIVEKIT_URL`. Optional: `NEXT_PUBLIC_PARTY_HOST` (defaults `localhost:1999`), `UPSTASH_REDIS_REST_URL`/`_TOKEN`, `LIVEKIT_API_KEY_N` (auto-discovered to `_20`), `YOUTUBE_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`/`NEXT_PUBLIC_POSTHOG_HOST`. See `docs/IDEOLOGY.md` for key rotation and `docs/design/ANALYTICS.md` for the taxonomy.
 
 Path alias: `~/*` maps to `./src/*`. TypeScript strict mode with `noUncheckedIndexedAccess`.
 
 ## Deployment
 
-- **Next.js**: Vercel (auto-deploy from GitHub on push to main)
-- **PartyKit**: `npm run deploy:party` (separate deploy required after `party/` changes)
-- **PartyKit secret**: `partykit env add REGISTRY_TOKEN` must be set on the deployed project. The registry party rejects every POST/DELETE from a non-local host when it is missing, so `/browse` goes empty instead of accepting forged listings.
-- **PartyKit now also holds the backend secrets**: `partykit env add` each of `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL` (plus any `_N` variants), `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `YOUTUBE_API_KEY` and `PARTY_ALLOWED_ORIGINS`. Set all of them **before** the deploy, not after: `PARTY_ALLOWED_ORIGINS` is required in production the same way `REGISTRY_TOKEN` is, and the workflow's token health check fails the job (and skips the Vercel hook) when the LiveKit vars are missing rather than shipping a bundle whose only token source answers 500. Vercel keeps its copies while the legacy `/api` routes are still serving cached shells. `partykit dev` reads them straight out of `.env`, so local dev needs nothing extra.
-- **The LiveKit key variant set on PartyKit must be byte-identical to Vercel's, gaps included.** `room:<code>:key` stores an *index* into the `LIVEKIT_API_KEY`, `_2` .. `_20` scan, so a variant present on one host and missing on the other shifts every later index and the two halves of one room get tokens for two different LiveKit projects. `room:<code>:keyfp` pins which key the index resolved to and a mismatch reassigns loudly (`[KeyRotation] Room mapping resolves to a different LiveKit key on this host`), but that is a detector, not a fix.
-- **Branch protection**: main requires 1 approval, Vercel CI pass, all conversations resolved
-- **PartyKit ships first, and the merge cannot choose otherwise.** `.github/workflows/deploy-partykit.yml` fires on every push to main touching `party/**`, `partykit.json` or `src/shared/**`, runs `npx partykit deploy`, health-checks `/parties/main/health-probe` (the `onRequest` GET) and then `/parties/token/HEALTH?room=HEALTH&name=healthcheck` (which fails on a worker missing its LiveKit secrets, where the room probe would pass), and only then POSTs the Vercel deploy hook, while Vercel's own git integration builds the same push in parallel. Nothing sequences those two, so the real order is PartyKit-first racing an independent Vercel build. That is what an additive protocol change wants anyway: old clients keep working during the gap. A change that needs Vercel-first needs a mechanism, not a rule: path-filter the workflow off that commit, or split it across two merges, client-side first and server-side second.
-- **A protocol removal therefore has to be safe in either order.** Two bars. A stale cached client that still sends the removed variant fails `clientMessageSchema.safeParse` and gets the `Unknown message type` error reply, which `useRoomState` logs and otherwise ignores, so the socket stays up. And a removed `RoomState` field has to degrade on the already-deployed bundle instead of throwing: the client never validates server messages at runtime (`usePartySocket` casts the `JSON.parse` result), so the field simply arrives as `undefined` and the old code has to read that as a sane default. Removing `mutedBySinger` cleared both bars, with one side effect worth expecting rather than debugging: the deployed client reads `state.mutedBySinger ?? null`, so the moment the worker ships, every old client the singer had muted (mic on before the mute, not deafened) unmutes itself mid-song.
-- `concurrency: partykit-deploy` with `cancel-in-progress: false` keeps two merges in quick succession from deploying out of order, and `.github/pull_request_template.md` makes the additive-protocol claim explicit on every PR.
-- **`VERCEL_DEPLOY_HOOK_URL` secret** (optional, GitHub Actions): a Vercel deploy hook URL that chains a Vercel redeploy onto the tail of `deploy-partykit.yml`, after the health check passes. Create one under Vercel project settings > Git > Deploy Hooks and add it as a repo secret. When absent, the workflow logs a line and skips the trigger instead of failing.
+- **Next.js**: Vercel auto-deploys from GitHub on push to main, aliased to `www.karaokenow.co`. If a push produces zero commit statuses, the GitHub webhook was missed (check githubstatus.com): re-trigger with an empty commit once webhooks recover, or `npx vercel --prod --yes` (the CLI is authenticated on this machine) deploys directly.
+- **PartyKit**: `npm run deploy:party` after `party/` or `src/shared/` changes.
+- **PartyKit secrets** via `partykit env add` (interactive; when piping, `printf %s "$VAL"` without a trailing newline, which otherwise becomes part of the stored value and breaks URL parsing): `REGISTRY_TOKEN`, `PARTY_ALLOWED_ORIGINS`, `LIVEKIT_API_KEY`/`_SECRET`/`_URL` (plus `_N` variants), `UPSTASH_REDIS_REST_URL`/`_TOKEN`, `YOUTUBE_API_KEY`. Set them **before** the deploy. `partykit dev` reads them from `.env`.
+- **The LiveKit key variant set on PartyKit must be byte-identical to Vercel's, gaps included**: `room:<code>:key` stores an index into the scan, so a variant present on one host and missing on the other splits a room across two LiveKit projects. `room:<code>:keyfp` detects the mismatch loudly; it does not fix it.
+- **PartyKit ships first, and the merge cannot choose otherwise.** `.github/workflows/deploy-partykit.yml` fires on `party/**`, `partykit.json` or `src/shared/**`, deploys, health-checks `/parties/main/health-probe` then `/parties/token/HEALTH?room=HEALTH&name=healthcheck`, and only then POSTs the Vercel deploy hook, racing Vercel's own git build. Additive protocol changes want that order anyway. A change that needs Vercel-first needs a mechanism: split it across two merges, client-side first.
+- **A protocol removal has to be safe in either order.** A stale client sending the removed variant gets the `Unknown message type` reply and the socket stays up; a removed `RoomState` field arrives as `undefined` on old bundles and must degrade sanely (the client never runtime-validates server messages).
+- `concurrency: partykit-deploy` with `cancel-in-progress: false` keeps two merges from deploying out of order.
+- **`VERCEL_DEPLOY_HOOK_URL` secret** (optional, GitHub Actions): chains a Vercel redeploy after the PartyKit health check; when absent the workflow logs and skips.
+- Watch a deploy with `gh api repos/vietbrosinaus/karaoke-room/commits/<sha>/status --jq .state`.
 
-## Skills and Workflows
+## Review and Audit Patterns
 
-Use these skills when working on this project:
+For substantive changes, run two parallel adversarial reviewers over `git diff` with distinct lenses drawn from:
+1. Bug scan: logic errors, races (especially async gaps in the sync loop and mic-state machine)
+2. Regression vs invariants: explicit mute survives every new path, coalescing holds, desktop unaffected by mobile ordering
+3. Protocol consistency: schema variant, server handler, client case all present; removal safe in either deploy order
+4. Audio path impact: `startSinging`/`stopSinging`/`cleanupMix` changes listed line by line
+5. State/cleanup: AudioContexts closed, MediaStreams stopped, timers cleared, effects with correct deps
+6. Privacy: nothing new reaches the wire or the analytics vendor that the taxonomy does not name
+7. UX coherence: icon vocabulary, copy tone (no em dashes), banner stacking, mobile layouts
 
-### PR Workflow
-1. Create feature branch from main
-2. Implement + `npm run typecheck`
-3. Push + create PR via `gh pr create`
-4. Run `/babysit-pr <number>` to fix Copilot review comments
-5. Loop with `/loop 5m /babysit-pr <number>` for continuous monitoring
-6. Merge when clean (0 unresolved, CI passing)
-7. Deploy PartyKit if `party/` changed: `npm run deploy:party`
+Reviewers must substantiate findings from the diff and code; the fix pass answers every confirmed finding or names it a false positive with evidence.
 
-### Key Skills
-- **`/babysit-pr <N>`** - One-pass PR health check: fix CI, address review comments, re-request Copilot review. Use after every push.
-- **`/code-review:code-review`** - Full 5-agent parallel code review (CLAUDE.md compliance, bug scan, history regression, previous PR comments, code comment compliance). Use before merging critical PRs.
-- **`/brainstorming`** - Design features before building. Explores intent, requirements, alternatives. Use before any new feature.
-- **`/loop <interval> <command>`** - Schedule recurring tasks (e.g., `/loop 5m /babysit-pr 9`). Auto-expires after 7 days.
-- **`firecrawl`** - Web research for docs, pricing, best practices. Use `firecrawl search "query"` or `firecrawl scrape <url>`.
+Production audit:
+1. Dangling LiveKit rooms: `RoomServiceClient.listRooms()` with the `.env` credentials
+2. PartyKit health: `curl https://karaoke-room.elvistranhere.partykit.dev/parties/main/health-probe`
+3. AudioContexts closed on disconnect, intervals cleared on unmount, `videoState` cleared on room empty
+4. PostHog `app_error` dashboard for new error namespaces after a deploy
 
-### Review Pattern
-For major changes, run parallel review agents:
-1. Bug scan (focus on logic errors, race conditions)
-2. Regression check (compare with recent git history)
-3. Protocol consistency (schema variant added in `src/shared/protocol.ts`, server handler and client `onMessage` case both present, `npm run test` green)
-4. Audio path impact (verify startSinging/stopSinging untouched)
-5. State/cleanup review (AudioContext closed, MediaStream stopped, timers cleared)
+## Mobile Track
 
-### Audit Pattern
-For production readiness:
-1. Check for dangling LiveKit rooms: `RoomServiceClient.listRooms()`
-2. Check PartyKit health: `curl https://karaoke-room.elvistranhere.partykit.dev/parties/main/test`
-3. Verify all AudioContexts closed on disconnect
-4. Verify all setInterval/setTimeout cleared on unmount
-5. Verify videoState cleared on room empty
+Decision (2026-08-17, `docs/design/MOBILE-STACK-DECISION.md`): pivot to **React Native + Expo**, staged behind two device spikes with kill criteria; the Capacitor scaffold (`capacitor.config.ts`) stays frozen, not deleted. The pure core (protocol, syncMath, volumeModel, atmosphere logic, audioProfile) ports as-is; native audio goes through `@livekit/react-native` with `autoConfigureAudioSession: false` (its defaults reproduce the Bluetooth HFP bug); YouTube goes through the vendored bridge protocol, never a prop-driven wrapper. `docs/design/AUDIO-ARCHITECTURE.md` is the layer map; the port interface is extracted only when the first native driver exists, never before. Toolchains (Xcode 26, Android Studio, OpenJDK 21 with `JAVA_HOME`/`ANDROID_HOME` in `~/.zshrc`) are installed on this machine.
+
+## Docs Index
+
+- `docs/design/AUDIO-ARCHITECTURE.md` - audio layer map, draft driver port, seam status
+- `docs/design/MOBILE-STACK-DECISION.md` - the RN pivot, spikes, kill criteria
+- `docs/design/KARAOKE-PRIOR-ART.md` - competitor/vendor architectures, ranked adoptions (scheduled-start pre-roll is the top sync upgrade), mined test scenarios
+- `docs/design/ANALYTICS.md` - event taxonomy and privacy rules
+- `docs/qa/AUDIO-QUIRKS-AUDIT.md` - platform quirk verdicts and fix status
+- `docs/qa/AUDIO-TEST-MATRIX.md` - the device test sheet with the 10-minute smoke subset
+- `docs/plans/2026-08-17-bluetooth-hfp-research.md` - why Bluetooth degrades and what each layer can do
+- `docs/plans/2026-08-17-capacitor-status.md` - frozen Capacitor scaffold and owner-blocked items
+- `docs/IDEOLOGY.md` - LiveKit key rotation architecture
