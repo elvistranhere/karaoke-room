@@ -113,8 +113,8 @@ Never sent, under any event:
 - **Video ids, titles, channels and thumbnails.** Only the genre and whether search was used.
 - **Room codes.** A room code is the invite secret. No event carries one, and no event
   carries anything derived from one. The only room-scoped fact we keep is "has this device
-  been in this room before", answered by `karaoke-rooms-visited` in localStorage: last 20
-  entries, each a short digest of a per-device random salt (`karaoke-rooms-salt`) plus the
+  been in this room before", answered by `karaoke-now-visited-rooms` in localStorage: last 20
+  entries, each a short digest of a per-device random salt (`karaoke-now-rooms-salt`) plus the
   code. The salt makes an entry meaningless on any other device; it does not make it
   expensive to reverse on this one, because the code space is only 32^6. **That value is
   local state, not an anonymised room id, and it must never be sent anywhere.** If an event

@@ -67,7 +67,7 @@ describe("markRoomVisited", () => {
   it("stores a marker, never the room code", async () => {
     const { markRoomVisited } = await loadAnalytics();
     markRoomVisited("ABC123");
-    const stored = store.get("karaoke-rooms-visited") ?? "";
+    const stored = store.get("karaoke-now-visited-rooms") ?? "";
     expect(stored).not.toContain("ABC123");
     expect(stored).not.toContain("abc123");
     expect(stored.length).toBeGreaterThan(0);
@@ -76,16 +76,16 @@ describe("markRoomVisited", () => {
   it("salts the marker per device, so it links nothing across browsers", async () => {
     const { markRoomVisited } = await loadAnalytics();
     markRoomVisited("ABC123");
-    const first = store.get("karaoke-rooms-visited");
+    const first = store.get("karaoke-now-visited-rooms");
     store.clear();
     markRoomVisited("ABC123");
-    expect(store.get("karaoke-rooms-visited")).not.toBe(first);
+    expect(store.get("karaoke-now-visited-rooms")).not.toBe(first);
   });
 
   it("keeps at most 20 rooms, oldest dropped first", async () => {
     const { markRoomVisited } = await loadAnalytics();
     for (let i = 0; i < 25; i++) markRoomVisited(`ROOM${i}`);
-    expect((store.get("karaoke-rooms-visited") ?? "").split(",")).toHaveLength(20);
+    expect((store.get("karaoke-now-visited-rooms") ?? "").split(",")).toHaveLength(20);
     expect(markRoomVisited("ROOM0")).toBe(false);
     expect(markRoomVisited("ROOM24")).toBe(true);
   });
@@ -191,7 +191,7 @@ describe("privacy of what reaches the vendor", () => {
     expect(vendor.capture).not.toHaveBeenCalled();
     expect(analyticsEnabled()).toBe(false);
     expect(store.has("karaoke-device-id")).toBe(false);
-    expect(store.has("karaoke-rooms-visited")).toBe(false);
+    expect(store.has("karaoke-now-visited-rooms")).toBe(false);
   });
 
   it("reports disabled with no key, so callers can skip the local work too", async () => {

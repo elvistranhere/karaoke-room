@@ -57,7 +57,7 @@ done
 ### Step 3: Add GitHub secret for health check
 
 ```bash
-gh secret set LIVEKIT_URL_N --body "WSS_URL_VALUE" --repo vietbrosinaus/karaoke-room
+gh secret set LIVEKIT_URL_N --body "WSS_URL_VALUE" --repo vietbrosinaus/karaoke-now
 ```
 
 ### Step 4: Extend health check workflow
@@ -93,7 +93,7 @@ vercel --prod
 List all env vars to verify:
 ```bash
 vercel env ls
-gh secret list --repo vietbrosinaus/karaoke-room
+gh secret list --repo vietbrosinaus/karaoke-now
 ```
 
 Report: "Key set #N added. The least-loaded algorithm will start assigning new rooms to it automatically. Health check will verify it every 6 hours."

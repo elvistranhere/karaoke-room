@@ -12,8 +12,8 @@ import { setLogErrorSink } from "./logger";
 import { readPref, writePref } from "./prefs";
 
 const DEVICE_ID_KEY = "karaoke-device-id";
-const VISITED_ROOMS_KEY = "karaoke-rooms-visited";
-const VISITED_ROOMS_SALT_KEY = "karaoke-rooms-salt";
+const VISITED_ROOMS_KEY = "karaoke-now-visited-rooms";
+const VISITED_ROOMS_SALT_KEY = "karaoke-now-rooms-salt";
 const VISITED_ROOMS_LIMIT = 20;
 const DEFAULT_HOST = "https://us.i.posthog.com";
 const MAX_APP_ERRORS_PER_SESSION = 10;

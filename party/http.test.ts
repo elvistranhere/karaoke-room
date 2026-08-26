@@ -45,7 +45,7 @@ describe("corsFor", () => {
   it("matches a wildcard entry one label deep only", () => {
     const env = { PARTY_ALLOWED_ORIGINS: "https://*.vercel.app" };
     const allowed = (origin: string) => corsFor(request(DEPLOYED, { Origin: origin }), env).allowed;
-    expect(allowed("https://karaoke-room-git-fix-elvis.vercel.app")).toBe(true);
+    expect(allowed("https://karaoke-now-git-fix-elvis.vercel.app")).toBe(true);
     expect(allowed("https://a.b.vercel.app")).toBe(false);
     expect(allowed("http://karaoke-room.vercel.app")).toBe(false);
     expect(allowed("https://evil-vercel.app")).toBe(false);
