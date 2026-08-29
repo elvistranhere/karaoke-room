@@ -154,10 +154,6 @@ export function StageBanner({
               />
             ))}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)" }} />
-            <span className="text-xs" style={{ color: "var(--color-success)" }}>Live</span>
-          </div>
         </div>
 
         {singerSongName ? (
@@ -297,10 +293,6 @@ export function StageBanner({
               <p className="text-sm font-bold" style={{ fontFamily: "var(--font-display)", color: "var(--color-text-primary)" }}>
                 On stage
               </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)" }} />
-              <span className="text-xs" style={{ color: "var(--color-success)" }}>Live</span>
             </div>
           </div>
 
