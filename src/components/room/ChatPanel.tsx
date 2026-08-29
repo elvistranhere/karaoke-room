@@ -22,14 +22,28 @@ function formatTime(timestamp: number): string {
 
 export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, currentSingerId = null, onReact }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [isScrolling, setIsScrolling] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const reactionCooldownRef = useRef(false);
+  const scrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollIdleTimeoutRef.current) clearTimeout(scrollIdleTimeoutRef.current);
+    };
+  }, []);
+
+  const handleScroll = () => {
+    setIsScrolling(true);
+    if (scrollIdleTimeoutRef.current) clearTimeout(scrollIdleTimeoutRef.current);
+    scrollIdleTimeoutRef.current = setTimeout(() => setIsScrolling(false), 700);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,8 +65,8 @@ export function ChatPanel({ messages, onSend, myPeerId, adminPeerId = null, curr
       {/* Messages */}
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
-        style={{ scrollbarWidth: "thin", scrollbarColor: "var(--color-dark-border) transparent" }}
+        className={`chat-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-3${isScrolling ? " is-scrolling" : ""}`}
+        onScroll={handleScroll}
       >
         {messages.length === 0 ? (
           <p

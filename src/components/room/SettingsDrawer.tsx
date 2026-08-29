@@ -163,11 +163,12 @@ export function SettingsDrawer({
                 ariaLabel="Output volume"
                 onChange={(v) => onMasterChange(v / 100)}
               />
-              <p className="mt-2 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-                {volumeControlLost
-                  ? "This device is playing voices directly, so this only scales the YouTube music. Tap to bring the sound back to restore voice volume."
-                  : "Scales every voice you hear. Per-person volumes multiply on top. YouTube music is capped at 100%."}
-              </p>
+              {volumeControlLost ? (
+                <p className="mt-2 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+                  This device is playing voices directly, so this only scales the YouTube music. Tap to bring the
+                  sound back to restore voice volume.
+                </p>
+              ) : null}
               {masterPercent > 100 && !volumeControlLost ? (
                 <p className="mt-1 text-[10px] leading-4" style={{ color: "var(--color-accent)" }}>
                   Boost applies to voices only, so the music sits lower against them.
@@ -186,16 +187,11 @@ export function SettingsDrawer({
 
           {showHostSettings ? (
             <section className="space-y-5 border-t pt-5" style={{ borderColor: DIVIDER }}>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <Crown size={13} style={{ color: "var(--color-accent)" }} />
-                  <h3 className={GROUP_LABEL_CLASS} style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)" }}>
-                    Host settings
-                  </h3>
-                </div>
-                <p className="mt-1 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-                  Only you, the room host, can change these.
-                </p>
+              <div className="flex items-center gap-1.5">
+                <Crown size={13} style={{ color: "var(--color-accent)" }} />
+                <h3 className={GROUP_LABEL_CLASS} style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)" }}>
+                  Host settings
+                </h3>
               </div>
 
               {onSetRoomName ? (
@@ -223,9 +219,6 @@ export function SettingsDrawer({
                       Save
                     </Button>
                   </div>
-                  <p className="mt-1 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                    Shown in the room header and on browse cards. Leave empty to clear it.
-                  </p>
                 </div>
               ) : null}
 
@@ -233,9 +226,6 @@ export function SettingsDrawer({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>Show in Browse</p>
-                    <p className="mt-0.5 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-                      Anyone can find and join this room from the browse page
-                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-[10px] font-medium" style={{ color: isPublic ? "var(--color-primary)" : "var(--color-text-muted)" }}>

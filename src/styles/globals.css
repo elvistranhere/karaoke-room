@@ -336,6 +336,20 @@ body {
   background: color-mix(in srgb, var(--color-dark-border) 60%, #8b8b9e);
 }
 
+/* Keep the chat edge clean until the message list is actively moving. */
+.chat-scrollbar {
+  scrollbar-color: transparent transparent;
+}
+.chat-scrollbar.is-scrolling {
+  scrollbar-color: var(--color-dark-border) transparent;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.chat-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);

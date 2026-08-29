@@ -155,7 +155,7 @@ export function StageBanner({
             ))}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)" }} />
             <span className="text-xs" style={{ color: "var(--color-success)" }}>Live</span>
           </div>
         </div>
@@ -211,13 +211,13 @@ export function StageBanner({
               max={MUSIC_MAX}
               onChange={(v) => onMixMusicGain(v / 100)}
             />
-            <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-              {volumeControlLost
-                ? "This device is playing voices directly, so only mute works. Tap to bring the sound back to restore the voice slider."
-                : listenerVoiceMuted
-                  ? "Muted for you. Unmuting restores this level. YouTube caps music at 100%."
-                  : "Only changes what you hear. YouTube caps music at 100%."}
-            </p>
+            {(volumeControlLost || listenerVoiceMuted) && (
+              <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+                {volumeControlLost
+                  ? "This device is playing voices directly, so only mute works. Tap to bring the sound back to restore the voice slider."
+                  : "Muted for you. Unmuting restores this level."}
+              </p>
+            )}
           </div>
         )}
         {/* Host-only room action; the crown marks why this button is visible */}
@@ -299,7 +299,7 @@ export function StageBanner({
               </p>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)", animation: "fade-in 1.5s ease-in-out infinite alternate" }} />
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-success)" }} />
               <span className="text-xs" style={{ color: "var(--color-success)" }}>Live</span>
             </div>
           </div>
