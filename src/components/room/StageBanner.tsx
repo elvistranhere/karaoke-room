@@ -6,7 +6,6 @@ import type { RoomState } from "~/types/room";
 import { Crown, Mic, Music, Pencil, SkipForward, Volume2, VolumeX, Plus } from "lucide-react";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { PlaybackControls } from "./PlaybackControls";
-import { SyncOffsetControl } from "./SyncOffsetControl";
 import { VideoUrlInput } from "./VideoUrlInput";
 import { VolumeSlider, MUSIC_MAX } from "./VolumeSlider";
 
@@ -41,13 +40,6 @@ interface StageBannerProps {
   // The mixer is on its <audio> element fallback and this engine ignores element.volume,
   // so the voice slider is inert and only the mute toggle still carries
   volumeControlLost?: boolean;
-  // Listener-local sync offset (auto-estimated, manual override remembered per singer)
-  syncAuto?: boolean;
-  onSyncAutoChange?: (auto: boolean) => void;
-  autoOffsetMs?: number;
-  syncOffsetMs?: number;
-  onSyncOffsetChange?: (ms: number) => void;
-  syncSingerName?: string | null;
 }
 
 export function StageBanner({
@@ -73,12 +65,6 @@ export function StageBanner({
   listenerVoiceMuted = false,
   onToggleListenerVoiceMute,
   volumeControlLost = false,
-  syncAuto = true,
-  onSyncAutoChange,
-  autoOffsetMs = 150,
-  syncOffsetMs = 150,
-  onSyncOffsetChange,
-  syncSingerName = null,
 }: StageBannerProps) {
   const currentSinger = roomState.participants.find(
     (p) => p.id === roomState.currentSingerId,
@@ -234,19 +220,6 @@ export function StageBanner({
             </p>
           </div>
         )}
-        {onSyncAutoChange && onSyncOffsetChange && (
-          <div className="atmo-card mt-3 rounded-xl p-3 shadow-[var(--shadow-elevation-0)]">
-            <SyncOffsetControl
-              auto={syncAuto}
-              onAutoChange={onSyncAutoChange}
-              autoOffsetMs={autoOffsetMs}
-              offsetMs={syncOffsetMs}
-              onOffsetChange={onSyncOffsetChange}
-              singerName={syncSingerName}
-            />
-          </div>
-        )}
-
         {/* Host-only room action; the crown marks why this button is visible */}
         {onSkipSinger && (
           <button

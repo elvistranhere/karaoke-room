@@ -24,7 +24,7 @@ import { SettingsDrawer } from "./SettingsDrawer";
 import { SoundProfileModal } from "./SoundProfileModal";
 import { VideoStage } from "./VideoStage";
 import { VideoProgress } from "./VideoProgress";
-import { SYNC_AUTO_STORAGE_KEY, SYNC_OFFSET_MAX_MS, readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor, storeSyncOffsetFor } from "./SyncOffsetControl";
+import { readStoredSyncOffset, readStoredSyncAuto, readStoredSyncOffsetFor } from "./SyncOffsetControl";
 import { useAutoSyncOffset } from "~/hooks/useAutoSyncOffset";
 import { useSingerAudio } from "~/hooks/useSingerAudio";
 import { useVolumeMix } from "~/hooks/useVolumeMix";
@@ -193,7 +193,7 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
 
   const [songName, setSongName] = useState<string | null>(null);
   const [syncOffsetMs, setSyncOffsetMs] = useState(readStoredSyncOffset);
-  const [syncOffsetAuto, setSyncOffsetAuto] = useState(readStoredSyncAuto);
+  const [syncOffsetAuto] = useState(readStoredSyncAuto);
   const syncOffsetMsRef = useRef(syncOffsetMs);
 
   const singerIdentity = roomState.currentSingerId
@@ -206,9 +206,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     : null;
   const singerName = singerParticipant?.name ?? null;
   const singerMixKey = singerParticipant ? personMixKey(singerParticipant) : null;
-  const singerNameRef = useRef(singerName);
-  singerNameRef.current = singerName;
-
   // Each singer has their own latency, so the manual offset follows the singer
   useEffect(() => {
     if (singerName) setSyncOffsetMs(readStoredSyncOffsetFor(singerName));
@@ -342,21 +339,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
     () => (room ? Math.max(0, ...Array.from(room.remoteParticipants.values(), (participant) => participant.audioLevel || 0)) : 0),
     [room],
   );
-
-  const handleSyncOffsetChange = useCallback((ms: number) => {
-    const clamped = Math.max(0, Math.min(SYNC_OFFSET_MAX_MS, ms));
-    setSyncOffsetMs(clamped);
-    storeSyncOffsetFor(singerNameRef.current, clamped);
-  }, []);
-
-  const handleSyncAutoChange = useCallback((auto: boolean) => {
-    setSyncOffsetAuto(auto);
-    try {
-      window.localStorage.setItem(SYNC_AUTO_STORAGE_KEY, auto ? "on" : "off");
-    } catch {
-      // storage unavailable, choice still applies for this session
-    }
-  }, []);
 
   const handleLoadVideo = useCallback((videoId: string) => {
     setSongName(null);
@@ -1008,12 +990,6 @@ export function RoomView({ roomCode, playerName, onRename, onNameRejected }: Roo
                   ? () => togglePersonMute(singerMixKey)
                   : undefined}
                 volumeControlLost={volumeControlLost}
-                syncAuto={syncOffsetAuto}
-                onSyncAutoChange={!isMyTurn ? handleSyncAutoChange : undefined}
-                autoOffsetMs={autoOffsetMs}
-                syncOffsetMs={syncOffsetMs}
-                onSyncOffsetChange={!isMyTurn ? handleSyncOffsetChange : undefined}
-                syncSingerName={singerName}
               />
               </div>
             <StageAnnouncement

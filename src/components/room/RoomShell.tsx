@@ -5,8 +5,8 @@ import { PanelHost } from "./PanelHost";
 import { panelsInRegion, type PanelId, type PanelRegion, type RoomPanel, type RoomSectionId } from "./panels";
 
 const RAIL_CLASS: Record<PanelRegion, string> = {
-  left: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72",
-  right: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-72 lg:flex-none lg:shrink-0 xl:w-80",
+  left: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-64 lg:flex-none lg:shrink-0 xl:w-72 2xl:w-[clamp(18rem,16vw,22.5rem)]",
+  right: "min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl lg:flex lg:w-72 lg:flex-none lg:shrink-0 xl:w-80 2xl:w-[clamp(20rem,18vw,25rem)]",
 };
 
 const RAIL_LABEL: Record<PanelRegion, string> = {
@@ -50,7 +50,7 @@ export function RoomShell({ panels, stage }: RoomShellProps) {
   };
 
   return (
-    <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-2 overflow-hidden px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 lg:flex-row lg:gap-3 lg:px-4 lg:pb-[max(env(safe-area-inset-bottom),1rem)] lg:pt-4 xl:gap-4">
+    <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[2048px] flex-1 flex-col gap-2 overflow-hidden px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 lg:flex-row lg:gap-3 lg:px-4 lg:pb-[max(env(safe-area-inset-bottom),1rem)] lg:pt-4 xl:gap-4 2xl:gap-5 2xl:px-6">
       <div
         role="group"
         className="grid shrink-0 gap-1 rounded-lg p-1 shadow-[var(--shadow-elevation-1)] lg:hidden"
@@ -76,7 +76,7 @@ export function RoomShell({ panels, stage }: RoomShellProps) {
 
       <section
         data-testid="room-stage"
-        className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${section === "stage" ? "flex" : "hidden"} lg:flex`}
+        className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${section === "stage" ? "flex" : "hidden"} lg:flex 2xl:max-w-[1280px]`}
       >
         {stage}
       </section>

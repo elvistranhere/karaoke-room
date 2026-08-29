@@ -6,6 +6,7 @@ import { DIVIDER } from "~/lib/surfaces";
 import { VolumeSlider, VOLUME_MAX } from "./VolumeSlider";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
+import { VietBrosSignature } from "~/components/VietBrosSignature";
 import {
   Sheet,
   SheetContent,
@@ -112,7 +113,8 @@ export function SettingsDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 space-y-6 overflow-auto p-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+        <div className="flex flex-1 flex-col overflow-auto p-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+          <div className="space-y-6">
           <section className="space-y-5">
             <h3 className={GROUP_LABEL_CLASS} style={{ fontFamily: "var(--font-display)", color: "var(--color-text-muted)" }}>
               Personal
@@ -331,6 +333,11 @@ export function SettingsDrawer({
               (the Sound button in the toolbar)
             </p>
           </div>
+          </div>
+
+          <footer className="mt-auto pt-10">
+            <VietBrosSignature />
+          </footer>
         </div>
       </SheetContent>
     </Sheet>

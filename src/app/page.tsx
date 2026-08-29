@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { HomeClient } from "~/components/home/HomeClient";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL, socialMetadata } from "~/lib/seo";
 
-const TITLE = "Online Karaoke Rooms - Sing Together with Friends, Free";
+const TITLE = "Karaoke Now | Free Online Karaoke Rooms";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },
